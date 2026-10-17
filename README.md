@@ -46,3 +46,5 @@ Use **Admin → Banner** to configure the homepage promotion. Its title, descrip
 Admins and approved creators can optionally group uploaded videos into a **Web series** or **Playlist** from the video form. Give each video the same collection name and type, and optionally set its episode or playlist position number. Published, processed videos are grouped into browsable collections on Explore; episodes/items appear in the specified order, with unnumbered videos following them.
 
 When deploying the API to Render, configure `MONGODB_URI`, `MONGODB_DATABASE`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `VIEW_IP_HASH_SECRET`, `TRUST_PROXY_HOPS`, `BUNNY_STREAM_LIBRARY_ID`, `BUNNY_STREAM_API_KEY`, and `CLIENT_ORIGIN` in the service environment. Use the deployed frontend's exact origin for `CLIENT_ORIGIN` and set `TRUST_PROXY_HOPS` to match the trusted proxy chain in front of the API. For private media, add a server-side signed playback flow.
+#   z i n d a _ p l a y  
+ 
