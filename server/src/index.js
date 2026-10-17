@@ -20,7 +20,6 @@ if (!Number.isSafeInteger(trustedProxyHops) || trustedProxyHops < 0) {
 app.set("trust proxy", trustedProxyHops);
 const allowedOrigins = [
   "https://zindaplay.vercel.app",
-  "https://zinda-play-front-end.vercel.app",
   "http://localhost:5173",
   ...(process.env.CLIENT_ORIGIN || "").split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
 ];
