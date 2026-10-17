@@ -18,7 +18,28 @@ if (!Number.isSafeInteger(trustedProxyHops) || trustedProxyHops < 0) {
   throw new Error("TRUST_PROXY_HOPS must be a non-negative integer.");
 }
 app.set("trust proxy", trustedProxyHops);
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" || "https://zindaplay.vercel.app" }));
+const allowedOrigins = [
+  "https://zindaplay.vercel.app",
+  "https://zinda-play-front-end.vercel.app",
+  "http://localhost:5173",
+  ...(process.env.CLIENT_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 const maxVideoUploadBytes = 2 * 1024 * 1024 * 1024;
 
