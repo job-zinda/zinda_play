@@ -18,7 +18,7 @@ if (!Number.isSafeInteger(trustedProxyHops) || trustedProxyHops < 0) {
   throw new Error("TRUST_PROXY_HOPS must be a non-negative integer.");
 }
 app.set("trust proxy", trustedProxyHops);
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" }));
+app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" || "https://zindaplay.vercel.app" }));
 app.use(express.json());
 const maxVideoUploadBytes = 2 * 1024 * 1024 * 1024;
 
