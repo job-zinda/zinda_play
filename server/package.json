@@ -11,6 +11,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "maxmind": "^5.0.7",
     "mongodb": "^7.7.0"
   },
   "devDependencies": {
