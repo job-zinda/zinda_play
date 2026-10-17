@@ -22,17 +22,12 @@ const allowedOrigins = [
   "https://zindaplay.vercel.app",
   "https://zinda-play-front-end.vercel.app",
   "http://localhost:5173",
+  ...(process.env.CLIENT_ORIGIN || "").split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
 ];
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(new Error(`CORS blocked origin: ${origin}`));
-    },
+    origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)),
   })
 );
 
