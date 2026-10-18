@@ -29,6 +29,8 @@ Set `PUBLIC_WEB_URL=https://zindaplay.com` on the API (also the default). This i
 
 Deploy both backend and web changes before using the new APK's share links. Run link regression tests with `node --test src/public-links.test.js` in each of `client` and `server`.
 
+Share previews use the uploaded thumbnail first, then a configured thumbnail URL, then Bunny's generated `thumbnail.jpg` (regular and Simply videos). `PUBLIC_API_URL` defaults to `https://zinda-play.onrender.com`; set it to the public API origin if hosting changes so uploaded preview images use a crawler-accessible absolute URL, independent of reverse-proxy HTTP headers. Bunny fallback requires `BUNNY_STREAM_CDN_HOSTNAME`. Share pages contain video-specific Open Graph/Twitter image tags and canonical share URLs; JavaScript sends human visitors to the player without an immediate HTML refresh discarding preview metadata. Videos without any thumbnail source remain text-only. WhatsApp/social apps control preview display and may cache old cards; test a newly pasted link after deployment. No image/video file is attached and no APK rebuild is needed for this server-side preview fix.
+
 ## Creator membership: QR payments and manual approval
 
 Creator membership defaults to **INR 199 for 30 days**, with the existing **7-day free trial**. In the web admin dashboard, open **Membership plans & payments** to:

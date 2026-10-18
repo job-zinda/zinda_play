@@ -14,13 +14,14 @@ import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
-import { publicWebOrigin, videoLandingUrl } from "./public-links.js";
+import { publicWebOrigin, videoPreviewHtml } from "./public-links.js";
 import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, deliverCreatorAdNotifications, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
 const port = process.env.PORT || 4000;
 const publicWebsite = publicWebOrigin(process.env.PUBLIC_WEB_URL);
+const publicApiOrigin = publicWebOrigin(process.env.PUBLIC_API_URL || "https://zinda-play.onrender.com");
 const scrypt = promisify(scryptCallback);
 const trustedProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS || "0", 10);
 if (!Number.isSafeInteger(trustedProxyHops) || trustedProxyHops < 0) {
@@ -831,21 +832,17 @@ const shortEngagementLimit = registerShortRoutes(app, {
   publicVideoQuery, availableInCity: videoAvailableInViewerCity, withCreatorProfiles,
   sessionFor: req => sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, ""))
 });
-const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 // Link-preview crawlers do not run the SPA, so shared links point here to get Open Graph tags before redirecting to the app.
 app.get("/api/share/video/:id", asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
   if (!video || !await videoAvailableInViewerCity(video, req) || !await campaignVideoIsAvailable(video, req)) {
     return res.status(404).type("text/plain").send("Video not found");
   }
-  const target = videoLandingUrl(video, publicWebsite);
-  const image = video.thumbnailImageId ? `${req.protocol}://${req.get("host")}/api/videos/thumbnail/${video.thumbnailImageId}` : "";
-  const title = String(video.title || "Zinda Play").slice(0, 120);
-  const description = String(video.description || "Watch this video on Zinda Play.").slice(0, 200);
-  res.set("Cache-Control", "public, max-age=300").type("html").send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)} · Zinda Play</title>
-<meta property="og:type" content="video.other"><meta property="og:site_name" content="Zinda Play"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(target)}">
-${image ? `<meta property="og:image" content="${escapeHtml(image)}"><meta name="twitter:image" content="${escapeHtml(image)}">` : ""}<meta name="twitter:card" content="${image ? "summary_large_image" : "summary"}"><meta name="twitter:title" content="${escapeHtml(title)}"><meta name="twitter:description" content="${escapeHtml(description)}">
-<meta http-equiv="refresh" content="0;url=${escapeHtml(target)}"></head><body><p><a href="${escapeHtml(target)}">Watch “${escapeHtml(title)}” on Zinda Play</a></p><script>location.replace(${JSON.stringify(target).replace(/</g, "\\u003c")});</script></body></html>`);
+  res.set("Cache-Control", "public, max-age=300").type("html").send(videoPreviewHtml(video, {
+    website: publicWebsite,
+    apiOrigin: publicApiOrigin,
+    cdnOrigin: video.bunnyVideoId && !video.thumbnailImageId && !video.thumbnailUrl ? shortsCdnOrigin() : undefined
+  }));
 }));
 app.get("/api/videos", asyncRoute(async (req, res) => {
   const q = String(req.query.search || "").toLowerCase();
