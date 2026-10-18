@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Play, Search, Plus, Film, LayoutDashboard, X, Trash2, ExternalLink, Sparkles, LogOut, Pencil, Tags, Share2, Eye, EyeOff, BarChart3, Upload, Bell, Check, Clock3, WalletCards, Heart, MessageCircle, UserRound, UserPlus, TrendingUp, Building2 } from "lucide-react";
+import { Play, Search, Plus, Film, LayoutDashboard, X, Trash2, ExternalLink, Sparkles, LogOut, Pencil, Tags, Share2, Eye, EyeOff, BarChart3, Upload, Bell, Check, Clock3, WalletCards, Heart, MessageCircle, UserRound, UserPlus, TrendingUp, Building2, ChevronLeft, ChevronRight, Flame, RefreshCw, SearchX, WifiOff } from "lucide-react";
+import VideoCard, { VideoCardSkeleton } from "./VideoCard.jsx";
 
 const API = import.meta.env.DEV
   ? "/api"
@@ -41,6 +42,11 @@ function App() {
   const [returnToContent, setReturnToContent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [sortMode, setSortMode] = useState("latest");
+  const [cardLikes, setCardLikes] = useState({});
+  const trendingRow = useRef(null);
+  const cardLikeRequests = useRef(new Set());
   const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem("adminToken") || "");
   const [authRole, setAuthRole] = useState(() => sessionStorage.getItem("authRole") || (sessionStorage.getItem("adminToken") ? "admin" : ""));
   const [signedInUsername, setSignedInUsername] = useState(() => sessionStorage.getItem("signedInUsername") || "");
@@ -108,15 +114,16 @@ function App() {
   const sponsoredImpressions = useRef(new Set());
 
   async function load() {
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setLoadFailed(false);
     try {
       const [v, c, b] = await Promise.all([
         fetch(`${API}/videos`).then(r => r.json()),
         fetch(`${API}/categories`).then(r => r.json()),
         fetch(`${API}/banner`).then(r => r.json())
       ]);
+      if (!Array.isArray(v) || !Array.isArray(c)) throw new Error("Invalid API response");
       setVideos(v); setCategories(c); setBanner(b);
-    } catch { setError("Could not connect to the API. Check VITE_API_URL and make sure the backend is available."); }
+    } catch { setLoadFailed(true); setError("Could not connect to the API. Check VITE_API_URL and make sure the backend is available."); }
     finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
@@ -199,9 +206,10 @@ function App() {
           .catch(err=>setError(err.message));
       }
     },{threshold:0.5});
-    document.querySelectorAll(".video-card[data-sponsored='true']").forEach(card=>observer.observe(card));
+    document.querySelectorAll(".vcard[data-sponsored='true']").forEach(card=>observer.observe(card));
     return ()=>observer.disconnect();
   },[videos,search,activeCategory,loading,page]);
+  useEffect(() => { setCardLikes({}); }, [adminToken]);
   useEffect(() => {
     if (page !== "business" || !campaignFocusVideoId || !businessVideos.some(video => video.id === campaignFocusVideoId)) return;
     document.getElementById(`business-video-${campaignFocusVideoId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -246,7 +254,7 @@ function App() {
   const trendingVideos = useMemo(() => [...publicLibraryVideos]
     .filter(video => Number(video.views || 0) > 0)
     .sort((a, b) => Number(b.views || 0) - Number(a.views || 0))
-    .slice(0, 6), [publicLibraryVideos]);
+    .slice(0, 10), [publicLibraryVideos]);
   const collectionGroups = useMemo(() => {
     const groups = new Map();
     publicLibraryVideos.filter(video => video.collectionName && ["series", "playlist"].includes(video.collectionType)).forEach(video => {
@@ -271,11 +279,17 @@ function App() {
   }, [publicLibraryVideos]);
   const filtered = useMemo(() => {
     if (activeCollectionKey) return collectionGroups.find(collection => collection.key === activeCollectionKey)?.videos || [];
-    return publicLibraryVideos.filter(video =>
+    const matches = publicLibraryVideos.filter(video =>
       (!search || `${video.title} ${video.description} ${video.collectionName || ""}`.toLowerCase().includes(search.toLowerCase())) &&
       (activeCategory === "all" || video.categoryId === activeCategory)
     );
-  }, [publicLibraryVideos, collectionGroups, activeCollectionKey, search, activeCategory]);
+    const views = video => Number(video.views || 0);
+    const ageDays = video => Math.max(0, (Date.now() - new Date(video.createdAt).getTime()) / 86400000) || 0;
+    if (sortMode === "viewed") return [...matches].sort((a, b) => views(b) - views(a));
+    // Trending favors views earned relative to how recently the video was published.
+    if (sortMode === "trending") return [...matches].sort((a, b) => views(b) / (1 + ageDays(b)) - views(a) / (1 + ageDays(a)));
+    return [...matches].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [publicLibraryVideos, collectionGroups, activeCollectionKey, search, activeCategory, sortMode]);
   const featured = filtered.find(v => v.featured) || filtered[0];
   const analytics = useMemo(() => {
     const totalViews = videos.reduce((total, video) => total + Number(video.views || 0), 0);
@@ -326,6 +340,40 @@ function App() {
       setError(err.message || "Unable to record this view");
     }
   }
+  const canLike = () => Boolean(adminToken) && ["member", "creator", "promoter"].includes(authRole);
+  async function warmCardLike(video) {
+    if (cardLikes[video.id] || cardLikeRequests.current.has(video.id)) return;
+    cardLikeRequests.current.add(video.id);
+    try {
+      const response = await fetch(`${API}/videos/${video.id}/interactions`, adminToken ? { headers: { Authorization: `Bearer ${adminToken}` } } : {});
+      const data = await response.json();
+      if (response.ok) setCardLikes(current => ({ ...current, [video.id]: { liked: data.liked, likeCount: data.likeCount } }));
+    } catch { /* like state stays hidden until the next hover */ }
+    finally { cardLikeRequests.current.delete(video.id); }
+  }
+  async function toggleCardLike(video) {
+    if (!canLike()) { setError("Sign in with a viewer account to like videos."); return; }
+    try {
+      const response = await fetch(`${API}/videos/${video.id}/like`, { method: "POST", headers: { Authorization: `Bearer ${adminToken}` } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to update your like.");
+      setCardLikes(current => ({ ...current, [video.id]: { liked: data.liked, likeCount: data.likeCount } }));
+    } catch (err) { setError(err.message); }
+  }
+  async function openCreatorFromCard(creator) {
+    setPage("discover");
+    setSelected(null);
+    await openDiscover();
+    await openDiscoveredCreator(creator);
+  }
+  const scrollTrending = direction => {
+    const row = trendingRow.current;
+    if (row) row.scrollBy({ left: direction * Math.max(240, row.clientWidth * .8), behavior: "smooth" });
+  };
+  const hasActiveFilters = Boolean(search) || activeCategory !== "all" || sortMode !== "latest" || Boolean(activeCollectionKey);
+  const clearFilters = () => { setSearch(""); setActiveCategory("all"); setSortMode("latest"); setActiveCollectionKey(""); };
+  const renderCard = (video, index, rank) => <VideoCard key={video.id} video={video} index={index} rank={rank} assetSrc={apiAssetSrc} like={cardLikes[video.id]} onOpen={watchVideo} onShare={shareVideo} onCreator={openCreatorFromCard} onLike={toggleCardLike} onWarmLike={warmCardLike}/>;
+
   function previewBusinessVideo(video) {
     setPage("home");
     setWatchSession(null);
@@ -344,17 +392,28 @@ function App() {
     }
   }
   async function shareVideo(video) {
-    const url = new URL(window.location.href);
-    url.search = "";
-    url.searchParams.set("video", video.id);
+    const shareUrl = new URL(`${API}/share/video/${encodeURIComponent(video.id)}`, window.location.origin).toString();
+    const text = `${video.title}${video.description ? ` — ${video.description.slice(0, 120)}` : ""}\n${shareUrl}`;
     try {
+      let files = [];
+      if (navigator.canShare && video.thumbnailUrl) {
+        try {
+          const imageResponse = await fetch(apiAssetSrc(video.thumbnailUrl));
+          const blob = imageResponse.ok ? await imageResponse.blob() : null;
+          if (blob?.type.startsWith("image/")) {
+            const file = new File([blob], `${video.id}.${blob.type.split("/")[1].replace("jpeg", "jpg")}`, { type: blob.type });
+            if (navigator.canShare({ files: [file] })) files = [file];
+          }
+        } catch { /* share without the image */ }
+      }
       if (navigator.share) {
-        await navigator.share({ title: video.title, text: video.description, url: url.toString() });
+        // Some apps drop the url field when files are attached, so the link is also in the text.
+        await navigator.share(files.length ? { title: video.title, text, files } : { title: video.title, text: video.description, url: shareUrl });
       } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url.toString());
+        await navigator.clipboard.writeText(shareUrl);
         setError("Video link copied to clipboard.");
       } else {
-        window.prompt("Copy this video link:", url.toString());
+        window.prompt("Copy this video link:", shareUrl);
       }
     } catch (err) {
       if (err.name !== "AbortError") setError("Unable to share this video.");
@@ -1816,9 +1875,9 @@ function App() {
         {banner.imageUrl && <img className="promo-banner-image" src={apiAssetSrc(banner.imageUrl)} alt="" aria-hidden="true"/>}
         <div className="promo-banner-copy"><span className="eyebrow"><Sparkles size={14}/> FEATURED</span><h2>{banner.title}</h2>{banner.description && <p>{banner.description}</p>}{banner.buttonLabel && <a className="primary-btn" href={banner.buttonUrl} target="_blank" rel="noreferrer">{banner.buttonLabel}<ExternalLink size={16}/></a>}</div>
       </section>}
-        {sponsoredVideos.length > 0 && <section className="sponsored-library"><div className="section-heading"><div><span className="eyebrow"><Sparkles size={14}/> PROMOTED FOR YOUR LOCATION</span><h2>Promotional videos</h2></div></div><div className="video-grid">{sponsoredVideos.map((v,i)=><button className="video-card" data-sponsored="true" data-video-id={v.id} key={v.id} onClick={()=>watchVideo(v)}><div className="thumbnail">{v.thumbnailUrl?<img src={apiAssetSrc(v.thumbnailUrl)} alt=""/>:<div className={`thumb-gradient gradient-${i%4}`}><Play size={32} fill="currentColor"/></div>}<span className="play-overlay"><Play size={18} fill="currentColor"/></span><span className="sponsored-tag">SPONSORED · {v.sponsorName}</span></div><div className="video-info"><span className="video-category">{v.category?.name||"Promotional video"}</span><h3>{v.title}</h3><p>{v.description||"Discover this promoted video."}</p><span className="video-views"><Eye size={14}/> {Number(v.views || 0).toLocaleString()} views</span></div></button>)}</div></section>}
-        {trendingVideos.length > 0 && <section className="trending-library"><div className="section-heading"><div><span className="eyebrow"><TrendingUp size={14}/> TRENDING NOW · MOST VIEWED</span><h2>Popular videos</h2><p>Discover what viewers are watching most.</p></div></div><div className="video-grid">{trendingVideos.map((v,i)=><button className="video-card" key={v.id} onClick={()=>watchVideo(v)}><div className="thumbnail">{v.thumbnailUrl?<img src={apiAssetSrc(v.thumbnailUrl)} alt=""/>:<div className={`thumb-gradient gradient-${i%4}`}><Play size={32} fill="currentColor"/></div>}<span className="play-overlay"><Play size={18} fill="currentColor"/></span><span className="trending-rank">#{i+1} TRENDING</span></div><div className="video-info"><span className="video-category">{v.collectionName || v.category?.name || "Zinda Play"}</span><h3>{v.title}</h3><p>{v.description || "Watch this popular video on Zinda Play."}</p><span className="video-views"><Eye size={14}/> {Number(v.views || 0).toLocaleString()} views</span></div></button>)}</div></section>}
-        <section id="library" className="library"><div className="section-heading"><div><span className="eyebrow">HANDPICKED FOR YOU</span><h2>Explore the library</h2></div><div className="search-box"><Search size={17}/><input value={search} onChange={e=>{setSearch(e.target.value);setActiveCollectionKey("");}} placeholder="Search videos"/></div></div><div className="category-row"><button className={activeCategory==="all"?"category active":"category"} onClick={()=>{setActiveCategory("all");setActiveCollectionKey("");}}>All videos</button>{categories.map(c=><button key={c.id} className={activeCategory===c.id?"category active":"category"} onClick={()=>{setActiveCategory(c.id);setActiveCollectionKey("");}}>{c.name}</button>)}</div>{!activeCollectionKey && collectionGroups.length>0 && <section className="collections-library"><div className="collections-heading"><div><span className="eyebrow">WATCH TOGETHER</span><h3>Series & playlists</h3></div></div><div className="collections-grid">{collectionGroups.map(collection=><button className="collection-card" key={collection.key} onClick={()=>setActiveCollectionKey(collection.key)}><div className="collection-cover">{collection.videos[0]?.thumbnailUrl ? <img src={apiAssetSrc(collection.videos[0].thumbnailUrl)} alt=""/> : <div className="thumb-gradient gradient-0"><Play size={28} fill="currentColor"/></div>}<span>{collection.type==="series"?"WEB SERIES":"PLAYLIST"}</span></div><div><strong>{collection.title}</strong><small>{collection.videos.length} {collection.type==="series"?"episodes":"videos"}{collection.creatorName ? ` · ${collection.creatorName}` : ""}</small></div></button>)}</div></section>}{activeCollectionKey && <div className="active-collection-heading"><div><span className="eyebrow">{collectionGroups.find(collection=>collection.key===activeCollectionKey)?.type==="series"?"WEB SERIES":"PLAYLIST"}</span><h3>{collectionGroups.find(collection=>collection.key===activeCollectionKey)?.title || "Collection"}</h3><p>{filtered.length} videos, ordered by {collectionGroups.find(collection=>collection.key===activeCollectionKey)?.type==="series"?"episode":"playlist position"}.</p></div><button className="secondary-btn" onClick={()=>setActiveCollectionKey("")}>Back to all videos</button></div>}{loading?<p className="muted">Loading videos…</p>:<div className="video-grid">{filtered.map((v,i)=><button className="video-card" key={v.id} onClick={()=>watchVideo(v)}><div className="thumbnail">{v.thumbnailUrl?<img src={apiAssetSrc(v.thumbnailUrl)} alt=""/>:<div className={`thumb-gradient gradient-${i%4}`}><Play size={32} fill="currentColor"/></div>}<span className="play-overlay"><Play size={18} fill="currentColor"/></span>{v.collectionName && <span className="collection-episode-tag">{v.collectionType==="series"?"EPISODE":"ITEM"}{v.episodeNumber ? ` ${v.episodeNumber}` : ""}</span>}{v.featured&&<span className="featured-tag">FEATURED</span>}</div><div className="video-info"><span className="video-category">{v.collectionName || v.category?.name || "Zinda Play"}</span><h3>{v.title}</h3><p>{v.description||"Discover this video on Zinda Play."}</p><span className="video-views"><Eye size={14}/> {Number(v.views || 0).toLocaleString()} views</span></div></button>)}</div>}{!loading&&filtered.length===0&&<div className="empty-state"><Film size={32}/><h3>No videos found</h3><p>Try another search or category.</p></div>}</section></>}
+        {sponsoredVideos.length > 0 && <section className="sponsored-library"><div className="section-heading"><div><span className="eyebrow"><Sparkles size={14}/> PROMOTED FOR YOUR LOCATION</span><h2>Promotional videos</h2></div></div><div className="vgrid">{sponsoredVideos.map((v,i)=>renderCard(v,i))}</div></section>}
+        {trendingVideos.length > 0 && <section className="trending-library"><div className="section-heading"><div><span className="eyebrow"><TrendingUp size={14}/> TRENDING NOW · MOST VIEWED</span><h2>Popular videos</h2><p>Discover what viewers are watching most.</p></div><div className="scroller-controls"><button type="button" aria-label="Scroll trending videos left" onClick={()=>scrollTrending(-1)}><ChevronLeft size={18}/></button><button type="button" aria-label="Scroll trending videos right" onClick={()=>scrollTrending(1)}><ChevronRight size={18}/></button></div></div><div className="vrow" ref={trendingRow}>{trendingVideos.map((v,i)=>renderCard(v,i,i+1))}</div></section>}
+        <section id="library" className="library"><div className="section-heading"><div><span className="eyebrow">HANDPICKED FOR YOU</span><h2>Explore the library</h2></div></div><div className="gallery-toolbar"><div className="gallery-toolbar-row"><div className="gallery-search"><Search size={17}/><input type="search" aria-label="Search videos by title" value={search} onChange={e=>{setSearch(e.target.value);setActiveCollectionKey("");}} placeholder="Search videos"/>{search && <button type="button" aria-label="Clear search" onClick={()=>setSearch("")}><X size={16}/></button>}</div><div className="sort-group" role="group" aria-label="Sort videos">{[["latest","Latest",Clock3],["trending","Trending",Flame],["viewed","Most viewed",Eye]].map(([key,label,Icon])=><button type="button" key={key} className={sortMode===key?"active":""} aria-pressed={sortMode===key} onClick={()=>{setSortMode(key);setActiveCollectionKey("");}}><Icon size={15}/>{label}</button>)}</div></div><div className="category-row"><button className={activeCategory==="all"?"category active":"category"} onClick={()=>{setActiveCategory("all");setActiveCollectionKey("");}}>All videos</button>{categories.map(c=><button key={c.id} className={activeCategory===c.id?"category active":"category"} onClick={()=>{setActiveCategory(c.id);setActiveCollectionKey("");}}>{c.name}</button>)}</div>{hasActiveFilters && <div className="active-filters">{search && <span className="filter-chip">Search: {search}<button type="button" aria-label="Remove search filter" onClick={()=>setSearch("")}><X size={13}/></button></span>}{activeCategory!=="all" && <span className="filter-chip">Category: {categories.find(c=>c.id===activeCategory)?.name || "Selected"}<button type="button" aria-label="Remove category filter" onClick={()=>setActiveCategory("all")}><X size={13}/></button></span>}{sortMode!=="latest" && <span className="filter-chip">Sort: {sortMode==="trending"?"Trending":"Most viewed"}<button type="button" aria-label="Reset sorting" onClick={()=>setSortMode("latest")}><X size={13}/></button></span>}<button type="button" className="clear-filters" onClick={clearFilters}>Clear filters</button>{!loading && !loadFailed && <span className="results-count">{filtered.length} {filtered.length===1?"video":"videos"}</span>}</div>}</div>{!activeCollectionKey && collectionGroups.length>0 && <section className="collections-library"><div className="collections-heading"><div><span className="eyebrow">WATCH TOGETHER</span><h3>Series & playlists</h3></div></div><div className="collections-grid">{collectionGroups.map(collection=><button className="collection-card" key={collection.key} onClick={()=>setActiveCollectionKey(collection.key)}><div className="collection-cover">{collection.videos[0]?.thumbnailUrl ? <img src={apiAssetSrc(collection.videos[0].thumbnailUrl)} alt=""/> : <div className="thumb-gradient gradient-0"><Play size={28} fill="currentColor"/></div>}<span>{collection.type==="series"?"WEB SERIES":"PLAYLIST"}</span></div><div><strong>{collection.title}</strong><small>{collection.videos.length} {collection.type==="series"?"episodes":"videos"}{collection.creatorName ? ` · ${collection.creatorName}` : ""}</small></div></button>)}</div></section>}{activeCollectionKey && <div className="active-collection-heading"><div><span className="eyebrow">{collectionGroups.find(collection=>collection.key===activeCollectionKey)?.type==="series"?"WEB SERIES":"PLAYLIST"}</span><h3>{collectionGroups.find(collection=>collection.key===activeCollectionKey)?.title || "Collection"}</h3><p>{filtered.length} videos, ordered by {collectionGroups.find(collection=>collection.key===activeCollectionKey)?.type==="series"?"episode":"playlist position"}.</p></div><button className="secondary-btn" onClick={()=>setActiveCollectionKey("")}>Back to all videos</button></div>}{loading?<div className="vgrid" aria-busy="true" aria-label="Loading videos">{Array.from({length:8},(_,i)=><VideoCardSkeleton key={i}/>)}</div>:loadFailed?<div className="gallery-state"><WifiOff size={34}/><h3>Couldn't load videos</h3><p>We couldn't reach the server. Check your connection and try again.</p><button className="primary-btn" onClick={load}><RefreshCw size={16}/> Retry</button></div>:filtered.length===0?<div className="gallery-state"><SearchX size={34}/><h3>No videos found</h3><p>{hasActiveFilters?"Nothing matches your current filters. Try a different search or category.":"No videos have been published yet."}</p>{hasActiveFilters && <button className="secondary-btn" onClick={clearFilters}>Clear filters</button>}</div>:<div className="vgrid">{filtered.map((v,i)=>renderCard(v,i))}</div>}</section></>}
     </main><footer><button className="brand footer-brand" onClick={()=>{setPage("home");setSelected(null);}}>Zinda<span className="brand-accent">Play</span></button><span>Made for stories, skills & discovery.</span><span>© {new Date().getFullYear()} Zinda Play</span></footer>
   </div>;
 }
