@@ -37,7 +37,17 @@ New Razorpay checkout for creator membership and business promotions is disabled
 
 Run the membership API regression tests with `npm test` from the server directory. Tests use an isolated in-memory database double, not production data.
 
-## Zinda Shorts (Flutter mobile)
+## Zinda Shorts (mobile and web)
+
+### Web Shorts
+
+The web app has a **Shorts** button in the header for every account role and guests, plus **Zinda Shorts** in the main menu. It uses the same published Shorts and interaction APIs as mobile; there is no separate web video collection. Shorts opened from creator/profile video cards use this feed instead of the regular landscape player. Shared web links use `?short=<video-id>` and open that Short first.
+
+Scroll/swipe vertically or focus the feed and use the up/down arrow keys; desktop also has previous/next buttons. Playback starts muted. Pause, mute, seek, like/unlike, follow/unfollow, comments, share, save/un-save, report and Watch Later are supported. Viewing/comments are public; posting and other engagement require a viewer, creator, promoter or business account. Guests are sent to the existing sign-in flow. Shorts uploads remain available through **Create Zinda Short in the mobile app**.
+
+Only the active web video is attached and buffered (no next-video download). Safari/native HLS is used where supported; other compatible browsers load the lightweight `hls.js` module on demand with bounded buffers. Changing videos, hiding the browser tab, opening the main menu or navigating away stops playback and releases media resources. Comment/report dialogs pause playback. Feed and saved-list pagination reuse the existing cursors, deduplicate overlapping pages and offer loading, empty, retry and refresh states. Backend deployment/CDN permissions described below apply equally to web playback. Build the web frontend with `npm run build` in the client directory; no additional backend routes are required for this web section.
+
+### Flutter mobile
 
 The Android-first app includes **Home, Shorts, Create, Earn and Profile** navigation. Explore and the existing Library/dashboard remain in the Home header. Create offers both the unchanged regular upload and **Create Zinda Short**; existing creator approval, promoter-to-creator mode, profile-photo and active trial/membership checks apply. Shorts remain private until encoded, validated and approved through the existing admin review. Regular landscape playback and uploads are unchanged.
 

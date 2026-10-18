@@ -1,0 +1,53 @@
+.shorts-container{padding-top:16px;padding-bottom:20px}
+.shorts-page>footer{display:none}
+.shorts-heading,.shorts-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.shorts-heading h1{font:700 25px 'Space Grotesk',sans-serif;margin:0}
+.shorts-toolbar{font-size:12px;color:var(--muted)}
+.shorts-stage{position:relative;max-width:580px;margin:auto}
+.shorts-feed{height:calc(100dvh - 220px);min-height:400px;max-height:1000px;overflow-y:auto;overflow-anchor:none;overscroll-behavior-y:contain;scroll-snap-type:y mandatory;scrollbar-width:none;background:#000;border-radius:18px}
+.shorts-feed::-webkit-scrollbar{display:none}
+.shorts-item,.shorts-status{height:100%;min-height:100%;scroll-snap-align:start;scroll-snap-stop:always;position:relative;isolation:isolate;overflow:hidden}
+.shorts-item{background:#09070e;color:#fff}
+.shorts-item video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
+.shorts-gradient{position:absolute;inset:0;background:linear-gradient(#0006,transparent 25%,transparent 40%,#000e);pointer-events:none}
+.shorts-status{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;gap:16px}
+.shorts-skeleton{width:120px;height:210px;border-radius:12px;background:#20152f}
+.shorts-loading,.shorts-play-error{position:absolute;top:30%;left:12%;right:12%;text-align:center;background:#120b22e8;padding:16px;border-radius:12px;z-index:2}
+.shorts-actions{position:absolute;right:10px;bottom:86px;display:grid;gap:10px}
+.shorts-actions button,.shorts-controls button,.shorts-modal-heading button{border:0;border-radius:12px;background:#0007;color:#fff;padding:8px;display:flex;align-items:center;justify-content:center;min-width:42px;min-height:42px}
+.shorts-actions button{flex-direction:column;gap:4px;font-size:11px}
+.shorts-actions button[aria-pressed=true]{color:#c4a7ff}
+.shorts-actions button[aria-pressed=true] svg{fill:#8b5cf6}
+.shorts-caption{position:absolute;left:16px;right:88px;bottom:64px;text-shadow:0 2px 4px #000}
+.shorts-caption>p{margin:7px 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:14px}
+.shorts-caption .shorts-tags{color:#d6c8ff;-webkit-line-clamp:2}
+.shorts-creator{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.shorts-creator img{width:32px;height:32px;border-radius:50%;object-fit:cover}
+.shorts-creator strong{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.shorts-creator button{background:#8b5cf638;border:1px solid #b69cff;color:#eee4ff;border-radius:8px;padding:6px 9px}
+.shorts-feedback{color:#ffd19a}
+.shorts-controls{position:absolute;bottom:0;left:8px;right:8px;display:flex;align-items:center;gap:8px;min-height:54px}
+.shorts-controls input{min-width:0;flex:1;accent-color:#a78bfa}
+.shorts-arrows{position:absolute;right:-64px;top:40%;display:grid;gap:12px}
+.shorts-arrows button{padding:12px}
+.shorts-modal{position:absolute;inset:15% 0 0;background:#15111ff5;z-index:3;border-radius:18px 18px 0 0;padding:18px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.shorts-modal-heading{display:flex;align-items:center;justify-content:space-between}
+.shorts-modal-heading h2{font-size:20px;margin:0}
+.shorts-comments{flex:1;overflow:auto;min-height:50px}
+.shorts-comments>div{border-bottom:1px solid #ffffff1a;padding:10px 0;overflow-wrap:anywhere}
+.shorts-comments p{margin:6px 0}
+.shorts-modal form,.shorts-modal label{display:grid;gap:10px}
+.shorts-modal textarea{width:100%;min-height:60px;background:#0b0813;border:1px solid #61507e;border-radius:8px;color:#fff;padding:10px}
+.shorts-report-reasons{display:grid;gap:12px}
+.shorts-modal [role=alert]{color:#ffd19a}
+.shorts-item button:disabled{opacity:.5}
+@media(max-width:760px){
+ .shorts-container{padding:12px 8px}
+ .shorts-heading h1{font-size:20px}
+ .shorts-heading .secondary-btn,.shorts-toolbar .secondary-btn{padding:8px;font-size:12px}
+ .shorts-toolbar>span{max-width:210px;font-size:10px}
+ .shorts-feed{height:calc(100dvh - 190px);border-radius:10px;min-height:360px}
+ .shorts-arrows{display:none}
+ .shorts-nav-button{padding:8px!important;font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){.shorts-feed{scroll-behavior:auto}}

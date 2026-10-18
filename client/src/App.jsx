@@ -6,6 +6,7 @@ import { IntroVideo, IntroManager } from "./IntroVideo.jsx";
 import { AdminMembership, CreatorMembership } from "./Membership.jsx";
 import { BusinessAds } from "./BusinessAds.jsx";
 import { AdminShortReports } from "./ShortReports.jsx";
+import Shorts from "./Shorts.jsx";
 
 const API = import.meta.env.DEV
   ? "/api"
@@ -30,7 +31,8 @@ function App() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeCollectionKey, setActiveCollectionKey] = useState("");
-  const [page, setPage] = useState("home");
+  const [page, setPage] = useState(() => new URLSearchParams(window.location.search).has("short") ? "shorts" : "home");
+  const [initialShortId, setInitialShortId] = useState(() => new URLSearchParams(window.location.search).get("short") || null);
   const [referrerPromoterId, setReferrerPromoterId] = useState(() => {
     const fromUrl = new URLSearchParams(window.location.search).get("ref");
     const saved = localStorage.getItem("referrerPromoterId");
@@ -317,6 +319,10 @@ function App() {
   }, [videos, categories]);
 
   async function watchVideo(video) {
+    if (video.videoType === "short") {
+      setSelected(null); setInitialShortId(video.id); setPage("shorts");
+      return;
+    }
     recordInterest(video.categoryId);
     setSelected(video);
     setWatchSession(null);
@@ -1634,9 +1640,14 @@ function App() {
     } catch (err) { setError(err.message); }
   }
 
-  return <div className="app-shell">
+  function openShorts() {
+    setProfileDrawerOpen(false); setSelected(null); setInitialShortId(null); setPage("shorts");
+  }
+
+  return <div className={`app-shell${page === "shorts" ? " shorts-page" : ""}`}>
     <header className="topbar"><div className="topbar-left"><button className="menu-trigger" onClick={openMenu} aria-label="Open menu" aria-haspopup="dialog" aria-expanded={profileDrawerOpen}><Menu size={21}/></button><button className="brand" onClick={() => { setPage("home"); setSelected(null); }}><span className="brand-icon"><Play size={19} fill="currentColor"/></span>Zinda<span className="brand-accent">Play</span></button></div>
       <nav>{authRole === "admin" ? <><button className={page === "admin" || page === "add" || page === "banner" || page === "ads" ? "nav-active" : ""} onClick={openAdmin}><LayoutDashboard size={16}/> Dashboard</button><button className={page === "notifications" ? "nav-active" : ""} onClick={openNotifications}><Bell size={16}/> Notifications{unreadNotifications > 0 && <span className="notification-count">{unreadNotifications}</span>}</button><button className="profile-menu-trigger" onClick={openDiscover} aria-label="Discover creator and brand profiles"><UserRound size={18}/></button><button onClick={logout}><LogOut size={16}/> Sign out</button></> : authRole === "business" ? <><button className={page === "business" ? "nav-active" : ""} onClick={openBusiness}><LayoutDashboard size={16}/> Business</button><button className={page === "notifications" ? "nav-active" : ""} onClick={openNotifications}><Bell size={16}/> Notifications</button><button className="profile-menu-trigger" onClick={openDiscover} aria-label="Discover creator and brand profiles"><UserRound size={18}/></button><button onClick={logout}><LogOut size={16}/> Sign out</button></> : ["creator", "member", "promoter"].includes(authRole) ? <><button className={`topbar-notifications ${page === "notifications" ? "nav-active" : ""}`} onClick={openNotifications} aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}><Bell size={17}/>{unreadNotifications > 0 && <span className="notification-count">{unreadNotifications}</span>}</button><button className={`profile-menu-trigger ${page === "my-creator-profile" ? "nav-active" : ""}`} onClick={authRole === "creator" ? openMyCreatorProfile : ()=>{setProfileDrawerOpen(true);loadAccountProfile().catch(err=>setError(err.message));}} aria-label={authRole === "creator" ? "View your creator profile" : "Open profile menu"} aria-expanded={authRole === "creator" ? undefined : profileDrawerOpen}>{accountProfile.profilePhotoUrl ? <img src={apiAssetSrc(accountProfile.profilePhotoUrl)} alt=""/> : <UserRound size={18}/>}</button></> : null}</nav>
+      <button className="secondary-btn shorts-nav-button" aria-pressed={page === "shorts"} onClick={openShorts}><Play size={16}/> Shorts</button>
       <div className="top-pill"><span className="live-dot"/> VIDEO STREAMING</div>
     </header>
     {authRole === "admin" && adminToken && <div className="admin-actions"><button className="secondary-btn" onClick={() => { setSelected(null); setPage("membership-admin"); }}>Membership plans & payments</button></div>}
@@ -1649,6 +1660,7 @@ function App() {
         {authRole && <div className="profile-drawer-user">{accountProfile.profilePhotoUrl && isViewerRole ? <img src={apiAssetSrc(accountProfile.profilePhotoUrl)} alt=""/> : <span><UserRound size={24}/></span>}<div><strong>{(isViewerRole && accountProfile.displayName) || signedInUsername}</strong><small>@{signedInUsername}</small></div></div>}
         <div className="profile-drawer-links">
           <button className={page === "home" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);setPage("home");setSelected(null);}}><Film size={18}/> Explore</button>
+          <button className={page === "shorts" ? "active" : ""} onClick={openShorts}><Play size={18}/> Zinda Shorts</button>
           <button className={page === "discover" ? "active" : ""} onClick={openDiscover}><Building2 size={18}/> Creators & brands</button>
           {isViewerRole && <button className={page === "profile" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openProfile();}}><UserRound size={18}/> Edit profile</button>}
           {authRole === "creator" && <><button className={page === "creator" || page === "add" || page === "creator-analytics" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openCreatorDashboard();}}><LayoutDashboard size={18}/> Creator studio</button><button className={page === "invitations" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openBrandInvitations();}}><Bell size={18}/> Brand invitations</button><button className={page === "admin-chat" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openAdminChat();}}><MessageCircle size={18}/> Chat with admin</button><button className={page === "wallet" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openWallet();}}><WalletCards size={18}/> Wallet</button></>}
@@ -1660,7 +1672,7 @@ function App() {
         </div>
       </aside>
     </div>}
-    <main className="container">
+    <main className={`container${page === "shorts" ? " shorts-container" : ""}`}>
       {authRole === "creator" && membership && page !== "creator" && !upgradeReminderHidden && (membership.status === "expired" || membership.daysLeft <= 3) && <div className={`upgrade-reminder ${membership.status}`} role="status"><span>{membership.status === "expired" ? "Your free trial has ended. Upgrade to keep uploading videos." : `${membership.status === "trial" ? "Free trial" : "Membership"} ends in ${membership.daysLeft} ${membership.daysLeft === 1 ? "day" : "days"}. Upgrade to keep uploading.`}</span><button className="primary-btn" onClick={openCreatorDashboard}>Upgrade</button><button type="button" className="icon-btn" aria-label="Dismiss reminder" onClick={()=>setUpgradeReminderHidden(true)}><X size={16}/></button></div>}
       {error && <div className="notice">{error}<button onClick={() => setError("")}><X size={16}/></button></div>}
       {page === "notifications" && authRole === "admin" && <section className="admin-panel video-review-panel">
@@ -1675,7 +1687,8 @@ function App() {
       {page === "creator" && authRole === "creator" && videos.some(video=>video.approvalStatus === "pending") && <section className="admin-panel review-status-panel">
         <div className="membership-status"><Clock3 size={20}/><div><strong>Waiting for approval</strong><span>{videos.filter(video=>video.approvalStatus === "pending").map(video=>video.title).join(", ")} — your submission is private until an admin reviews it. Video encoding status is shown separately in Creator studio.</span></div></div>
       </section>}
-      {selected ? <section className="watch-page">
+      {page === "shorts" ? <Shorts api={API} token={adminToken} role={authRole} onSignIn={openAdmin} initialId={initialShortId} suspended={profileDrawerOpen || membershipPaying}/>
+      : selected ? <section className="watch-page">
         <button className="back-link" onClick={closeVideo}>← Back to Explore</button>
         {selected.isBusinessPreview && <div className="membership-status"><Clock3 size={20}/><div><strong>Private business preview</strong><span>This preview is only available to your business account. It is not publicly visible until approved and promoted.</span></div></div>}
         {selected.creatorProfile && <div className="creator-profile">{selected.creatorProfile.profilePhotoUrl ? <img className="creator-avatar" src={apiAssetSrc(selected.creatorProfile.profilePhotoUrl)} alt={`${selected.creatorProfile.displayName}'s profile`}/> : <span className="creator-avatar"><UserRound size={18}/></span>}<span className="creator-profile-details"><small>CREATOR</small><strong>{selected.creatorProfile.displayName || selected.creatorProfile.username}</strong>{selected.creatorProfile.bio && <span className="creator-bio">{selected.creatorProfile.bio}</span>}<span className="creator-follower-count">{(creatorFollowData.creatorId === selected.creatorProfile.id ? creatorFollowData.followerCount : 0).toLocaleString()} followers</span><IntroVideo api={API} url={selected.creatorProfile.introVideoUrl}/></span>{!(creatorFollowData.creatorId === selected.creatorProfile.id && creatorFollowData.isSelf) && authRole !== "business" && <button className={`creator-follow-btn ${creatorFollowData.following ? "following" : ""}`} disabled={creatorFollowLoading || creatorFollowSubmitting || creatorFollowData.creatorId !== selected.creatorProfile.id} onClick={toggleCreatorFollow}><UserPlus size={16}/>{creatorFollowData.following ? "Unfollow" : "Follow"}</button>}</div>}
