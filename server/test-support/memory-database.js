@@ -20,7 +20,7 @@ function matches(document, filter) {
       if ("$in" in value) return value.$in.some(item => equal(actual, item));
       if ("$nin" in value) return !value.$nin.some(item => equal(actual, item));
       if ("$lt" in value) return String(actual) < String(value.$lt);
-      if ("$gt" in value) return String(actual) > String(value.$gt);
+      if ("$gt" in value) return actual !== undefined && actual !== null && (typeof value.$gt === "number" ? typeof actual === "number" && actual > value.$gt : String(actual) > String(value.$gt));
       if ("$exists" in value) return (actual !== undefined) === value.$exists;
       if ("$ne" in value) return !equal(actual, value.$ne);
       throw new Error(`Unsupported test query: ${JSON.stringify(value)}`);
@@ -62,6 +62,27 @@ export function memoryDatabase() {
         listIndexes() { return { toArray: async () => [] }; },
         async findOne(filter) { return clone(this.documents.find(document => matches(document, filter)) || null); },
         async countDocuments(filter) { return this.documents.filter(document => matches(document, filter)).length; },
+        aggregate(stages) {
+          let rows = this.documents.map(clone);
+          for (const stage of stages) {
+            if (stage.$match) rows = rows.filter(row => matches(row, stage.$match));
+            else if (stage.$group) {
+              const groups = new Map();
+              for (const row of rows) {
+                const id = get(row, stage.$group._id.slice(1));
+                const group = groups.get(id) || { _id: id };
+                for (const [key, expression] of Object.entries(stage.$group)) {
+                  if (key === "_id") continue;
+                  const amount = expression.$sum;
+                  group[key] = (group[key] || 0) + (typeof amount === "number" ? amount : get(row, amount.slice(1)) || 0);
+                }
+                groups.set(id, group);
+              }
+              rows = [...groups.values()];
+            } else throw new Error("Unsupported test aggregation stage");
+          }
+          return { toArray: async () => rows };
+        },
         find(filter = {}) {
           let result = this.documents.filter(document => matches(document, filter)).map(clone);
           const cursor = {

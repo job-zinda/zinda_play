@@ -42,6 +42,30 @@ function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) 
   const abort = useRef(null);
   const initialized = useRef(false);
   const resetScroll = useRef(false);
+  const stage = useRef(null);
+  const [stageSize, setStageSize] = useState(null);
+  const currentVideo = items[index];
+  const aspectRatio = currentVideo?.width > 0 && currentVideo?.height > 0
+    ? currentVideo.width / currentVideo.height : 9 / 16;
+
+  useLayoutEffect(() => {
+    const container = stage.current;
+    const resize = () => {
+      const availableWidth = container.parentElement.clientWidth;
+      const availableHeight = Math.max(1, window.innerHeight - Math.max(0, container.getBoundingClientRect().top) - 16);
+      const height = Math.min(1000, availableHeight, availableWidth / aspectRatio);
+      setStageSize({ width: height * aspectRatio, height });
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(container.parentElement);
+    window.addEventListener("resize", resize);
+    return () => { observer.disconnect(); window.removeEventListener("resize", resize); };
+  }, [aspectRatio]);
+
+  useLayoutEffect(() => {
+    if (feed.current && stageSize) feed.current.scrollTop = index * feed.current.clientHeight;
+  }, [stageSize?.height]);
   const load = useCallback(async (reset = false) => {
     if (busy.current) return;
     busy.current = true;
@@ -107,7 +131,7 @@ function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) 
       <span>Swipe, scroll or use arrow keys. Data saver: only the active video loads.</span>
       <button className="secondary-btn" disabled={loading} onClick={() => load(true)}><RefreshCw size={16}/>Refresh Simply</button>
     </div>
-    <div className="shorts-stage">
+    <div className="shorts-stage" ref={stage} style={stageSize ? { width: stageSize.width, "--shorts-height": `${stageSize.height}px` } : undefined}>
       <div className="shorts-feed" ref={feed} tabIndex={0} aria-label="Vertical Simply feed"
         onKeyDown={event => {
           if (event.target !== event.currentTarget || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
@@ -191,7 +215,10 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
     setPlayError(""); setBuffering(true);
     async function attach() {
       try {
-        if (media.canPlayType("application/vnd.apple.mpegurl")) media.src = video.streamUrl;
+        if (media.canPlayType("application/vnd.apple.mpegurl")) {
+          media.src = video.streamUrl;
+          media.load();
+        }
         else {
           const { default: Hls } = await import("hls.js/dist/hls.light.mjs");
           if (cancelled) return;
@@ -218,6 +245,12 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
       media.load();
     };
   }, [active, video.streamUrl, retry]);
+
+  useEffect(() => {
+    if (!active || !buffering || paused || modal || playError) return;
+    const timeout = setTimeout(() => setPlayError("Video loading timed out. Check your connection, then retry playback."), 25000);
+    return () => clearTimeout(timeout);
+  }, [active, buffering, paused, modal, playError, retry]);
 
   useEffect(() => {
     const media = element.current;
@@ -265,7 +298,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
   }
   const button = (label, Icon, callback, pressed) => <button disabled={busy} aria-label={label} aria-pressed={pressed} onClick={callback}><Icon size={24}/><span>{label}</span></button>;
   return <article className="shorts-item" aria-label={video.caption || video.title}>
-    {active && <video ref={element} playsInline loop muted={muted} preload="none" poster={video.thumbnailUrl ? asset(video.thumbnailUrl) : undefined}
+    {active && <video ref={element} playsInline loop muted={muted} preload="auto" poster={video.thumbnailUrl ? asset(video.thumbnailUrl) : undefined}
       onClick={() => setPaused(value => !value)} onWaiting={() => setBuffering(true)} onPlaying={() => { setBuffering(false); setPlayError(""); }}
       onCanPlay={() => setBuffering(false)} onError={() => {
         const message = element.current?.error?.message || "";

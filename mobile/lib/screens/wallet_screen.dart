@@ -56,6 +56,12 @@ class _WalletScreenState extends State<WalletScreen> {
                           const SizedBox(height: 4),
                           Text(_rupees(w['estimatedEarningsRupees']), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
                           const SizedBox(height: 12),
+                          Text('Regular videos: ${_rupees(w['rateRupees'])} per ${w['rateViews']} qualifying views.'),
+                          if (w['simplyRateRupees'] != null) ...[
+                            Text('Simply: ${_rupees(w['simplyRateRupees'])} per ${w['simplyRateViews']} qualifying views.'),
+                            const Text('Simply earns proportionally from new qualifying views only. Earlier views do not earn retroactively. Previously earned regular-view amounts are retained. Amounts are rounded for display.', style: TextStyle(color: Colors.white60)),
+                          ],
+                          const SizedBox(height: 12),
                           Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
                             _stat('${w['totalViews']}', 'Total views'),
                             _stat('${w['eligibleViews']}', 'Unique views'),
@@ -70,7 +76,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text('${v['title']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('${v['totalViews']} views · ${v['eligibleViews']} unique'),
+                        subtitle: Text('${v['videoType'] == 'short' ? 'Simply · ' : ''}${v['totalViews']} views · ${v['eligibleViews']} qualifying'),
                         trailing: Text(_rupees(v['estimatedEarningsRupees']), style: const TextStyle(fontWeight: FontWeight.w700)),
                       ),
                   ]),

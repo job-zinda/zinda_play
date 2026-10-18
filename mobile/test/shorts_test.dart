@@ -118,9 +118,10 @@ class _Headers extends Fake implements HttpHeaders {
 
 class _Response extends Stream<List<int>> implements HttpClientResponse {
   final List<int> bytes;
-  _Response(Object data) : bytes = utf8.encode(jsonEncode(data));
+  _Response(Object data, {this.statusCode = 200})
+    : bytes = utf8.encode(jsonEncode(data));
   @override
-  int get statusCode => 200;
+  final int statusCode;
   @override
   int get contentLength => bytes.length;
   @override
@@ -199,6 +200,9 @@ class _Request extends Fake implements HttpClientRequest {
     }
     if (uri.path.endsWith('/state')) return _Response({'saved': network.saved});
     if (uri.path.endsWith('/comments')) {
+      if (network.commentError != null) {
+        return _Response({'error': network.commentError}, statusCode: 400);
+      }
       final data = jsonDecode(utf8.decode(bytes)) as Map;
       network.comments.add({
         'username': 'tester',
@@ -239,6 +243,7 @@ class _Network extends HttpOverrides {
   bool liked = false;
   bool saved = false;
   bool following = false;
+  String? commentError;
   @override
   HttpClient createHttpClient(SecurityContext? context) => _Client(this);
 }
@@ -489,10 +494,42 @@ void main() {
       await tester.tap(find.byTooltip('Comments'));
       await tester.pumpAndSettle();
       expect(players.playing, isEmpty);
-      await tester.enterText(find.byType(TextField), 'Great Short!');
-      await tester.tap(find.byTooltip('Post comment'));
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
       await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.enterText(find.byType(TextField), 'Great Short!');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pumpAndSettle();
+      expect(network.comments.single['text'], 'Great Short!');
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
       expect(find.text('Great Short!'), findsOneWidget);
+      network.commentError = 'Comment service unavailable. Try again.';
+      await tester.enterText(find.byType(TextField), 'Retry this comment');
+      await tester.tap(find.text('Send'));
+      await tester.pumpAndSettle();
+      expect(find.text(network.commentError!), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Retry this comment',
+      );
+      expect(network.comments, hasLength(1));
+      network.commentError = null;
+      await tester.tap(find.text('Send'));
+      await tester.pumpAndSettle();
+      expect(network.comments, hasLength(2));
+      expect(find.text('Retry this comment'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
       Navigator.of(tester.element(find.byType(TextField))).pop();
       await tester.pumpAndSettle();
       expect(players.playing, hasLength(1));
@@ -501,7 +538,7 @@ void main() {
       await tester.tap(find.text('spam'));
       await tester.pumpAndSettle();
       expect(network.calls, contains('POST /api/shorts/short-0/report'));
-      expect(network.comments.single['text'], 'Great Short!');
+      expect(network.comments.first['text'], 'Great Short!');
       expect(network.calls, contains('PUT /api/shorts/short-0/saved'));
       expect(network.calls, contains('DELETE /api/shorts/short-0/saved'));
       expect(tester.takeException(), isNull);

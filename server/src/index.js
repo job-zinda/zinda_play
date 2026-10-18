@@ -13,6 +13,7 @@ import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency
 import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./account-modes.js";
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
+import { creatorWallet } from "./creator-wallet.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
@@ -2507,39 +2508,8 @@ app.get("/api/creator/analytics", requireCreator, asyncRoute(async (req, res) =>
     videos: videos.map(video => ({ id: video._id, title: video.title, views: Number(video.views || 0) }))
   });
 }));
-const CREATOR_RATE_RUPEES = 50;
-const CREATOR_RATE_VIEWS = 1000;
-const creatorEarnings = views => Math.round(views * CREATOR_RATE_RUPEES / CREATOR_RATE_VIEWS * 100) / 100;
 app.get("/api/creator/wallet", requireCreator, asyncRoute(async (req, res) => {
-  const videos = await videosCollection().find(
-    { ownerId: req.creatorId.toString() },
-    { projection: { title: 1, views: 1 } }
-  ).sort({ createdAt: -1 }).toArray();
-  const uniqueViewCounts = videos.length
-    ? await uniqueViewsCollection().aggregate([
-      { $match: { videoId: { $in: videos.map(video => video._id) } } },
-      { $group: { _id: "$videoId", eligibleViews: { $sum: 1 } } }
-    ]).toArray()
-    : [];
-  const eligibleViewsByVideo = new Map(uniqueViewCounts.map(item => [item._id, item.eligibleViews]));
-  const walletVideos = videos.map(video => {
-    const eligibleViews = eligibleViewsByVideo.get(video._id) || 0;
-    return {
-      id: video._id,
-      title: video.title,
-      totalViews: Number(video.views || 0),
-      eligibleViews,
-      estimatedEarningsRupees: creatorEarnings(eligibleViews)
-    };
-  });
-  res.json({
-    totalViews: walletVideos.reduce((total, video) => total + video.totalViews, 0),
-    eligibleViews: walletVideos.reduce((total, video) => total + video.eligibleViews, 0),
-    rateRupees: CREATOR_RATE_RUPEES,
-    rateViews: CREATOR_RATE_VIEWS,
-    estimatedEarningsRupees: creatorEarnings(walletVideos.reduce((total, video) => total + video.eligibleViews, 0)),
-    videos: walletVideos
-  });
+  res.json(await creatorWallet(database, req.creatorId.toString()));
 }));
 app.get("/api/promoter/wallet", requirePromoter, asyncRoute(async (req, res) => {
   const promoterId = req.promoterId;

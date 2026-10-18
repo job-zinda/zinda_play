@@ -4,7 +4,7 @@
 .shorts-heading h1{font:700 25px 'Space Grotesk',sans-serif;margin:0}
 .shorts-toolbar{font-size:12px;color:var(--muted)}
 .shorts-stage{position:relative;max-width:580px;margin:auto}
-.shorts-feed{height:calc(100dvh - 220px);min-height:400px;max-height:1000px;overflow-y:auto;overflow-anchor:none;overscroll-behavior-y:contain;scroll-snap-type:y mandatory;scrollbar-width:none;background:#000;border-radius:18px}
+.shorts-feed{height:var(--shorts-height,calc(100dvh - 220px));overflow-y:auto;overflow-anchor:none;overscroll-behavior-y:contain;scroll-snap-type:y mandatory;scrollbar-width:none;background:#000;border-radius:18px}
 .shorts-feed::-webkit-scrollbar{display:none}
 .shorts-item,.shorts-status{height:100%;min-height:100%;scroll-snap-align:start;scroll-snap-stop:always;position:relative;isolation:isolate;overflow:hidden}
 .shorts-item{background:#09070e;color:#fff}
@@ -46,7 +46,7 @@
  .shorts-heading h1{font-size:20px}
  .shorts-heading .secondary-btn,.shorts-toolbar .secondary-btn{padding:8px;font-size:12px}
  .shorts-toolbar>span{max-width:210px;font-size:10px}
- .shorts-feed{height:calc(100dvh - 190px);border-radius:10px;min-height:360px}
+ .shorts-feed{border-radius:10px}
  .shorts-arrows{display:none}
  .shorts-nav-button{padding:8px!important;font-size:12px}
 }

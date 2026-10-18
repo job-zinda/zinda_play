@@ -18,7 +18,12 @@ class _ShortCommentsState extends State<ShortComments> {
   String? _error;
 
   Future<void> _send() async {
-    if (_text.text.trim().isEmpty || _sending) return;
+    if (_sending) return;
+    final text = _text.text.trim();
+    if (text.isEmpty) {
+      setState(() => _error = 'Type a comment before sending.');
+      return;
+    }
     setState(() {
       _sending = true;
       _error = null;
@@ -32,7 +37,7 @@ class _ShortCommentsState extends State<ShortComments> {
         if (!mounted || !Api.instance.signedIn) return;
       }
       final result = await Api.instance.post('/videos/${widget.id}/comments', {
-        'text': _text.text.trim(),
+        'text': text,
       }) as Map;
       if (!mounted) return;
       setState(() {
@@ -74,7 +79,14 @@ class _ShortCommentsState extends State<ShortComments> {
                   ),
           ),
           if (_error != null)
-            Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                _error!,
+                semanticsLabel: 'Comment could not be sent: $_error',
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ),
           Row(
             children: [
               Expanded(
@@ -84,16 +96,23 @@ class _ShortCommentsState extends State<ShortComments> {
                     controller: _text,
                     enabled: !_sending,
                     maxLength: 500,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _send(),
                     decoration: const InputDecoration(
                       hintText: 'Add a comment',
                     ),
                   ),
                 ),
               ),
-              IconButton(
-                tooltip: 'Post comment',
-                onPressed: _sending ? null : _send,
-                icon: const Icon(Icons.send),
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Tooltip(
+                  message: 'Post comment',
+                  child: FilledButton(
+                    onPressed: _sending ? null : _send,
+                    child: Text(_sending ? 'Sending...' : 'Send'),
+                  ),
+                ),
               ),
             ],
           ),

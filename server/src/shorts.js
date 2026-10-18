@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { ObjectId } from "mongodb";
+import { SIMPLY_EARNING_MILLI_RUPEES } from "./creator-wallet.js";
 
 export const maxShortBytes = 150 * 1024 * 1024;
 export function shortMetadata(source) {
@@ -63,6 +64,7 @@ export async function initializeShorts(db) {
   }
   await db.collection("savedShorts").createIndex({ userId: 1, _id: -1 });
   await db.collection("shortViews").createIndex({ videoId: 1, viewerHash: 1 }, { unique: true });
+  await db.collection("shortViews").createIndex({ creatorId: 1, videoId: 1, earningMilliRupees: 1 });
   await db.collection("shortRateLimits").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 }
 
@@ -224,7 +226,10 @@ export function registerShortRoutes(app, {
     if (sessionFor(req)?.userId === video.ownerId) return res.json({ counted: false, views: video.views || 0 });
     let counted = false;
     try {
-      await db().collection("shortViews").insertOne({ videoId: video._id, viewerHash: hash, createdAt: new Date(now()).toISOString() });
+      await db().collection("shortViews").insertOne({
+        videoId: video._id, viewerHash: hash, createdAt: new Date(now()).toISOString(),
+        ...(video.ownerId ? { creatorId: video.ownerId, earningMilliRupees: SIMPLY_EARNING_MILLI_RUPEES } : {})
+      });
       counted = true;
     } catch (error) {
       if (error.code !== 11000) throw error;

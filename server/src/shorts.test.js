@@ -4,6 +4,7 @@ import test from "node:test";
 import express from "express";
 import { memoryDatabase } from "../test-support/memory-database.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortMetadata, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
+import { creatorWallet } from "./creator-wallet.js";
 
 const publicQuery = { published: true, approvalStatus: { $nin: ["pending", "rejected"] }, processingStatus: "ready" };
 async function fixture(t) {
@@ -152,6 +153,43 @@ test("creator self views do not inflate Shorts views", async t => {
   const result = await f.request("/shorts/short-1/view", "POST", { ticket: start.body.ticket }, "creator");
   assert.equal(result.body.counted, false);
   assert.equal(f.db.collection("videos").documents[0].views, 0);
+});
+
+test("only new qualifying Simply views earn once, including retries after failed counter writes", async t => {
+  const f = await fixture(t);
+  await f.video();
+  const start = await f.request("/shorts/short-1/view-start", "POST");
+  assert.equal((await f.request("/shorts/short-1/view", "POST", { ticket: start.body.ticket })).status, 400);
+  assert.equal((await creatorWallet(f.db, "creator")).estimatedEarningsRupees, 0);
+  f.advance(4000);
+  const videos = f.db.collection("videos");
+  const original = videos.updateOne;
+  videos.updateOne = async () => { throw new Error("Counter unavailable"); };
+  assert.equal((await f.request("/shorts/short-1/view", "POST", { ticket: start.body.ticket })).status, 500);
+  videos.updateOne = original;
+  for (let i = 0; i < 2; i++) await f.request("/shorts/short-1/view", "POST", { ticket: start.body.ticket });
+  const ledger = f.db.collection("shortViews").documents;
+  assert.equal(ledger.length, 1);
+  assert.equal(ledger[0].creatorId, "creator");
+  assert.equal(ledger[0].earningMilliRupees, 25);
+  assert.equal((await creatorWallet(f.db, "creator")).estimatedEarningsRupees, 0.03);
+});
+
+test("existing unpaid ledger entries stay unpaid on replay and self views do not earn", async t => {
+  const f = await fixture(t);
+  await f.video();
+  const start = await f.request("/shorts/short-1/view-start", "POST");
+  f.advance(4000);
+  await f.request("/shorts/short-1/view", "POST", { ticket: start.body.ticket });
+  const row = f.db.collection("shortViews").documents[0];
+  delete row.earningMilliRupees; delete row.creatorId;
+  await f.request("/shorts/short-1/view", "POST", { ticket: start.body.ticket });
+  assert.equal((await creatorWallet(f.db, "creator")).estimatedEarningsRupees, 0);
+  await f.video("self", { ownerId: "alice" });
+  const self = await f.request("/shorts/self/view-start", "POST", null, "alice");
+  f.advance(4000);
+  await f.request("/shorts/self/view", "POST", { ticket: self.body.ticket }, "alice");
+  assert.equal((await creatorWallet(f.db, "alice")).eligibleViews, 0);
 });
 
 test("a view retry repairs its counter if the first counter write failed", async t => {
