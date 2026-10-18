@@ -11,7 +11,7 @@ export const creatorAdVideoQuery = {
 };
 const protectedFields = [
   "creatorVideoId", "creatorId", "creatorVideoType", "sourceVideoType", "bunnyVideoId", "durationSeconds",
-  "creditRateRupees", "creditRateViews", "earningMilliRupees", "streamUrl"
+  "creditRateRupees", "creditRateViews", "earningMilliRupees", "streamUrl", "creatorVideoTitle"
 ];
 
 export function creatorAdMedia(video, origin = shortsCdnOrigin()) {
@@ -57,7 +57,7 @@ export async function prepareCreatorAd(db, body, { loadMetadata, cdnOrigin = sho
   } catch { return { error: "Enter an HTTP or HTTPS destination URL without embedded credentials." }; }
   const mediaUrl = creatorAdMedia(video, cdnOrigin());
   const fields = {
-    creatorVideoId: video._id, creatorId: video.ownerId,
+    creatorVideoId: video._id, creatorId: video.ownerId, creatorVideoTitle: video.title,
     creatorVideoType: video.videoType === "short" ? "short" : "regular",
     sourceVideoType: video.videoType === "short" ? "short" : "regular",
     bunnyVideoId: video.bunnyVideoId, durationSeconds,
@@ -111,6 +111,23 @@ export async function initializeCreatorAds(db) {
   await db.collection("adCompletedViews").createIndex({ adId: 1, viewerHash: 1 }, { unique: true });
   await db.collection("adCompletedViews").createIndex({ creatorId: 1, videoId: 1 });
   await db.collection("adWatchRateLimits").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await db.collection("ads").createIndex({ creatorId: 1, creatorNotificationPending: 1 });
+}
+
+export async function deliverCreatorAdNotifications(db, creatorId) {
+  const ads = await db.collection("ads").find({ creatorId, creatorNotificationPending: true }).toArray();
+  for (const ad of ads) {
+    await db.collection("notifications").updateOne({ _id: ad._id }, {
+      $setOnInsert: {
+        recipientId: creatorId, type: "creator_video_ad",
+        adId: ad._id.toString(), videoId: ad.creatorVideoId,
+        title: "Your video was selected for an ad",
+        message: `"${ad.creatorVideoTitle || ad.title}" is now linked to the ad "${ad.title}". ${ad.active ? "The ad is active." : "The ad is currently paused."} Earn INR ${ad.creditRateRupees} per ${ad.creditRateViews} qualifying full ad watches, once per viewer per ad. Your original video keeps its normal earning rate.`,
+        readAt: null, createdAt: ad.createdAt
+      }
+    }, { upsert: true });
+    await db.collection("ads").updateOne({ _id: ad._id }, { $set: { creatorNotificationPending: false } });
+  }
 }
 
 export function createAdminAdHandler({ getDb, normalizeAd, serializeAd, loadMetadata, cdnOrigin = shortsCdnOrigin, now = () => Date.now() }) {
@@ -123,7 +140,10 @@ export function createAdminAdHandler({ getDb, normalizeAd, serializeAd, loadMeta
     const { fields, error } = normalizeAd(prepared.body);
     if (error) return res.status(400).json({ error });
     const at = new Date(now()).toISOString();
-    const ad = { ...fields, ...prepared.fields, impressions: 0, clicks: 0, createdAt: at, updatedAt: at };
+    const ad = {
+      ...fields, ...prepared.fields, impressions: 0, clicks: 0, createdAt: at, updatedAt: at,
+      ...(prepared.fields.creatorId ? { creatorNotificationPending: true } : {})
+    };
     await getDb().collection("ads").insertOne(ad);
     res.status(201).json(serializeAd(ad));
   };

@@ -56,6 +56,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   video_player_platform_interface: ^6.9.0
   flutter_launcher_icons: ^0.14.4
+  image: ^4.12.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -76,12 +77,13 @@ flutter_launcher_icons:
   ios: true
   web:
     generate: true
-  image_path: assets/icon.png
+  image_path: assets/icon_launcher.png
   remove_alpha_ios: true
   background_color: "#0B0D12"
   theme_color: "#7B1FFF"
   adaptive_icon_background: "#7B1FFF"
-  adaptive_icon_foreground: assets/icon_fg.png
+  adaptive_icon_foreground: assets/icon_adaptive.png
+  adaptive_icon_foreground_inset: 0
 
   # To add assets to your application, add an assets section, like this:
   # assets:

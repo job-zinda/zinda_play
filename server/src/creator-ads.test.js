@@ -7,7 +7,7 @@ import { memoryDatabase } from "../test-support/memory-database.js";
 import { creatorWallet } from "./creator-wallet.js";
 import {
   createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable,
-  initializeCreatorAds, prepareCreatorAd, registerCreatorAdRoutes
+  deliverCreatorAdNotifications, initializeCreatorAds, prepareCreatorAd, registerCreatorAdRoutes
 } from "./creator-ads.js";
 
 async function fixture(t, options = {}) {
@@ -129,6 +129,52 @@ test("admin candidate and create handlers authorize, derive native HLS and immut
   const uploaded = await f.request("/admin/ads", "POST", { title: "Uploaded ad", type: "video", creatorVideoId: "", mediaUrl: "/ads/media/111111111111111111111111", targetUrl: "" }, "admin");
   assert.equal(uploaded.status, 201);
   assert.equal(uploaded.body.creatorVideoId, undefined);
+});
+
+test("creator ad creation durably queues one owner notification with the correct source and rate", async t => {
+  const f = await fixture(t);
+  for (const [id, videoType, rate] of [["regular-notify", "regular", 200], ["simply-notify", "short", 100]]) {
+    await f.video(id, { videoType, title: `Original ${id}` });
+    const created = await f.request("/admin/ads", "POST", {
+      title: `Campaign ${id}`, type: "video", creatorVideoId: id, targetUrl: "https://shop.example", active: false
+    }, "admin");
+    assert.equal(created.status, 201);
+    assert.equal(created.body.creatorNotificationPending, true);
+    await deliverCreatorAdNotifications(f.db, "other-creator");
+    assert.equal(await f.db.collection("notifications").countDocuments({}), id === "regular-notify" ? 0 : 1);
+    await deliverCreatorAdNotifications(f.db, "creator");
+    await deliverCreatorAdNotifications(f.db, "creator");
+    const notification = await f.db.collection("notifications").findOne({ adId: created.body.id });
+    assert.equal(notification.recipientId, "creator");
+    assert.equal(notification.type, "creator_video_ad");
+    assert.equal(notification.videoId, id);
+    assert.equal(notification.readAt, null);
+    assert.equal(ObjectId.isValid(notification._id), true);
+    assert.match(notification.message, new RegExp(`INR ${rate} per 1000`));
+    assert.ok(notification.message.includes(`Original ${id}`));
+    assert.match(notification.message, /currently paused/);
+    assert.match(notification.message, /original video keeps its normal earning rate/);
+  }
+  assert.equal(await f.db.collection("notifications").countDocuments({}), 2);
+});
+
+test("notification delivery retries after an interrupted acknowledgement without duplication or unread reset", async t => {
+  const f = await fixture(t);
+  await f.video();
+  const created = await f.request("/admin/ads", "POST", {
+    title: "Campaign", type: "video", creatorVideoId: "source", targetUrl: "https://shop.example"
+  }, "admin");
+  const ads = f.db.collection("ads");
+  const update = ads.updateOne;
+  ads.updateOne = async () => { throw new Error("Acknowledgement unavailable"); };
+  await assert.rejects(deliverCreatorAdNotifications(f.db, "creator"), /Acknowledgement unavailable/);
+  await f.db.collection("notifications").updateOne({ adId: created.body.id }, { $set: { readAt: "2026-10-18" } });
+  ads.updateOne = update;
+  await deliverCreatorAdNotifications(f.db, "creator");
+  assert.equal(await f.db.collection("notifications").countDocuments({}), 1);
+  const notification = await f.db.collection("notifications").findOne({ adId: created.body.id });
+  assert.equal(notification.readAt, "2026-10-18");
+  assert.equal((await ads.findOne({ _id: new ObjectId(created.body.id) })).creatorNotificationPending, false);
 });
 
 test("full-watch handlers reject premature, forged, wrong IP/account/ad, and expired tickets without crediting impressions", async t => {

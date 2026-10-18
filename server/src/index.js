@@ -14,7 +14,7 @@ import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
-import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
+import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, deliverCreatorAdNotifications, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
@@ -1755,6 +1755,7 @@ app.get("/api/notifications", asyncRoute(async (req, res) => {
   if (!session) return res.status(401).json({ error: "Sign in to view notifications." });
   const recipientId = session.role === "admin" ? "admin" : session.userId;
   if (!recipientId) return res.status(401).json({ error: "Sign in to view notifications." });
+  if (session.role !== "admin") await deliverCreatorAdNotifications(database, recipientId);
   const notifications = await notificationsCollection()
     .find({ recipientId })
     .sort({ createdAt: -1 })

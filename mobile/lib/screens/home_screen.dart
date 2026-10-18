@@ -281,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 6, 10, 2),
       child: Row(children: [
-        Image.asset('assets/banner.png', height: 34, semanticLabel: 'ZindaPlay'),
+        Image.asset('assets/icon.png', width: 34, height: 34, fit: BoxFit.contain, semanticLabel: 'Zinda Play'),
         const Spacer(),
         IconButton(tooltip: 'Explore', icon: const Icon(Icons.explore_outlined), onPressed: () => setState(() => _tab = 2)),
         IconButton(tooltip: 'Library / dashboard', icon: const Icon(Icons.video_library_outlined), onPressed: _library),
