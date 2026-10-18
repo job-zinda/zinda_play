@@ -51,6 +51,8 @@ The feature previously named Zinda Shorts is now displayed as **Simply** in both
 
 ### Web Shorts
 
+On mobile browsers, Simply fills the dynamic viewport below the site header and a compact saved/refresh toolbar. Videos retain their original aspect ratio with `object-fit: contain` (no stretching or cropping); only the feed scrolls. Resizing preserves the active video. The homepage promotion displays only the uploaded banner image, with a compact gap below it; its former featured title, description and CTA panel are no longer displayed.
+
 The web app has a **Shorts** button in the header for every account role and guests, plus **Zinda Shorts** in the main menu. It uses the same published Shorts and interaction APIs as mobile; there is no separate web video collection. Shorts opened from creator/profile video cards use this feed instead of the regular landscape player. Shared web links use `?short=<video-id>` and open that Short first.
 
 Scroll/swipe vertically or focus the feed and use the up/down arrow keys; desktop also has previous/next buttons. Playback starts muted. Pause, mute, seek, like/unlike, follow/unfollow, comments, share, save/un-save, report and Watch Later are supported. Viewing/comments are public; posting and other engagement require a viewer, creator, promoter or business account. Guests are sent to the existing sign-in flow. Shorts uploads remain available through **Create Zinda Short in the mobile app**.

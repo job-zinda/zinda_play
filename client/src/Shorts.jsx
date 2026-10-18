@@ -52,6 +52,10 @@ function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) 
   useLayoutEffect(() => {
     const container = stage.current;
     const resize = () => {
+      if (window.matchMedia("(max-width:760px)").matches) {
+        setStageSize(null);
+        return;
+      }
       const availableWidth = container.parentElement.clientWidth;
       const availableHeight = Math.max(1, window.innerHeight - Math.max(0, container.getBoundingClientRect().top) - 16);
       const height = Math.min(1000, availableHeight, availableWidth / aspectRatio);
@@ -67,6 +71,14 @@ function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) 
   useLayoutEffect(() => {
     if (feed.current && stageSize) feed.current.scrollTop = index * feed.current.clientHeight;
   }, [stageSize?.height]);
+  useLayoutEffect(() => {
+    const element = feed.current;
+    const observer = new ResizeObserver(() => {
+      element.scrollTop = index * element.clientHeight;
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [index]);
   const load = useCallback(async (reset = false) => {
     if (busy.current) return;
     busy.current = true;

@@ -42,11 +42,20 @@
 .shorts-modal [role=alert]{color:#ffd19a}
 .shorts-item button:disabled{opacity:.5}
 @media(max-width:760px){
- .shorts-container{padding:12px 8px}
+ .shorts-page{height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+ .shorts-page>.topbar{flex-shrink:0}
+ .shorts-page>.shorts-container{flex:1;min-height:0;width:100%;padding:0;max-width:none;margin:0}
+ .web-shorts{height:100%;min-height:0;display:flex;flex-direction:column;position:relative}
+ .shorts-heading{flex-shrink:0;height:48px;margin:0;padding:4px 8px}
+ .shorts-heading h1{display:none}
+ .shorts-toolbar{position:absolute;top:4px;right:8px;margin:0;z-index:1}
+ .shorts-toolbar>span{display:none}
+ .shorts-stage{flex:1;min-height:0;width:100%!important;max-width:none;margin:0}
+ .shorts-feed{height:100%;border-radius:0}
+ .shorts-controls{padding-bottom:env(safe-area-inset-bottom)}
  .shorts-heading h1{font-size:20px}
  .shorts-heading .secondary-btn,.shorts-toolbar .secondary-btn{padding:8px;font-size:12px}
  .shorts-toolbar>span{max-width:210px;font-size:10px}
- .shorts-feed{border-radius:10px}
  .shorts-arrows{display:none}
  .shorts-nav-button{padding:8px!important;font-size:12px}
 }
