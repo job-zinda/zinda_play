@@ -77,9 +77,17 @@ const commentsCollection = () => database.collection("videoComments");
 const creatorFollowsCollection = () => database.collection("creatorFollows");
 const uniqueViewsCollection = () => database.collection("uniqueVideoViews");
 const bannerCollection = () => database.collection("siteContent");
+const adsCollection = () => database.collection("ads");
 const bannerImageBucket = () => new GridFSBucket(database, { bucketName: "bannerImages" });
 const creatorProfilePhotoBucket = () => new GridFSBucket(database, { bucketName: "creatorProfilePhotos" });
 const videoThumbnailBucket = () => new GridFSBucket(database, { bucketName: "videoThumbnails" });
+const adMediaBucket = () => new GridFSBucket(database, { bucketName: "adMedia" });
+const supportedAdVideoTypes = new Map([
+  ["video/mp4", "mp4"],
+  ["video/webm", "webm"]
+]);
+const maxAdVideoBytes = 150 * 1024 * 1024;
+const maxIntroVideoBytes = 100 * 1024 * 1024;
 let geoReaderPromise;
 const supportedImageTypes = new Map([
   ["image/jpeg", "jpg"],
@@ -246,7 +254,7 @@ async function withCreatorProfiles(videos) {
   const creators = creatorIds.length
     ? await usersCollection().find(
       { _id: { $in: creatorIds.map(id => new ObjectId(id)) } },
-      { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } }
+      { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1, introVideoId: 1 } }
     ).toArray()
     : [];
   const profilesById = new Map(creators.map(creator => [creator._id.toString(), {
@@ -254,7 +262,8 @@ async function withCreatorProfiles(videos) {
     username: creator.username,
     displayName: creator.displayName || creator.username,
     bio: creator.bio || "",
-    profilePhotoUrl: creator.profilePhotoImageId ? `/creators/${creator._id}/profile-photo` : ""
+    profilePhotoUrl: creator.profilePhotoImageId ? `/creators/${creator._id}/profile-photo` : "",
+    introVideoUrl: creator.introVideoId ? `/creators/${creator._id}/intro-video` : ""
   }]));
   return videos.map(video => ({
     ...safeVideo(video),
@@ -387,6 +396,241 @@ function processingState(status) {
   return states[status] || "processing";
 }
 app.get("/api/health", (_req, res) => res.json({ status: "ok", app: "Zinda Play API" }));
+
+const adPlacements = ["top", "middle", "bottom"];
+const publicAd = ad => ({
+  id: ad._id.toString(),
+  title: ad.title,
+  type: ad.type,
+  placement: ad.placement || "",
+  mediaUrl: ad.mediaUrl,
+  targetUrl: ad.targetUrl || "",
+  skippable: ad.type === "video" ? ad.skippable !== false : true,
+  skipAfterSeconds: ad.skipAfterSeconds || 20
+});
+const adminAd = ad => ({
+  ...publicAd(ad),
+  active: ad.active !== false,
+  impressions: ad.impressions || 0,
+  clicks: ad.clicks || 0,
+  targetViews: ad.targetViews || 0,
+  targetCity: ad.targetCity || "",
+  targetCategories: Array.isArray(ad.targetCategories) ? ad.targetCategories : [],
+  createdAt: ad.createdAt
+});
+const isHttpUrl = value => {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+};
+const isUploadedAdMedia = value => /^\/ads\/media\/[0-9a-f]{24}$/.test(value);
+function normalizeAd(body) {
+  const title = typeof body?.title === "string" ? body.title.trim() : "";
+  const type = body?.type === "video" ? "video" : "banner";
+  const mediaUrl = typeof body?.mediaUrl === "string" ? body.mediaUrl.trim() : "";
+  const targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
+  if (!title || title.length > 120) return { error: "Enter an ad name (up to 120 characters)." };
+  if (!mediaUrl) return { error: type === "video" ? "Upload a video file for this ad." : "Upload an image for this ad." };
+  if (!isUploadedAdMedia(mediaUrl)) {
+    if (!isHttpUrl(mediaUrl)) return { error: "Upload a file for this ad." };
+    if (type === "video" && !/\.(mp4|webm|ogv|ogg|m3u8)(?:$|[?#])/i.test(mediaUrl)) {
+      return { error: "Video ads need a direct video file ending in .mp4 or .webm." };
+    }
+  }
+  if (targetUrl && !isHttpUrl(targetUrl)) return { error: "The click-through URL must be a valid HTTP or HTTPS URL." };
+  const fields = { title, type, mediaUrl, targetUrl, active: body?.active !== false };
+  const targetViews = Number(body?.targetViews ?? 0);
+  if (!Number.isInteger(targetViews) || targetViews < 0 || targetViews > 100000000) {
+    return { error: "Target views must be a whole number (0 means unlimited)." };
+  }
+  const targetCity = typeof body?.targetCity === "string" ? body.targetCity.trim().replace(/\s+/g, " ") : "";
+  if (targetCity.length > 100) return { error: "Target city must be 100 characters or fewer." };
+  const targetCategories = Array.isArray(body?.targetCategories) ? [...new Set(body.targetCategories.map(String))] : [];
+  if (targetCategories.some(id => !categories.some(category => category.id === id))) {
+    return { error: "Choose valid interest categories." };
+  }
+  Object.assign(fields, { targetViews, targetCity, targetCategories });
+  if (type === "banner") {
+    if (!adPlacements.includes(body?.placement)) return { error: "Choose a banner position: top, middle or bottom." };
+    fields.placement = body.placement;
+    fields.skippable = true;
+    fields.skipAfterSeconds = 20;
+  } else {
+    const skipAfterSeconds = Number(body?.skipAfterSeconds ?? 20);
+    if (!Number.isInteger(skipAfterSeconds) || skipAfterSeconds < 1 || skipAfterSeconds > 120) {
+      return { error: "Skip time must be a whole number of seconds between 1 and 120." };
+    }
+    fields.placement = "";
+    fields.skippable = body?.skippable !== false;
+    fields.skipAfterSeconds = skipAfterSeconds;
+  }
+  return { fields };
+}
+app.get("/api/ads", asyncRoute(async (req, res) => {
+  const placement = String(req.query.placement || "");
+  // Ads stop once they reach their target number of views (0 = unlimited).
+  const query = {
+    active: { $ne: false },
+    $expr: { $or: [
+      { $lte: [{ $ifNull: ["$targetViews", 0] }, 0] },
+      { $lt: [{ $ifNull: ["$impressions", 0] }, "$targetViews"] }
+    ] }
+  };
+  if (placement === "video") query.type = "video";
+  else if (adPlacements.includes(placement)) Object.assign(query, { type: "banner", placement });
+  else return res.status(400).json({ error: "Choose a valid ad placement." });
+  let ads = await adsCollection().find(query).sort({ createdAt: -1 }).limit(100).toArray();
+  if (ads.some(ad => ad.targetCity)) {
+    const location = await viewerLocation(req).catch(() => null);
+    ads = ads.filter(ad => !ad.targetCity || (location?.cityName && normalizeCityName(ad.targetCity) === normalizeCityName(location.cityName)));
+  }
+  // Interests are the categories of the videos this viewer watched recently.
+  const interests = new Set(String(req.query.interests || "").split(",").map(value => value.trim()).filter(Boolean));
+  ads = ads.filter(ad => !ad.targetCategories?.length || ad.targetCategories.some(id => interests.has(id)));
+  res.json(ads.slice(0, 20).map(publicAd));
+}));
+const countAdEvent = field => asyncRoute(async (req, res) => {
+  if (ObjectId.isValid(req.params.id)) {
+    await adsCollection().updateOne({ _id: new ObjectId(req.params.id) }, { $inc: { [field]: 1 } });
+  }
+  res.status(204).end();
+});
+app.post("/api/ads/:id/impression", countAdEvent("impressions"));
+app.post("/api/ads/:id/click", countAdEvent("clicks"));
+app.put("/api/admin/ads/media", requireAdmin, asyncRoute(async (req, res) => {
+  const contentType = String(req.get("Content-Type") || "").split(";")[0].toLowerCase();
+  const isVideo = supportedAdVideoTypes.has(contentType);
+  const extension = isVideo ? supportedAdVideoTypes.get(contentType) : supportedImageTypes.get(contentType);
+  if (!extension) return res.status(415).json({ error: "Choose a JPEG, PNG, WebP or GIF image, or an MP4 or WebM video." });
+  const limit = isVideo ? maxAdVideoBytes : maxImageBytes;
+  const size = Number(req.get("Content-Length") || req.get("X-Upload-Size") || 0);
+  if (!Number.isSafeInteger(size) || size <= 0) return res.status(411).json({ error: "The upload must include a valid file size." });
+  if (size > limit) return res.status(413).json({ error: `Ad ${isVideo ? "videos are limited to 150 MB" : "images are limited to 8 MB"}.` });
+
+  const bucket = adMediaBucket();
+  const upload = bucket.openUploadStream(`ad-media.${extension}`, { metadata: { contentType } });
+  let received = 0;
+  req.on("data", chunk => {
+    received += chunk.length;
+    if (received > limit) req.destroy(Object.assign(new Error("The ad file is too large."), { statusCode: 413 }));
+  });
+  try {
+    await pipeline(req, upload);
+    if (received !== size) throw Object.assign(new Error("The uploaded file size did not match the selected file."), { statusCode: 400 });
+  } catch (error) {
+    await bucket.delete(upload.id).catch(() => {});
+    if (!res.headersSent) return res.status(error.statusCode || 400).json({ error: error.message });
+    return;
+  }
+  res.status(201).json({ mediaUrl: `/ads/media/${upload.id.toHexString()}`, type: isVideo ? "video" : "banner" });
+}));
+async function streamGridFile(req, res, bucket, filesName, id, notFound) {
+  if (!ObjectId.isValid(id)) return res.status(404).json({ error: notFound });
+  const fileId = new ObjectId(id);
+  const file = await database.collection(filesName).findOne({ _id: fileId });
+  if (!file) return res.status(404).json({ error: notFound });
+  const headers = {
+    "Content-Type": file.metadata?.contentType || "application/octet-stream",
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "public, max-age=3600",
+    "X-Content-Type-Options": "nosniff"
+  };
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.get("Range") || "");
+  if (range && (range[1] || range[2])) {
+    const start = range[1] ? Number(range[1]) : Math.max(0, file.length - Number(range[2]));
+    const end = Math.min(range[1] && range[2] ? Number(range[2]) : file.length - 1, file.length - 1);
+    if (start > end || start >= file.length) {
+      return res.status(416).set("Content-Range", `bytes */${file.length}`).end();
+    }
+    res.status(206).set({ ...headers, "Content-Range": `bytes ${start}-${end}/${file.length}`, "Content-Length": end - start + 1 });
+    return pipeline(bucket.openDownloadStream(fileId, { start, end: end + 1 }), res);
+  }
+  res.set({ ...headers, "Content-Length": file.length });
+  await pipeline(bucket.openDownloadStream(fileId), res);
+}
+app.get("/api/ads/media/:id", asyncRoute((req, res) =>
+  streamGridFile(req, res, adMediaBucket(), "adMedia.files", req.params.id, "Ad media not found")));
+const creatorIntroBucket = () => new GridFSBucket(database, { bucketName: "creatorIntros" });
+app.get("/api/creators/:id/intro-video", asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Intro video not found" });
+  const creator = await usersCollection().findOne({ _id: new ObjectId(req.params.id) }, { projection: { introVideoId: 1 } });
+  if (!creator?.introVideoId) return res.status(404).json({ error: "Intro video not found" });
+  await streamGridFile(req, res, creatorIntroBucket(), "creatorIntros.files", creator.introVideoId, "Intro video not found");
+}));
+app.put("/api/creator/intro-video", requireCreator, asyncRoute(async (req, res) => {
+  const contentType = String(req.get("Content-Type") || "").split(";")[0].toLowerCase();
+  const extension = supportedAdVideoTypes.get(contentType);
+  if (!extension) return res.status(415).json({ error: "Choose an MP4 or WebM video." });
+  const size = Number(req.get("Content-Length") || req.get("X-Upload-Size") || 0);
+  if (!Number.isSafeInteger(size) || size <= 0) return res.status(411).json({ error: "The upload must include a valid file size." });
+  if (size > maxIntroVideoBytes) return res.status(413).json({ error: "Intro videos are limited to 100 MB." });
+  const bucket = creatorIntroBucket();
+  const upload = bucket.openUploadStream(`intro.${extension}`, { metadata: { contentType } });
+  let received = 0;
+  req.on("data", chunk => {
+    received += chunk.length;
+    if (received > maxIntroVideoBytes) req.destroy(Object.assign(new Error("Intro videos are limited to 100 MB."), { statusCode: 413 }));
+  });
+  try {
+    await pipeline(req, upload);
+    if (received !== size) throw Object.assign(new Error("The uploaded file size did not match the selected file."), { statusCode: 400 });
+  } catch (error) {
+    await bucket.delete(upload.id).catch(() => {});
+    if (!res.headersSent) return res.status(error.statusCode || 400).json({ error: error.message });
+    return;
+  }
+  const previous = await usersCollection().findOneAndUpdate(
+    { _id: req.creatorId },
+    { $set: { introVideoId: upload.id.toHexString() } },
+    { returnDocument: "before", projection: { introVideoId: 1 } }
+  );
+  if (previous?.introVideoId && ObjectId.isValid(previous.introVideoId)) {
+    await bucket.delete(new ObjectId(previous.introVideoId)).catch(() => {});
+  }
+  res.status(201).json({ introVideoUrl: `/creators/${req.creatorId}/intro-video` });
+}));
+app.delete("/api/creator/intro-video", requireCreator, asyncRoute(async (req, res) => {
+  const previous = await usersCollection().findOneAndUpdate(
+    { _id: req.creatorId },
+    { $unset: { introVideoId: "" } },
+    { returnDocument: "before", projection: { introVideoId: 1 } }
+  );
+  if (previous?.introVideoId && ObjectId.isValid(previous.introVideoId)) {
+    await creatorIntroBucket().delete(new ObjectId(previous.introVideoId)).catch(() => {});
+  }
+  res.status(204).end();
+}));
+app.get("/api/admin/ads", requireAdmin, asyncRoute(async (_req, res) => {
+  const ads = await adsCollection().find({}).sort({ createdAt: -1 }).toArray();
+  res.json(ads.map(adminAd));
+}));
+app.post("/api/admin/ads", requireAdmin, asyncRoute(async (req, res) => {
+  const { fields, error } = normalizeAd(req.body);
+  if (error) return res.status(400).json({ error });
+  const now = new Date().toISOString();
+  const ad = { ...fields, impressions: 0, clicks: 0, createdAt: now, updatedAt: now };
+  await adsCollection().insertOne(ad);
+  res.status(201).json(adminAd(ad));
+}));
+app.patch("/api/admin/ads/:id", requireAdmin, asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found" });
+  const existing = await adsCollection().findOne({ _id: new ObjectId(req.params.id) });
+  if (!existing) return res.status(404).json({ error: "Ad not found" });
+  const { fields, error } = normalizeAd({ ...existing, ...req.body });
+  if (error) return res.status(400).json({ error });
+  await adsCollection().updateOne({ _id: existing._id }, { $set: { ...fields, updatedAt: new Date().toISOString() } });
+  res.json(adminAd(await adsCollection().findOne({ _id: existing._id })));
+}));
+app.delete("/api/admin/ads/:id", requireAdmin, asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found" });
+  const existing = await adsCollection().findOneAndDelete({ _id: new ObjectId(req.params.id) });
+  if (existing && isUploadedAdMedia(existing.mediaUrl || "")) {
+    await adMediaBucket().delete(new ObjectId(existing.mediaUrl.split("/").pop())).catch(() => {});
+  }
+  res.status(204).end();
+}));
 app.get("/api/banner", asyncRoute(async (_req, res) => {
   const banner = await bannerCollection().findOne({ _id: defaultBanner._id });
   if (!banner?.enabled) return res.json(null);
@@ -479,7 +723,8 @@ app.get("/api/videos", asyncRoute(async (req, res) => {
     query.$and = [{
       $or: [
         { title: { $regex: escapedQuery, $options: "i" } },
-        { description: { $regex: escapedQuery, $options: "i" } }
+        { description: { $regex: escapedQuery, $options: "i" } },
+        { collectionName: { $regex: escapedQuery, $options: "i" } }
       ]
     }];
   }
@@ -855,6 +1100,7 @@ app.get("/api/account", requireMember, asyncRoute(async (req, res) => {
     displayName: user.displayName || user.username,
     bio: user.bio || "",
     profilePhotoUrl: user.profilePhotoImageId ? `/creators/${user._id}/profile-photo` : "",
+    introVideoUrl: user.introVideoId ? `/creators/${user._id}/intro-video` : "",
     role: req.session.role,
     approvalStatus: user.approvalStatus || "approved"
   });
@@ -1196,7 +1442,7 @@ async function findApprovedCreator(id) {
     _id: new ObjectId(id),
     accountType: { $nin: ["business", "promoter"] },
     $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
-  }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } });
+  }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1, introVideoId: 1 } });
 }
 function publicCreatorProfile(creator) {
   return {
@@ -1204,7 +1450,8 @@ function publicCreatorProfile(creator) {
     username: creator.username,
     displayName: creator.displayName || creator.username,
     bio: creator.bio || "",
-    profilePhotoUrl: creator.profilePhotoImageId ? `/creators/${creator._id}/profile-photo` : ""
+    profilePhotoUrl: creator.profilePhotoImageId ? `/creators/${creator._id}/profile-photo` : "",
+    introVideoUrl: creator.introVideoId ? `/creators/${creator._id}/intro-video` : ""
   };
 }
 async function creatorFollowerCount(creatorId) {
@@ -1336,7 +1583,7 @@ app.delete("/api/creators/:creatorId/follow", requireMember, asyncRoute(async (r
 app.get("/api/creator/profile", requireCreator, asyncRoute(async (req, res) => {
   const creator = await usersCollection().findOne(
     { _id: req.creatorId },
-    { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } }
+    { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1, introVideoId: 1 } }
   );
   if (!creator) return res.status(404).json({ error: "Creator profile not found." });
   const videos = await videosAvailableInViewerCity(

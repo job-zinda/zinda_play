@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../ads.dart';
 import '../api.dart';
 import 'auth_screen.dart';
 
@@ -26,6 +27,7 @@ class _WatchScreenState extends State<WatchScreen> {
   @override
   void initState() {
     super.initState();
+    Interests.record(widget.video['categoryId']);
     final url = widget.video['playbackUrl'] as String?;
     if (url != null && url.isNotEmpty) {
       final controller = WebViewController();
@@ -97,7 +99,9 @@ class _WatchScreenState extends State<WatchScreen> {
       body: ListView(children: [
         AspectRatio(
           aspectRatio: 16 / 9,
-          child: _web == null ? const Center(child: Text('Video is not available yet.')) : WebViewWidget(controller: _web!),
+          child: _web == null
+              ? const Center(child: Text('Video is not available yet.'))
+              : PlayerGate(builder: (_) => WebViewWidget(controller: _web!)),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),

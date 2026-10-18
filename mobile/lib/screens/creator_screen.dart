@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../intro_video.dart';
 import '../widgets/video_card.dart';
 import 'auth_screen.dart';
 import 'watch_screen.dart';
@@ -16,6 +17,7 @@ class _CreatorScreenState extends State<CreatorScreen> {
   bool _following = false;
   bool _isSelf = false;
   int _followers = 0;
+  String _introUrl = '';
   List<Map<String, dynamic>> _videos = [];
   String? _error;
 
@@ -34,6 +36,7 @@ class _CreatorScreenState extends State<CreatorScreen> {
       setState(() {
         _following = profile['following'] == true;
         _isSelf = profile['isSelf'] == true;
+        _introUrl = '${profile['introVideoUrl'] ?? ''}';
         _followers = (profile['followerCount'] as num?)?.toInt() ?? 0;
         final list = profile['videos'];
         _videos = list is List ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList() : [];
@@ -81,6 +84,7 @@ class _CreatorScreenState extends State<CreatorScreen> {
           ]),
         ),
         if ((c['bio'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('${c['bio']}')),
+        if (_introUrl.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 0), child: IntroVideoPlayer(url: _introUrl)),
         if (_error != null) Padding(padding: const EdgeInsets.all(16), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         const SizedBox(height: 12),
         for (final v in _videos)

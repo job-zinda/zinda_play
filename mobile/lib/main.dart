@@ -26,7 +26,7 @@ class ZindaApp extends StatelessWidget {
           primary: const Color(0xFFA78BFA),
           surface: const Color(0xFF090A10),
         ),
-        scaffoldBackgroundColor: const Color(0xFF090A10),
+        scaffoldBackgroundColor: const Color(0xFF08090E),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF090A10),
           surfaceTintColor: Colors.transparent,

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../api.dart';
+import '../intro_video.dart';
 import 'upload_screen.dart';
 import 'wallet_screen.dart';
 
@@ -186,6 +187,10 @@ class _StudioScreenState extends State<StudioScreen> {
                 if (_error != null) _banner(_error!, Colors.redAccent),
                 if (_message != null) _banner(_message!, Colors.green),
                 _profileCard(noPhoto),
+                IntroManagerCard(
+                  url: '${_account?['introVideoUrl'] ?? ''}',
+                  onChanged: (url) => setState(() => _account = {...?_account, 'introVideoUrl': url}),
+                ),
                 _membershipCard(),
                 _statsCard(),
                 _referralCard(),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../api.dart';
+import '../theme.dart';
 
 String formatDuration(num? seconds) {
   final total = (seconds ?? 0).floor();
@@ -29,15 +30,18 @@ class VideoCard extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        AspectRatio(
-          aspectRatio: 16 / 9,
-          child: Stack(fit: StackFit.expand, children: [
-            thumb.isEmpty
-                ? Container(color: const Color(0xFF1B1F2A), child: const Icon(Icons.play_circle_fill, size: 48))
-                : Image.network(thumb, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(color: const Color(0xFF1B1F2A))),
-            if (video['isSponsored'] == true) Positioned(left: 8, top: 8, child: _chip('SPONSORED')),
-            if (duration.isNotEmpty) Positioned(right: 8, bottom: 8, child: _chip(duration)),
-          ]),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Stack(fit: StackFit.expand, children: [
+              thumb.isEmpty
+                  ? Container(color: const Color(0xFF1B1F2A), child: const Icon(Icons.play_circle_fill, size: 48))
+                  : Image.network(thumb, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(color: const Color(0xFF1B1F2A))),
+              if (video['isSponsored'] == true) Positioned(left: 8, top: 8, child: _chip('SPONSORED')),
+              if (duration.isNotEmpty) Positioned(right: 8, bottom: 8, child: _chip(duration)),
+            ]),
+          ),
         ),
         // View counter sits to the left, just under the thumbnail.
         Padding(
@@ -49,7 +53,11 @@ class VideoCard extends StatelessWidget {
             const Spacer(),
             InkWell(
               onTap: () => SharePlus.instance.share(ShareParams(text: '${video['title']} - watch on Zinda Play\n$apiBase/share/video/${video['id']}')),
-              child: const Padding(padding: EdgeInsets.all(2), child: Icon(Icons.share, size: 14, color: Colors.white70)),
+              child: const Padding(padding: EdgeInsets.all(3), child: Icon(Icons.share_outlined, size: 16, color: Colors.white70)),
+            ),
+            InkWell(
+              onTap: () => _menu(context),
+              child: const Padding(padding: EdgeInsets.all(3), child: Icon(Icons.more_vert, size: 16, color: Colors.white70)),
             ),
           ]),
         ),
@@ -75,6 +83,34 @@ class VideoCard extends StatelessWidget {
           ]),
         ),
       ]),
+    );
+  }
+
+  void _menu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: kPanel,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.share_outlined),
+            title: const Text('Share'),
+            onTap: () {
+              Navigator.pop(ctx);
+              SharePlus.instance.share(ShareParams(text: '${video['title']} - watch on Zinda Play\n$apiBase/share/video/${video['id']}'));
+            },
+          ),
+          if (onCreator != null)
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('View creator'),
+              onTap: () {
+                Navigator.pop(ctx);
+                onCreator!();
+              },
+            ),
+        ]),
+      ),
     );
   }
 

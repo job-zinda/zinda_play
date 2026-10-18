@@ -41,6 +41,8 @@ dependencies:
   file_picker: ^13.1.0
   razorpay_flutter: ^1.4.7
   webview_flutter_web: ^0.2.3+4
+  video_player: ^2.14.1
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

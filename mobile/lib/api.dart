@@ -113,6 +113,8 @@ class Api {
   }
 
   Future<void> register(String username, String password, {String? referrer, String accountType = 'member', String? businessName}) async {
+    // The server has one account type for viewers and creators; creators are approved by the admin.
+    if (accountType == 'creator') accountType = 'member';
     final data = await post('/auth/register', {
       'username': username,
       'password': password,

@@ -40,7 +40,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_register ? 'Create account' : 'Sign in')),
+      appBar: AppBar(title: Text(_register ? 'Create account' : 'Sign in (Viewer, Creator, Business or Promoter)', style: const TextStyle(fontSize: 16))),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         TextField(controller: _user, decoration: const InputDecoration(labelText: 'Username')),
         const SizedBox(height: 12),
@@ -50,14 +50,20 @@ class _AuthScreenState extends State<AuthScreen> {
           SegmentedButton<String>(
             segments: const [
               ButtonSegment(value: 'member', label: Text('Viewer')),
+              ButtonSegment(value: 'creator', label: Text('Creator')),
               ButtonSegment(value: 'business', label: Text('Business')),
               ButtonSegment(value: 'promoter', label: Text('Promoter')),
             ],
             selected: {_type},
             onSelectionChanged: (s) => setState(() => _type = s.first),
           ),
+          if (_type == 'creator')
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Creator accounts are reviewed by the admin before you can upload videos.', style: TextStyle(fontSize: 12, color: Colors.white60)),
+            ),
           if (_type == 'business') TextField(controller: _business, decoration: const InputDecoration(labelText: 'Business name')),
-          if (_type == 'member') TextField(controller: _ref, decoration: const InputDecoration(labelText: 'Referral code (optional)')),
+          if (_type == 'member' || _type == 'creator') TextField(controller: _ref, decoration: const InputDecoration(labelText: 'Referral code (optional)')),
         ],
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         const SizedBox(height: 20),
