@@ -46,7 +46,8 @@ const categoriesCollection = () => database.collection("categories");
 const usersCollection = () => database.collection("users");
 const notificationsCollection = () => database.collection("notifications");
 const invitationsCollection = () => database.collection("creatorInvitations");
-const directMessagesCollection = () => database.collection("directMessages");
+const creatorRequestsCollection = () => database.collection("creatorRequests");
+const adminChatsCollection = () => database.collection("adminChats");
 const businessCampaignsCollection = () => database.collection("businessCampaigns");
 const promoterRewardsCollection = () => database.collection("promoterRewards");
 const promoterWithdrawalsCollection = () => database.collection("promoterWithdrawals");
@@ -291,7 +292,7 @@ function campaignTargetsLocation(campaign, location) {
 }
 async function grantPromoterMilestones(promoterId, eventType, eventCount) {
   const milestoneSize = eventType === "referral_view" ? 1000 : 100;
-  const rewardRupees = eventType === "referral_view" ? 50 : 10;
+  const rewardRupees = eventType === "referral_view" ? 20 : 10;
   const completedMilestones = Math.floor(eventCount / milestoneSize);
   let awarded = 0;
   for (let milestone = 1; milestone <= completedMilestones; milestone += 1) {
@@ -945,31 +946,151 @@ app.get("/api/business/creators", requireBusiness, asyncRoute(async (_req, res) 
     profilePhotoUrl: creator.profilePhotoImageId ? `/creators/${creator._id}/profile-photo` : ""
   })));
 }));
-app.get("/api/business/invitations", requireBusiness, asyncRoute(async (req, res) => {
-  const invitations = await invitationsCollection().find({ businessId: req.businessId.toString() }).sort({ createdAt: -1 }).toArray();
-  res.json(invitations.map(({ _id, ...invitation }) => ({ id: _id.toString(), ...invitation })));
+// Businesses no longer contact creators directly: they select a creator and an admin follows up.
+const withId = ({ _id, ...doc }) => ({ id: _id.toString(), ...doc });
+app.get("/api/business/creator-requests", requireBusiness, asyncRoute(async (req, res) => {
+  const requests = await creatorRequestsCollection().find({ businessId: req.businessId.toString() }).sort({ createdAt: -1 }).limit(100).toArray();
+  res.json(requests.map(withId));
 }));
-app.post("/api/business/invitations", requireBusiness, asyncRoute(async (req, res) => {
+app.post("/api/business/creator-requests", requireBusiness, asyncRoute(async (req, res) => {
+  const creatorId = typeof req.body?.creatorId === "string" ? req.body.creatorId : "";
+  const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+  if (!ObjectId.isValid(creatorId)) return res.status(400).json({ error: "Choose a valid creator." });
+  if (!note || note.length > 1000) return res.status(400).json({ error: "Describe what you need. The note must be 1,000 characters or fewer." });
+  const creator = await findApprovedCreator(creatorId);
+  if (!creator) return res.status(404).json({ error: "Approved creator not found." });
+  const businessId = req.businessId.toString();
+  const businessName = req.business.businessName || req.session.username;
+  const request = {
+    businessId,
+    businessName,
+    creatorId,
+    creatorUsername: creator.username,
+    creatorDisplayName: creator.displayName || creator.username,
+    note,
+    status: "pending",
+    createdAt: new Date().toISOString()
+  };
+  let result;
+  try {
+    result = await creatorRequestsCollection().insertOne(request);
+  } catch (error) {
+    if (error.code === 11000) return res.status(409).json({ error: "You already have a pending request for this creator." });
+    throw error;
+  }
+  await notificationsCollection().insertOne({
+    recipientId: "admin",
+    type: "creator_request",
+    requestId: result.insertedId.toString(),
+    title: `${businessName} selected creator ${request.creatorDisplayName}`,
+    message: note.slice(0, 180),
+    readAt: null,
+    createdAt: request.createdAt
+  });
+  res.status(201).json({ id: result.insertedId.toString(), ...request });
+}));
+app.get("/api/admin/creators", requireAdmin, asyncRoute(async (_req, res) => {
+  const creators = await usersCollection().find({
+    accountType: { $nin: ["business", "promoter"] },
+    $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
+  }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } }).sort({ username: 1 }).limit(500).toArray();
+  res.json(creators.map(publicCreatorProfile));
+}));
+app.get("/api/admin/creator-requests", requireAdmin, asyncRoute(async (_req, res) => {
+  const requests = await creatorRequestsCollection().find({}).sort({ createdAt: -1 }).limit(200).toArray();
+  res.json(requests.map(withId));
+}));
+app.patch("/api/admin/creator-requests/:id", requireAdmin, asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Request not found." });
+  const status = req.body?.status;
+  if (!["handled", "dismissed"].includes(status)) return res.status(400).json({ error: "Choose handled or dismissed." });
+  const request = await creatorRequestsCollection().findOneAndUpdate(
+    { _id: new ObjectId(req.params.id), status: "pending" },
+    { $set: { status, resolvedAt: new Date().toISOString() } },
+    { returnDocument: "after" }
+  );
+  if (!request) return res.status(404).json({ error: "Pending request not found." });
+  res.json(withId(request));
+}));
+async function resolveCreatorRequest(requestId, creatorId) {
+  if (!ObjectId.isValid(requestId)) return;
+  await creatorRequestsCollection().updateOne(
+    { _id: new ObjectId(requestId), creatorId, status: "pending" },
+    { $set: { status: "handled", resolvedAt: new Date().toISOString() } }
+  );
+}
+async function postAdminChat(creatorId, senderRole, senderName, text) {
+  const message = { creatorId, senderRole, senderName, text, createdAt: new Date().toISOString() };
+  const result = await adminChatsCollection().insertOne(message);
+  return { id: result.insertedId.toString(), ...message };
+}
+const chatText = value => typeof value === "string" ? value.trim() : "";
+app.get("/api/creator/admin-chat", requireCreator, asyncRoute(async (req, res) => {
+  const messages = await adminChatsCollection().find({ creatorId: req.creatorId.toString() }).sort({ createdAt: 1 }).limit(300).toArray();
+  res.json(messages.map(withId));
+}));
+app.post("/api/creator/admin-chat", requireCreator, asyncRoute(async (req, res) => {
+  const text = chatText(req.body?.text);
+  if (!text || text.length > 2000) return res.status(400).json({ error: "Message must be between 1 and 2,000 characters." });
+  const creator = await usersCollection().findOne({ _id: req.creatorId }, { projection: { username: 1, displayName: 1 } });
+  const name = creator?.displayName || creator?.username || req.session.username;
+  const message = await postAdminChat(req.creatorId.toString(), "creator", name, text);
+  await notificationsCollection().insertOne({
+    recipientId: "admin",
+    type: "creator_chat",
+    creatorId: req.creatorId.toString(),
+    title: `Message from creator ${name}`,
+    message: text.slice(0, 180),
+    readAt: null,
+    createdAt: message.createdAt
+  });
+  res.status(201).json(message);
+}));
+app.get("/api/admin/chats", requireAdmin, asyncRoute(async (_req, res) => {
+  const latest = await adminChatsCollection().aggregate([
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: "$creatorId", latestMessage: { $first: "$text" }, latestAt: { $first: "$createdAt" }, latestRole: { $first: "$senderRole" } } },
+    { $sort: { latestAt: -1 } },
+    { $limit: 200 }
+  ]).toArray();
+  const ids = latest.map(item => item._id).filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
+  const users = ids.length ? await usersCollection().find({ _id: { $in: ids } }, { projection: { username: 1, displayName: 1 } }).toArray() : [];
+  const names = new Map(users.map(user => [user._id.toString(), user.displayName || user.username]));
+  res.json(latest.map(({ _id, ...item }) => ({ creatorId: _id, creatorName: names.get(_id) || "Creator", ...item })));
+}));
+app.get("/api/admin/chats/:creatorId", requireAdmin, asyncRoute(async (req, res) => {
+  const messages = await adminChatsCollection().find({ creatorId: req.params.creatorId }).sort({ createdAt: 1 }).limit(300).toArray();
+  res.json(messages.map(withId));
+}));
+app.post("/api/admin/chats/:creatorId", requireAdmin, asyncRoute(async (req, res) => {
+  const text = chatText(req.body?.text);
+  if (!text || text.length > 2000) return res.status(400).json({ error: "Message must be between 1 and 2,000 characters." });
+  const creator = await findApprovedCreator(req.params.creatorId);
+  if (!creator) return res.status(404).json({ error: "Approved creator not found." });
+  const message = await postAdminChat(req.params.creatorId, "admin", "Zinda Play", text);
+  await notificationsCollection().insertOne({
+    recipientId: req.params.creatorId,
+    type: "admin_message",
+    title: "Message from Zinda Play",
+    message: text.slice(0, 180),
+    readAt: null,
+    createdAt: message.createdAt
+  });
+  res.status(201).json(message);
+}));
+app.get("/api/admin/invitations", requireAdmin, asyncRoute(async (_req, res) => {
+  const invitations = await invitationsCollection().find({ businessId: "admin" }).sort({ createdAt: -1 }).limit(200).toArray();
+  res.json(invitations.map(withId));
+}));
+app.post("/api/admin/invitations", requireAdmin, asyncRoute(async (req, res) => {
   const creatorId = typeof req.body?.creatorId === "string" ? req.body.creatorId : "";
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
-  if (!ObjectId.isValid(creatorId)) return res.status(400).json({ error: "Choose a valid creator." });
   if (!message || message.length > 1000) return res.status(400).json({ error: "Invitation message is required and must be 1,000 characters or fewer." });
-  const creator = await usersCollection().findOne({
-    _id: new ObjectId(creatorId),
-    accountType: { $ne: "business" },
-    $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
-  });
+  const creator = await findApprovedCreator(creatorId);
   if (!creator) return res.status(404).json({ error: "Approved creator not found." });
-  const businessName = req.business.businessName || req.session.username;
-  const duplicate = await invitationsCollection().findOne({
-    businessId: req.businessId.toString(),
-    creatorId,
-    status: "pending"
-  });
-  if (duplicate) return res.status(409).json({ error: "You already have a pending invitation for this creator." });
   const invitation = {
-    businessId: req.businessId.toString(),
-    businessName,
+    businessId: "admin",
+    businessName: "Zinda Play",
     creatorId,
     creatorUsername: creator.username,
     message,
@@ -980,19 +1101,39 @@ app.post("/api/business/invitations", requireBusiness, asyncRoute(async (req, re
   try {
     result = await invitationsCollection().insertOne(invitation);
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ error: "You already have a pending invitation for this creator." });
+    if (error.code === 11000) return res.status(409).json({ error: "This creator already has a pending invitation from Zinda Play." });
     throw error;
   }
   await notificationsCollection().insertOne({
     recipientId: creatorId,
     type: "brand_invitation",
     invitationId: result.insertedId.toString(),
-    title: `Video invitation from ${businessName}`,
+    title: "Video invitation from Zinda Play",
     message,
     readAt: null,
     createdAt: invitation.createdAt
   });
+  await resolveCreatorRequest(req.body?.requestId, creatorId);
+  await postAdminChat(creatorId, "admin", "Zinda Play", `Invitation: ${message}`);
   res.status(201).json({ id: result.insertedId.toString(), ...invitation });
+}));
+app.post("/api/admin/messages", requireAdmin, asyncRoute(async (req, res) => {
+  const creatorId = typeof req.body?.creatorId === "string" ? req.body.creatorId : "";
+  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+  if (!text || text.length > 2000) return res.status(400).json({ error: "Message must be between 1 and 2,000 characters." });
+  const creator = await findApprovedCreator(creatorId);
+  if (!creator) return res.status(404).json({ error: "Approved creator not found." });
+  await notificationsCollection().insertOne({
+    recipientId: creatorId,
+    type: "admin_message",
+    title: "Message from Zinda Play",
+    message: text,
+    readAt: null,
+    createdAt: new Date().toISOString()
+  });
+  await resolveCreatorRequest(req.body?.requestId, creatorId);
+  await postAdminChat(creatorId, "admin", "Zinda Play", text);
+  res.status(201).json({ sent: true });
 }));
 app.get("/api/creator/invitations", requireCreator, asyncRoute(async (req, res) => {
   const invitations = await invitationsCollection().find({ creatorId: req.creatorId.toString() }).sort({ createdAt: -1 }).toArray();
@@ -1009,6 +1150,10 @@ app.patch("/api/creator/invitations/:id", requireCreator, asyncRoute(async (req,
     { returnDocument: "after" }
   );
   if (!invitation) return res.status(404).json({ error: "Pending invitation not found." });
+  if (invitation.businessId === "admin") {
+    const text = status === "accepted" ? "I'm interested in this invitation." : "I'm not interested in this invitation right now.";
+    await postAdminChat(req.creatorId.toString(), "creator", invitation.creatorUsername, text);
+  }
   await notificationsCollection().insertOne({
     recipientId: invitation.businessId,
     type: "brand_invitation_response",
@@ -1050,6 +1195,24 @@ app.get("/api/discover/creators", asyncRoute(async (_req, res) => {
     .limit(200)
     .toArray();
   res.json(creators.map(creator => publicCreatorProfile(creator)));
+}));
+app.get("/api/discover/popular-creators", asyncRoute(async (_req, res) => {
+  const counts = await creatorFollowsCollection().aggregate([
+    { $group: { _id: "$creatorId", followerCount: { $sum: 1 } } },
+    { $sort: { followerCount: -1 } },
+    { $limit: 30 }
+  ]).toArray();
+  const ids = counts.map(item => item._id).filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
+  const creators = ids.length ? await usersCollection().find({
+    _id: { $in: ids },
+    accountType: { $nin: ["business", "promoter"] },
+    $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
+  }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } }).toArray() : [];
+  const byId = new Map(creators.map(creator => [creator._id.toString(), creator]));
+  res.json(counts
+    .filter(item => byId.has(item._id))
+    .slice(0, 10)
+    .map(item => ({ ...publicCreatorProfile(byId.get(item._id)), followerCount: item.followerCount })));
 }));
 app.get("/api/discover/brands", asyncRoute(async (_req, res) => {
   const brands = await usersCollection().find(
@@ -1176,96 +1339,6 @@ app.get("/api/business/creators/:creatorId", requireBusiness, asyncRoute(async (
     req
   );
   res.json({ ...publicCreatorProfile(creator), videos: videos.map(safeVideo) });
-}));
-async function conversationParticipant(req) {
-  const creator = await findApprovedCreator(req.params.creatorId);
-  if (!creator) return null;
-  return {
-    creator,
-    filter: { businessId: req.businessId.toString(), creatorId: creator._id.toString() }
-  };
-}
-app.get("/api/business/creators/:creatorId/messages", requireBusiness, asyncRoute(async (req, res) => {
-  const conversation = await conversationParticipant(req);
-  if (!conversation) return res.status(404).json({ error: "Approved creator not found." });
-  const messages = await directMessagesCollection().find(conversation.filter).sort({ createdAt: 1 }).limit(200).toArray();
-  res.json(messages.map(({ _id, businessId: _businessId, creatorId: _creatorId, ...message }) => ({ id: _id.toString(), ...message })));
-}));
-app.post("/api/business/creators/:creatorId/messages", requireBusiness, asyncRoute(async (req, res) => {
-  const conversation = await conversationParticipant(req);
-  if (!conversation) return res.status(404).json({ error: "Approved creator not found." });
-  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
-  if (!text || text.length > 2000) return res.status(400).json({ error: "Message must be between 1 and 2,000 characters." });
-  const message = {
-    ...conversation.filter,
-    senderId: req.businessId.toString(),
-    senderRole: "business",
-    senderName: req.business.businessName || req.session.username,
-    text,
-    createdAt: new Date().toISOString()
-  };
-  const result = await directMessagesCollection().insertOne(message);
-  await notificationsCollection().insertOne({
-    recipientId: conversation.creator._id.toString(),
-    type: "business_message",
-    title: `Message from ${message.senderName}`,
-    message: text.slice(0, 180),
-    readAt: null,
-    createdAt: message.createdAt
-  });
-  res.status(201).json({ id: result.insertedId.toString(), ...message });
-}));
-app.get("/api/creator/messages", requireCreator, asyncRoute(async (req, res) => {
-  const creatorId = req.creatorId.toString();
-  const messages = await directMessagesCollection().find({ creatorId }).sort({ createdAt: -1 }).limit(500).toArray();
-  const businessIds = [...new Set(messages.map(message => message.businessId))].filter(ObjectId.isValid);
-  const businesses = businessIds.length ? await usersCollection().find({
-    _id: { $in: businessIds.map(id=>new ObjectId(id)) },
-    accountType: "business"
-  }, { projection: { businessName: 1, username: 1, businessLogoImageId: 1 } }).toArray() : [];
-  const businessMap = new Map(businesses.map(business=>[business._id.toString(), {
-    businessName: business.businessName || business.username,
-    logoUrl: business.businessLogoImageId ? `/creators/${business._id}/profile-photo` : ""
-  }]));
-  const grouped = new Map();
-  for (const message of messages) {
-    if (!grouped.has(message.businessId)) grouped.set(message.businessId, { businessId: message.businessId, ...(businessMap.get(message.businessId) || { businessName: "Business", logoUrl: "" }), latestMessage: message.text, latestAt: message.createdAt });
-  }
-  res.json([...grouped.values()]);
-}));
-app.get("/api/creator/messages/:businessId", requireCreator, asyncRoute(async (req, res) => {
-  if (!ObjectId.isValid(req.params.businessId)) return res.status(404).json({ error: "Business not found." });
-  const business = await usersCollection().findOne({ _id: new ObjectId(req.params.businessId), accountType: "business" });
-  if (!business) return res.status(404).json({ error: "Business not found." });
-  const messages = await directMessagesCollection().find({ businessId: req.params.businessId, creatorId: req.creatorId.toString() }).sort({ createdAt: 1 }).limit(200).toArray();
-  res.json(messages.map(({ _id, businessId: _businessId, creatorId: _creatorId, ...message }) => ({ id: _id.toString(), ...message })));
-}));
-app.post("/api/creator/messages/:businessId", requireCreator, asyncRoute(async (req, res) => {
-  if (!ObjectId.isValid(req.params.businessId)) return res.status(404).json({ error: "Business not found." });
-  const business = await usersCollection().findOne({ _id: new ObjectId(req.params.businessId), accountType: "business" });
-  if (!business) return res.status(404).json({ error: "Business not found." });
-  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
-  if (!text || text.length > 2000) return res.status(400).json({ error: "Message must be between 1 and 2,000 characters." });
-  const creator = await usersCollection().findOne({ _id: req.creatorId }, { projection: { username: 1, displayName: 1 } });
-  const message = {
-    businessId: req.params.businessId,
-    creatorId: req.creatorId.toString(),
-    senderId: req.creatorId.toString(),
-    senderRole: "creator",
-    senderName: creator?.displayName || creator?.username || req.session.username,
-    text,
-    createdAt: new Date().toISOString()
-  };
-  const result = await directMessagesCollection().insertOne(message);
-  await notificationsCollection().insertOne({
-    recipientId: req.params.businessId,
-    type: "creator_message",
-    title: `Message from ${message.senderName}`,
-    message: text.slice(0, 180),
-    readAt: null,
-    createdAt: message.createdAt
-  });
-  res.status(201).json({ id: result.insertedId.toString(), ...message });
 }));
 app.get("/api/notifications", asyncRoute(async (req, res) => {
   const token = req.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -2031,6 +2104,9 @@ app.get("/api/creator/analytics", requireCreator, asyncRoute(async (req, res) =>
     videos: videos.map(video => ({ id: video._id, title: video.title, views: Number(video.views || 0) }))
   });
 }));
+const CREATOR_RATE_RUPEES = 50;
+const CREATOR_RATE_VIEWS = 1000;
+const creatorEarnings = views => Math.round(views * CREATOR_RATE_RUPEES / CREATOR_RATE_VIEWS * 100) / 100;
 app.get("/api/creator/wallet", requireCreator, asyncRoute(async (req, res) => {
   const videos = await videosCollection().find(
     { ownerId: req.creatorId.toString() },
@@ -2050,16 +2126,15 @@ app.get("/api/creator/wallet", requireCreator, asyncRoute(async (req, res) => {
       title: video.title,
       totalViews: Number(video.views || 0),
       eligibleViews,
-      estimatedEarningsRupees: Math.floor(eligibleViews / 1000) * 50,
-      viewsUntilNextReward: 1000 - (eligibleViews % 1000)
+      estimatedEarningsRupees: creatorEarnings(eligibleViews)
     };
   });
   res.json({
     totalViews: walletVideos.reduce((total, video) => total + video.totalViews, 0),
     eligibleViews: walletVideos.reduce((total, video) => total + video.eligibleViews, 0),
-    rateRupees: 50,
-    rateViews: 1000,
-    estimatedEarningsRupees: walletVideos.reduce((total, video) => total + video.estimatedEarningsRupees, 0),
+    rateRupees: CREATOR_RATE_RUPEES,
+    rateViews: CREATOR_RATE_VIEWS,
+    estimatedEarningsRupees: creatorEarnings(walletVideos.reduce((total, video) => total + video.eligibleViews, 0)),
     videos: walletVideos
   });
 }));
@@ -2398,7 +2473,11 @@ async function start() {
     { businessId: 1, creatorId: 1 },
     { unique: true, partialFilterExpression: { status: "pending" } }
   );
-  await directMessagesCollection().createIndex({ creatorId: 1, businessId: 1, createdAt: 1 });
+  await adminChatsCollection().createIndex({ creatorId: 1, createdAt: 1 });
+  await creatorRequestsCollection().createIndex(
+    { businessId: 1, creatorId: 1 },
+    { unique: true, partialFilterExpression: { status: "pending" } }
+  );
   await businessCampaignsCollection().createIndex({ videoId: 1 }, { unique: true });
   await businessCampaignsCollection().createIndex({ orderId: 1 }, { unique: true });
   await promoterRewardsCollection().createIndex({ sourceKey: 1 }, { unique: true });

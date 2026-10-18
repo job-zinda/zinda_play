@@ -14,6 +14,10 @@
 .topbar nav .topbar-notifications,.topbar nav .topbar-messages,.topbar nav .profile-menu-trigger{position:relative;justify-content:center;width:42px;height:42px;padding:8px}
 .topbar nav .profile-menu-trigger{overflow:hidden;border:1px solid var(--line);border-radius:50%;background:#a78bfa12;color:#d8ccff}
 .profile-menu-trigger img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+.topbar-left{display:flex;align-items:center;gap:10px;min-width:0}
+.menu-trigger{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;padding:0;border:1px solid var(--line);border-radius:12px;background:#ffffff08;color:#e7e4f2}
+.menu-trigger:hover{background:#8b5cf624;border-color:#9d7af6;color:#fff}
+.profile-drawer-links .profile-drawer-signin{margin-top:12px;border-top:1px solid var(--line);border-radius:0;color:#d6c8ff}
 .profile-drawer-layer{position:fixed;inset:0;z-index:20}
 .profile-drawer-backdrop{position:absolute;inset:0;width:100%;height:100%;border:0;background:#05050bd9;backdrop-filter:blur(3px)}
 .profile-drawer{position:absolute;inset:0 auto 0 0;display:flex;width:min(340px,86vw);flex-direction:column;padding:22px 18px;background:#101018;border-right:1px solid var(--line);box-shadow:20px 0 60px #0008;animation:profile-drawer-in .18s ease-out}

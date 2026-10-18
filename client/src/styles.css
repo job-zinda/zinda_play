@@ -6,7 +6,8 @@
 @media(max-width:600px){
   html,body,#root{max-width:100%;overflow-x:hidden}
   .topbar{gap:8px;padding:0 10px}
-  .topbar>.brand{flex:0 0 auto;gap:2px}
+  .topbar-left{flex:0 0 auto;gap:6px}
+  .topbar .brand{gap:2px}
   .topbar nav{min-width:0;align-items:center;justify-content:flex-end;flex:1;overflow-x:auto;scrollbar-width:none}
   .topbar nav::-webkit-scrollbar{display:none}
   .topbar nav button{min-width:40px;min-height:40px;flex:0 0 auto;justify-content:center;padding:8px;white-space:nowrap}
