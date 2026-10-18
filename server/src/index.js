@@ -29,6 +29,7 @@ const allowedOrigins = [
   "https://zindaplay.vercel.app",
   "http://localhost:5173",
   "http://localhost:5174",
+  "https://zindaplay.com",
   ...(process.env.CLIENT_ORIGIN || "").split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
 ];
 
