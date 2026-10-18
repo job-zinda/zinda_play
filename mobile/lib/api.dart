@@ -96,10 +96,10 @@ class Api {
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
-  Future<dynamic> _send(Future<http.Response> Function() call) async {
+  Future<dynamic> _send(Future<http.Response> Function() call, {Duration timeout = const Duration(seconds: 20)}) async {
     final http.Response res;
     try {
-      res = await call().timeout(const Duration(seconds: 20));
+      res = await call().timeout(timeout);
     } catch (_) {
       throw ApiException('Could not connect to the server.');
     }
@@ -168,6 +168,19 @@ class Api {
     try {
       await post('/auth/logout');
     } catch (_) {}
+    token = null;
+    username = null;
+    role = null;
+    promoterAccount = false;
+    await _storage.deleteAll();
+  }
+
+  Future<void> deleteAccount(String password, String confirmation) async {
+    await _send(() => http.delete(
+      Uri.parse('$apiBase/account'),
+      headers: _headers,
+      body: jsonEncode({'password': password, 'confirmation': confirmation}),
+    ), timeout: const Duration(minutes: 5));
     token = null;
     username = null;
     role = null;

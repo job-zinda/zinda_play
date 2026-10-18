@@ -3,6 +3,7 @@ import '../public_links.dart';
 
 import '../api.dart';
 import '../theme.dart';
+import 'muted_video_preview.dart';
 
 String formatDuration(num? seconds) {
   final total = (seconds ?? 0).floor();
@@ -36,7 +37,7 @@ class VideoCard extends StatelessWidget {
             aspectRatio: 16 / 9,
             child: Stack(fit: StackFit.expand, children: [
               thumb.isEmpty
-                  ? Container(color: const Color(0xFF1B1F2A), child: const Icon(Icons.play_circle_fill, size: 48))
+                  ? MutedVideoPreview(video: video)
                   : Image.network(thumb, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(color: const Color(0xFF1B1F2A))),
               if (video['isSponsored'] == true) Positioned(left: 8, top: 8, child: _chip('SPONSORED')),
               if (duration.isNotEmpty) Positioned(right: 8, bottom: 8, child: _chip(duration)),

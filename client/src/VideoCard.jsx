@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, Eye, Heart, MoreVertical, Share2, UserRound, Clock3 } from "lucide-react";
+import VideoPreview from "./VideoPreview.jsx";
 
 const PREVIEW_DELAY_MS = 700;
 
@@ -59,8 +60,8 @@ export default function VideoCard({ video, index = 0, rank, assetSrc, like, onOp
   return <article ref={cardRef} className={`vcard${menuOpen ? " menu-open" : ""}`} {...(video.isSponsored ? { "data-sponsored": "true", "data-video-id": video.id } : {})} onClick={() => onOpen(video)} onPointerEnter={startPreview} onPointerLeave={stopPreview} onFocus={() => onWarmLike?.(video)}>
     <div className="vcard-thumb">
       <button type="button" className="vcard-open" aria-label={`Watch ${video.title}`}>
-        {video.thumbnailUrl ? <img src={assetSrc(video.thumbnailUrl)} alt="" loading="lazy" draggable="false"/> : <div className={`thumb-gradient gradient-${index % 4}`}><Play size={30} fill="currentColor"/></div>}
-        {previewing && src && <iframe className="vcard-preview" src={src} title="" tabIndex={-1} allow="autoplay" aria-hidden="true"/>}
+        {video.thumbnailUrl ? <img src={assetSrc(video.thumbnailUrl)} alt="" loading="lazy" draggable="false"/> : <VideoPreview video={video}/>}
+        {video.thumbnailUrl && previewing && src && <iframe className="vcard-preview" src={src} title="" tabIndex={-1} allow="autoplay" aria-hidden="true"/>}
         <span className="vcard-shade"/>
         <span className="vcard-play"><Play size={22} fill="currentColor"/></span>
       </button>

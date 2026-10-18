@@ -1,6 +1,16 @@
 # Zinda Play — React + Node.js starter
 
 ## Requirements
+
+### Video card previews and creator libraries
+
+Web and mobile cards without thumbnails use muted looping previews while
+visible; existing thumbnail images are unchanged. Playback previews do not
+submit view/reward tracking. Creator profiles separate **Videos** and **Simply**
+with medium (24px) icons. Deploy the API and both clients together:
+`BUNNY_STREAM_CDN_HOSTNAME` supplies native/HLS stream URLs for uploaded videos.
+The web preview uses native HLS or the existing hls.js dependency; the Android
+preview uses video_player, with the existing Bunny embed player as a fallback.
 - Node.js LTS (includes npm): https://nodejs.org/en/download
 - A MongoDB database for video metadata, categories, and view counts.
 - A Bunny Stream library for storing and streaming uploaded video files.
@@ -20,6 +30,16 @@ npm install
 npm run dev
 ```
 Open the Vite URL printed by the client terminal (usually http://localhost:5173).
+
+## Privacy and account deletion
+
+The public policy is served at `https://zindaplay.com/privacy.html` and the public account-deletion instructions at `https://zindaplay.com/delete-account.html`. The operator is Neo jobzinda private limited, contact `jobzinda@gmail.com`. Review the policy against actual operations and obtain appropriate legal guidance before publication; no fixed legal/financial retention duration is assumed.
+
+All personal account roles (viewer, creator, promoter and business) can select **Delete account** in the web menu or mobile Profile menu. `DELETE /api/account` requires an authenticated personal account, the current `password`, and `confirmation: "DELETE"`. Admin credentials cannot use it. The public instructions link to `/?delete-account=1` for sign-in and deletion. Web menu/footer and mobile guest header/Profile menu link to the policy.
+
+Deletion hides the account and owned videos, stops linked/owned ads and business campaigns before media cleanup, removes Bunny videos and stored thumbnails/profile photos/intros/business ad creatives, deletes associated social content and messages, revokes persisted/cached sessions, then removes the account. Necessary payment evidence, financial ledgers, outstanding payout details and non-public video/ad tombstones remain for reconciliation and applicable obligations. It does not trigger payouts or refunds. Provider failures propagate; the account stays in a durable deletion-pending state, ordinary authenticated activity is blocked, and the user can retry deletion with the same credentials after a restart/re-login. Do not report deletion as complete when cleanup fails. Provider logs/backups and third-party caches expire separately.
+
+Deploy the API and web pages, then install the rebuilt mobile APK. Test deletion only with isolated test accounts: `npm test` in `server` uses in-memory data and never deletes production accounts.
 
 ## Public domain, shares and invitations
 

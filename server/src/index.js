@@ -15,6 +15,7 @@ import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdR
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
 import { publicWebOrigin, videoPreviewHtml } from "./public-links.js";
+import { accountAccessGuard, accountDeletionHandler } from "./account-deletion.js";
 import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, deliverCreatorAdNotifications, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
@@ -123,6 +124,11 @@ const asyncRoute = handler => (req, res, next) => {
   Promise.resolve(handler(req, res, next)).catch(next);
 };
 
+app.use(asyncRoute(accountAccessGuard({
+  getDb: () => database,
+  sessionFor: req => sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, ""))
+})));
+
 const matchesSecret = (provided, expected) => {
   const providedHash = createHash("sha256").update(provided).digest();
   const expectedHash = createHash("sha256").update(expected).digest();
@@ -209,6 +215,7 @@ function createSession(username, role, userId = null) {
   return token;
 }
 function publicUser(user, token) {
+  if (user.deletionStartedAt) return { token, username: user.username, role: "member", deletionPending: true };
   if (user.accountType === "business") {
     return { token, username: user.username, role: "business" };
   }
@@ -247,6 +254,9 @@ async function passwordMatches(password, user) {
 const safeVideo = ({ _id, thumbnailImageId, ownerId: _ownerId, ownerBusinessId: _ownerBusinessId, businessCampaignId: _businessCampaignId, ...video }) => ({
   ...video,
   id: _id,
+  ...(video.bunnyVideoId && process.env.BUNNY_STREAM_CDN_HOSTNAME
+    ? { streamUrl: `${shortsCdnOrigin()}/${encodeURIComponent(video.bunnyVideoId)}/playlist.m3u8` }
+    : {}),
   ...(_ownerBusinessId ? { ownerType: "business" } : _ownerId ? { ownerType: "creator" } : {}),
   thumbnailUrl: thumbnailImageId ? `/videos/thumbnail/${thumbnailImageId}` : video.thumbnailUrl || "",
   category: categories.find(category => category.id === video.categoryId) || null
@@ -1098,6 +1108,7 @@ app.post("/api/videos/:id/like", requireVideoAccount, shortEngagementLimit, asyn
       await notificationsCollection().insertOne({
         recipientId: video.ownerId,
         type: "video_like",
+        actorId: userId,
         videoId: video._id,
         title: "Your video got a like",
         message: `${req.session.username} liked "${video.title}".`,
@@ -1127,6 +1138,7 @@ app.post("/api/videos/:id/comments", requireVideoAccount, shortEngagementLimit, 
     await notificationsCollection().insertOne({
       recipientId: video.ownerId,
       type: "video_comment",
+      actorId: req.session.userId,
       videoId: video._id,
       title: "New comment on your video",
       message: `${req.session.username} commented on "${video.title}".`,
@@ -1234,6 +1246,23 @@ registerAccountModeRoutes(app, {
   userId: req => new ObjectId(req.session.userId),
   saveSession: req => sessions.set(req.get("authorization").replace(/^Bearer\s+/i, ""), req.session)
 });
+app.delete("/api/account", requireShortsAccount, asyncRoute(accountDeletionHandler({
+  getDb: () => database, passwordMatches,
+  deleteVideoMedia: async video => {
+    if (!video.bunnyVideoId) return;
+    const config = bunnyConfiguration();
+    try {
+      await bunnyRequest(`${config.baseUrl}/videos/${encodeURIComponent(video.bunnyVideoId)}`, config.apiKey, { method: "DELETE" });
+    } catch (error) {
+      if (error.status !== 404 && error.statusCode !== 404) throw error;
+    }
+  },
+  revokeSessions: async id => {
+    for (const [token, session] of sessionCache) {
+      if (session.userId === id) sessionCache.delete(token);
+    }
+  }
+})));
 app.get("/api/account", requireMember, asyncRoute(async (req, res) => {
   const user = await usersCollection().findOne({ _id: new ObjectId(req.session.userId) });
   if (!user) return res.status(401).json({ error: "Member account not found" });

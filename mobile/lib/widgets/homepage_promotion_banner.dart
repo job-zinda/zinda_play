@@ -23,58 +23,30 @@ class HomepagePromotionBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (banner['enabled'] != true) return const SizedBox.shrink();
-    final image = '${banner['imageUrl'] ?? ''}';
-    final description = '${banner['description'] ?? ''}';
-    final label = '${banner['buttonLabel'] ?? ''}';
+    final image = '${banner['imageUrl'] ?? ''}'.trim();
+    if (banner['enabled'] != true || image.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final url = Uri.tryParse('${banner['buttonUrl'] ?? ''}');
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
       child: Card(
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (image.isNotEmpty)
-              AspectRatio(
-                aspectRatio: 3,
-                child: Image.network(
-                  assetUrl(image),
-                  fit: BoxFit.contain,
-                  excludeFromSemantics: true,
-                  errorBuilder: (_, _, _) =>
-                      const Center(child: Text('Banner image unavailable')),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('FEATURED'),
-                  const SizedBox(height: 12),
-                  Text(
-                    '${banner['title'] ?? ''}',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  if (description.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(description),
-                  ],
-                  if (label.isNotEmpty &&
-                      url != null &&
-                      ['http', 'https'].contains(url.scheme)) ...[
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: () => _open(context),
-                      child: Text(label),
-                    ),
-                  ],
-                ],
-              ),
+        child: InkWell(
+          onTap: url != null && ['http', 'https'].contains(url.scheme)
+              ? () => _open(context)
+              : null,
+          child: AspectRatio(
+            aspectRatio: 3,
+            child: Image.network(
+              assetUrl(image),
+              fit: BoxFit.contain,
+              semanticLabel: '${banner['title'] ?? 'Zinda Play banner'}',
+              errorBuilder: (_, _, _) =>
+                  const Center(child: Text('Banner image unavailable')),
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -6,6 +6,7 @@ export function accountRole(user, preferredRole) {
 
 export const approvedCreatorQuery = {
   $and: [
+    { deletionStartedAt: { $exists: false } },
     { accountType: { $ne: "business" } },
     { $or: [{ accountType: { $ne: "promoter" } }, { creatorRequested: true }] },
     { $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }] }

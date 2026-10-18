@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../ads.dart';
 import '../api.dart';
@@ -17,6 +18,7 @@ import 'watch_screen.dart';
 import 'shorts_screen.dart';
 import 'create_short_screen.dart';
 import 'wallet_screen.dart';
+import 'delete_account_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,7 +29,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
-  final _pager = PageController();
   List<Map<String, dynamic>> _videos = [];
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _popular = [];
@@ -36,7 +37,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   String? _error;
   int _tab = 0;
-  int _featuredIndex = 0;
 
   @override
   void initState() {
@@ -48,7 +48,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _search.dispose();
     _searchFocus.dispose();
-    _pager.dispose();
     super.dispose();
   }
 
@@ -79,7 +78,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _categories = _list(results[1]);
         _popular = _list(results[2]);
         _promotion = results[3] == null ? null : Map<String, dynamic>.from(results[3] as Map);
-        _featuredIndex = 0;
         _loading = false;
       });
     } catch (e) {
@@ -185,7 +183,6 @@ class _HomeScreenState extends State<HomeScreen> {
       await Api.instance.refreshAccountRole();
     } catch (error) {
       if (mounted) _toast('$error');
-      return;
     }
     if (!mounted) return;
     final role = Api.instance.role;
@@ -193,7 +190,17 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       backgroundColor: kPanel,
       builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('Privacy Policy'),
+            onTap: () { Navigator.pop(ctx); _privacy(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
+            title: const Text('Delete account'),
+            onTap: () { Navigator.pop(ctx); _deleteAccount(); },
+          ),
           ListTile(
             leading: _avatar(radius: 22),
             title: Text(Api.instance.username ?? 'Account', style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -223,9 +230,31 @@ class _HomeScreenState extends State<HomeScreen> {
               if (mounted) setState(() {});
             },
           ),
-        ]),
+        ])),
       ),
     );
+  }
+
+  Future<void> _deleteAccount() async {
+    final deleted = await Navigator.push<bool>(context,
+      MaterialPageRoute(builder: (_) => const DeleteAccountScreen()));
+    if (!mounted) return;
+    setState(() {});
+    if (deleted == true) {
+      _toast('Your account has been deleted.');
+      await _load();
+    }
+  }
+
+  Future<void> _privacy() async {
+    try {
+      if (!await launchUrl(Uri.parse('https://zindaplay.com/privacy.html'),
+          mode: LaunchMode.externalApplication)) {
+        throw Exception('Could not open the privacy policy.');
+      }
+    } catch (error) {
+      if (mounted) _toast('$error');
+    }
   }
 
   Future<void> _switchMode(String mode) async {
@@ -285,6 +314,8 @@ class _HomeScreenState extends State<HomeScreen> {
         const Spacer(),
         IconButton(tooltip: 'Explore', icon: const Icon(Icons.explore_outlined), onPressed: () => setState(() => _tab = 2)),
         IconButton(tooltip: 'Library / dashboard', icon: const Icon(Icons.video_library_outlined), onPressed: _library),
+        if (!signedIn)
+          IconButton(tooltip: 'Privacy Policy', icon: const Icon(Icons.privacy_tip_outlined), onPressed: _privacy),
         IconButton(
           tooltip: 'Search',
           icon: const Icon(Icons.search),
@@ -347,6 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const AdBanner(placement: 'top'),
         if (_promotion != null) HomepagePromotionBanner(banner: _promotion!),
+        if (!_loading && _error == null && !filtering) ..._creators(),
         if (_loading)
           _skeletons()
         else if (_error != null)
@@ -355,11 +387,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _emptyState(filtering)
         else ...[
           if (!filtering) ...[
-            _featured(),
             ..._trending(),
             const AdBanner(placement: 'middle'),
             ..._collections(),
-            ..._creators(),
           ] else
             ..._collections(title: 'Series & playlists'),
           _heading(filtering ? 'Results' : 'All videos', Icons.grid_view_rounded),
@@ -401,114 +431,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  List<Map<String, dynamic>> get _featuredVideos {
-    final picked = _videos.where((v) => v['featured'] == true && v['isSponsored'] != true).toList();
-    final byViews = _videos.where((v) => v['isSponsored'] != true).toList()..sort((a, b) => _views(b).compareTo(_views(a)));
-    for (final v in byViews) {
-      if (picked.length >= 4) break;
-      if (!picked.contains(v)) picked.add(v);
-    }
-    return picked.take(4).toList();
-  }
-
-  Widget _featured() {
-    final items = _featuredVideos;
-    if (items.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: SizedBox(
-          height: 190,
-          child: Stack(children: [
-            PageView.builder(
-              controller: _pager,
-              itemCount: items.length,
-              onPageChanged: (i) => setState(() => _featuredIndex = i),
-              itemBuilder: (_, i) => _banner(items[i]),
-            ),
-            if (items.length > 1)
-              Positioned(
-                right: 14,
-                bottom: 12,
-                child: Row(children: [
-                  for (var i = 0; i < items.length; i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      margin: const EdgeInsets.only(left: 5),
-                      width: i == _featuredIndex ? 16 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: i == _featuredIndex ? const Color(0xFFD946EF) : Colors.white38,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                ]),
-              ),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _banner(Map<String, dynamic> v) {
-    final thumb = assetUrl(v['thumbnailUrl'] as String?);
-    final description = '${v['description'] ?? ''}'.trim();
-    return GestureDetector(
-      onTap: () => _openVideo(v),
-      child: Stack(fit: StackFit.expand, children: [
-        Container(color: kPanel),
-        if (thumb.isNotEmpty) Image.network(thumb, fit: BoxFit.cover, errorBuilder: (_, _, _) => const SizedBox.shrink()),
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [Color(0xF208090E), Color(0xA008090E), Color(0x1A08090E)],
-              stops: [0, .55, 1],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(color: const Color(0x557C3AED), borderRadius: BorderRadius.circular(8)),
-              child: const Text('FEATURED', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: .8)),
-            ),
-            const SizedBox(height: 8),
-            FractionallySizedBox(
-              widthFactor: .62,
-              child: Text('${v['title'] ?? ''}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, height: 1.15)),
-            ),
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              FractionallySizedBox(
-                widthFactor: .6,
-                child: Text(description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFFC9C7D7))),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Row(children: [
-              GradientButton(
-                onPressed: () => _openVideo(v),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.play_arrow_rounded, size: 20),
-                  SizedBox(width: 4),
-                  Text('Play Now', style: TextStyle(fontWeight: FontWeight.w700)),
-                ]),
-              ),
-            ]),
-          ]),
-        ),
-      ]),
-    );
-  }
-
-  Widget _heading(String text, IconData icon, {Color color = kPurple}) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+  Widget _heading(String text, IconData icon, {Color color = kPurple, double topPadding = 18}) => Padding(
+        padding: EdgeInsets.fromLTRB(16, topPadding, 16, 8),
         child: Row(children: [
           Icon(icon, size: 20, color: color),
           const SizedBox(width: 8),
@@ -521,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final items = top.take(10).toList();
     if (items.isEmpty) return const [];
     return [
-      _heading('Trending now', Icons.local_fire_department, color: const Color(0xFFFF7A3D)),
+      _heading('Trending now', Icons.local_fire_department, color: const Color(0xFFFF7A3D), topPadding: _popular.isEmpty ? 0 : 12),
       SizedBox(
         height: 215,
         child: ListView.separated(
@@ -564,7 +488,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Widget> _creators() {
     if (_popular.isEmpty) return const [];
     return [
-      _heading('Popular creators', Icons.star_rounded, color: const Color(0xFFD946EF)),
+      _heading('Popular creators', Icons.star_rounded, color: const Color(0xFFD946EF), topPadding: 12),
       SizedBox(
         height: 112,
         child: ListView.separated(

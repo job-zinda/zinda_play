@@ -29,6 +29,7 @@ function matches(document, filter) {
     const actual = get(document, key);
     if (value instanceof ObjectId) return equal(actual, value);
     if (value && typeof value === "object") {
+      if ("$regex" in value) return typeof actual === "string" && new RegExp(value.$regex, value.$options || "").test(actual);
       if ("$in" in value) return value.$in.some(item => equal(actual, item));
       if ("$nin" in value) return !value.$nin.some(item => equal(actual, item));
       if ("$lt" in value) return String(actual) < String(value.$lt);
@@ -138,6 +139,11 @@ export function memoryDatabase() {
           if (!document) return { matchedCount: 0 };
           applyUpdate(document, update);
           return { matchedCount: 1 };
+        },
+        async updateMany(filter, update) {
+          const documents = this.documents.filter(item => matches(item, filter));
+          for (const document of documents) applyUpdate(document, update);
+          return { matchedCount: documents.length };
         },
         async findOneAndUpdate(filter, update, options = {}) {
           let document = this.documents.find(item => matches(item, filter));

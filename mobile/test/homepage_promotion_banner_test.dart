@@ -33,11 +33,11 @@ void main() {
         expect(area.width / area.height, closeTo(3, 0.001));
         expect(area.width, lessThanOrEqualTo(width));
         expect(tester.widget<Image>(find.byType(Image)).fit, BoxFit.contain);
-        expect(
-          tester.getTopLeft(find.text('FEATURED')).dy,
-          greaterThan(tester.getBottomLeft(find.byType(AspectRatio)).dy),
-        );
-        expect(find.text('Explore the library'), findsOneWidget);
+        expect(tester.getSize(find.byType(Card)), area);
+        expect(find.text('FEATURED'), findsNothing);
+        expect(find.text('Explore the library'), findsNothing);
+        expect(find.byType(FilledButton), findsNothing);
+        expect(tester.widget<InkWell>(find.byType(InkWell)).onTap, isNotNull);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },
@@ -56,9 +56,7 @@ void main() {
     expect(find.byType(Image), findsNothing);
   });
 
-  testWidgets('text-only promotion works and invalid CTA is hidden', (
-    tester,
-  ) async {
+  testWidgets('promotion without an image takes no space', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
@@ -73,9 +71,28 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Text-only offer'), findsOneWidget);
+    expect(find.text('Text-only offer'), findsNothing);
     expect(find.byType(Image), findsNothing);
+    expect(find.byType(Card), findsNothing);
     expect(find.byType(FilledButton), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('invalid banner destination is not tappable', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: HomepagePromotionBanner(
+            banner: {
+              'enabled': true,
+              'imageUrl': 'https://example.test/banner.png',
+              'buttonUrl': 'javascript:alert(1)',
+            },
+          ),
+        ),
+      ),
+    );
+    expect(tester.widget<InkWell>(find.byType(InkWell)).onTap, isNull);
     expect(tester.takeException(), isNull);
   });
 }

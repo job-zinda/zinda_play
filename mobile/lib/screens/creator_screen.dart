@@ -39,7 +39,9 @@ class _CreatorScreenState extends State<CreatorScreen> {
         _introUrl = '${profile['introVideoUrl'] ?? ''}';
         _followers = (profile['followerCount'] as num?)?.toInt() ?? 0;
         final list = profile['videos'];
-        _videos = list is List ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList() : [];
+        _videos = list is List
+            ? list.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+            : [];
       });
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -48,11 +50,18 @@ class _CreatorScreenState extends State<CreatorScreen> {
 
   Future<void> _toggleFollow() async {
     if (!Api.instance.signedIn) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => const AuthScreen()));
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const AuthScreen()),
+      );
       if (!Api.instance.signedIn) return;
     }
     try {
-      final data = (_following ? await Api.instance.delete('/creators/$_id/follow') : await Api.instance.post('/creators/$_id/follow')) as Map;
+      final data =
+          (_following
+                  ? await Api.instance.delete('/creators/$_id/follow')
+                  : await Api.instance.post('/creators/$_id/follow'))
+              as Map;
       setState(() {
         _following = data['following'] == true;
         _followers = (data['followerCount'] as num?)?.toInt() ?? _followers;
@@ -68,28 +77,124 @@ class _CreatorScreenState extends State<CreatorScreen> {
     final photo = assetUrl(c['profilePhotoUrl'] as String?);
     return Scaffold(
       appBar: AppBar(title: Text('${c['displayName'] ?? c['username']}')),
-      body: ListView(children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(children: [
-            CircleAvatar(radius: 32, backgroundImage: photo.isEmpty ? null : NetworkImage(photo), child: photo.isEmpty ? const Icon(Icons.person, size: 32) : null),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${c['displayName'] ?? c['username']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                Text('$_followers followers', style: const TextStyle(color: Colors.white70)),
-              ]),
+      body: ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundImage: photo.isEmpty ? null : NetworkImage(photo),
+                  child: photo.isEmpty
+                      ? const Icon(Icons.person, size: 32)
+                      : null,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${c['displayName'] ?? c['username']}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        '$_followers followers',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!_isSelf)
+                  FilledButton(
+                    onPressed: _toggleFollow,
+                    child: Text(_following ? 'Following' : 'Follow'),
+                  ),
+              ],
             ),
-            if (!_isSelf) FilledButton(onPressed: _toggleFollow, child: Text(_following ? 'Following' : 'Follow')),
-          ]),
-        ),
-        if ((c['bio'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('${c['bio']}')),
-        if (_introUrl.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 0), child: IntroVideoPlayer(url: _introUrl)),
-        if (_error != null) Padding(padding: const EdgeInsets.all(16), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
-        const SizedBox(height: 12),
-        for (final v in _videos)
-          VideoCard(video: v, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WatchScreen(video: v)))),
-      ]),
+          ),
+          if ((c['bio'] ?? '').toString().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('${c['bio']}'),
+            ),
+          if (_introUrl.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: IntroVideoPlayer(url: _introUrl),
+            ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ),
+          for (final short in [false, true]) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+              child: Row(
+                children: [
+                  Icon(
+                    short
+                        ? Icons.play_circle_outline
+                        : Icons.video_library_outlined,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    short ? 'Simply' : 'Videos',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (!_videos.any((v) => (v['videoType'] == 'short') == short))
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  short
+                      ? 'No Simply videos published yet.'
+                      : 'No videos published yet.',
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: LayoutBuilder(
+                builder: (context, constraints) => Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    for (final v in _videos.where(
+                      (v) => (v['videoType'] == 'short') == short,
+                    ))
+                      SizedBox(
+                        width: (constraints.maxWidth - 12) / 2,
+                        child: VideoCard(
+                          video: v,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => WatchScreen(video: v),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
