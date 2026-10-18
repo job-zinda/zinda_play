@@ -248,7 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _privacy() async {
     try {
-      if (!await launchUrl(Uri.parse('https://zindaplay.com/privacy.html'),
+      if (!await launchUrl(Uri.parse('https://zindaplayprivacypolicy.vercel.app/'),
           mode: LaunchMode.externalApplication)) {
         throw Exception('Could not open the privacy policy.');
       }

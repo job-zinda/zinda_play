@@ -2,6 +2,11 @@
 
 A new Flutter project.
 
+## Privacy policy
+
+The mobile app's guest header and signed-in Profile menu open
+https://zindaplayprivacypolicy.vercel.app/ in the external browser.
+
 ## Home screen spacing
 
 The native Flutter home screen is separate from the React website. The promotion
