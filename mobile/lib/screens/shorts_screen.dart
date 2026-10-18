@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
+import '../public_links.dart';
 import 'package:video_player/video_player.dart';
 
 import '../api.dart';
@@ -714,12 +714,9 @@ class _ShortPlayerState extends State<_ShortPlayer> {
                 'Share',
                 Icons.share,
                 () => _action(() async {
-                  await SharePlus.instance.share(
-                    ShareParams(
-                      text:
-                          '${widget.video['caption'] ?? widget.video['title']}\n$apiBase/share/video/$_id',
-                    ),
-                  );
+                  await sharePublicLink(context,
+                    '${widget.video['caption'] ?? widget.video['title']}',
+                    videoShareUrl(_id));
                 }, signIn: false),
               ),
               _button(

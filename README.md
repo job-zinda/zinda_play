@@ -21,6 +21,14 @@ npm run dev
 ```
 Open the Vite URL printed by the client terminal (usually http://localhost:5173).
 
+## Public domain, shares and invitations
+
+Video shares from web and mobile use `https://zindaplay.com/share/video/<id>`. Deploy `client/vercel.json` with the Vercel web project: it forwards only these preview links to the Render API. The API returns the existing Open Graph preview and redirects to `https://zindaplay.com/?video=<id>` for regular videos or `?short=<id>` for Simply. Older `/api/share/video/<id>` links still work and now redirect to the canonical domain too.
+
+Set `PUBLIC_WEB_URL=https://zindaplay.com` on the API (also the default). This is separate from `CLIENT_ORIGIN`, which controls additional CORS origins; a stale preview/local origin must not determine public share destinations. Both the apex and `www` website origins are allowed. Creator/promoter dashboards offer share and copy invitation links using `https://zindaplay.com/?ref=<code>`; visiting the link opens viewer registration and retains the referral for submission. Mobile still offers a code for manual entry. Invitation links open the website, not an Android App Link; attribution is not automatically transferred to an APK installation.
+
+Deploy both backend and web changes before using the new APK's share links. Run link regression tests with `node --test src/public-links.test.js` in each of `client` and `server`.
+
 ## Creator membership: QR payments and manual approval
 
 Creator membership defaults to **INR 199 for 30 days**, with the existing **7-day free trial**. In the web admin dashboard, open **Membership plans & payments** to:

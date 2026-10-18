@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
+import '../public_links.dart';
 import 'studio_screen.dart';
 
 class PromoterScreen extends StatefulWidget {
@@ -122,6 +123,17 @@ class _PromoterScreenState extends State<PromoterScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           const Text('Your referral code', style: TextStyle(fontWeight: FontWeight.w700)),
                           SelectableText('${w['referralCode']}'),
+                          SelectableText(referralUrl('${w['referralCode']}')),
+                          TextButton.icon(
+                            onPressed: () => sharePublicLink(context, 'Join me on Zinda Play', referralUrl('${w['referralCode']}')),
+                            icon: const Icon(Icons.share),
+                            label: const Text('Share invitation'),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => copyPublicLink(context, referralUrl('${w['referralCode']}')),
+                            icon: const Icon(Icons.link),
+                            label: const Text('Copy invitation link'),
+                          ),
                           TextButton.icon(
                             onPressed: () async {
                               await Clipboard.setData(ClipboardData(text: '${w['referralCode']}'));

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Bookmark, ChevronDown, ChevronUp, Flag, Heart, MessageCircle, Pause, Play, RefreshCw, Share2, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import "./shorts.css";
+import { shareLink, videoShareUrl } from "./public-links.js";
 
 async function request(api, token, path, options = {}) {
   const response = await fetch(`${api}${path}`, {
@@ -317,12 +318,8 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
       }), state.liked)}
       {button(`${state.commentCount ?? state.comments.length} comments`, MessageCircle, () => { setError(""); setModal("comments"); })}
       {button("Share", Share2, () => action(async () => {
-        const link = new URL(window.location.href); link.search = ""; link.searchParams.set("short", video.id);
-        if (navigator.share) {
-          try { await navigator.share({ title: video.title, url: link.href }); }
-          catch (failure) { if (failure.name !== "AbortError") throw failure; }
-        } else if (navigator.clipboard) { await navigator.clipboard.writeText(link.href); setError("Share link copied."); }
-        else throw new Error("Sharing is unavailable in this browser.");
+        const result = await shareLink(video.title, videoShareUrl(video.id));
+        if (result === "copied") setError("Share link copied.");
       }, false))}
       {button(state.saved ? "Saved" : "Save", Bookmark, () => action(async () => {
         const data = await request(api, token, `${url}/saved`, { method: state.saved ? "DELETE" : "PUT", body: state.saved ? undefined : "{}" });

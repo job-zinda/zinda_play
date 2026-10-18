@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
+import '../public_links.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../ads.dart';
@@ -162,12 +162,8 @@ class _WatchScreenState extends State<WatchScreen> {
                 label: Text('$_likes'),
               ),
               TextButton.icon(
-                onPressed: () => SharePlus.instance.share(
-                  ShareParams(
-                    text:
-                        '${v['title']} - watch on Zinda Play\n$apiBase/share/video/$_id',
-                  ),
-                ),
+                onPressed: () => sharePublicLink(context,
+                  '${v['title']} - watch on Zinda Play', videoShareUrl(_id)),
                 icon: const Icon(Icons.share),
                 label: const Text('Share'),
               ),

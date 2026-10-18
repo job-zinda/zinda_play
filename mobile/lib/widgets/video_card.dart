@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
+import '../public_links.dart';
 
 import '../api.dart';
 import '../theme.dart';
@@ -52,7 +52,7 @@ class VideoCard extends StatelessWidget {
             Text('$views views', style: const TextStyle(fontSize: 11, color: Colors.white70)),
             const Spacer(),
             InkWell(
-              onTap: () => SharePlus.instance.share(ShareParams(text: '${video['title']} - watch on Zinda Play\n$apiBase/share/video/${video['id']}')),
+              onTap: () => sharePublicLink(context, '${video['title']} - watch on Zinda Play', videoShareUrl('${video['id']}')),
               child: const Padding(padding: EdgeInsets.all(3), child: Icon(Icons.share_outlined, size: 16, color: Colors.white70)),
             ),
             InkWell(
@@ -97,7 +97,7 @@ class VideoCard extends StatelessWidget {
             title: const Text('Share'),
             onTap: () {
               Navigator.pop(ctx);
-              SharePlus.instance.share(ShareParams(text: '${video['title']} - watch on Zinda Play\n$apiBase/share/video/${video['id']}'));
+              sharePublicLink(context, '${video['title']} - watch on Zinda Play', videoShareUrl('${video['id']}'));
             },
           ),
           if (onCreator != null)

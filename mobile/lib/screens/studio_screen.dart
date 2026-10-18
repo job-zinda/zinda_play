@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
+import '../public_links.dart';
 import '../intro_video.dart';
 import 'upload_screen.dart';
 import 'wallet_screen.dart';
@@ -414,6 +415,17 @@ class _StudioScreenState extends State<StudioScreen> {
             const SizedBox(height: 4),
             SelectableText('Referral code: $code'),
             Text('${_referrals?['total']} joined through your code'),
+            SelectableText(referralUrl(code)),
+            TextButton.icon(
+              onPressed: () => sharePublicLink(context, 'Join me on Zinda Play', referralUrl(code)),
+              icon: const Icon(Icons.share),
+              label: const Text('Share invitation'),
+            ),
+            TextButton.icon(
+              onPressed: () => copyPublicLink(context, referralUrl(code)),
+              icon: const Icon(Icons.link),
+              label: const Text('Copy invitation link'),
+            ),
             TextButton.icon(
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: code));

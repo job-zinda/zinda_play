@@ -14,11 +14,13 @@ import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
+import { publicWebOrigin, videoLandingUrl } from "./public-links.js";
 import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, deliverCreatorAdNotifications, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
 const port = process.env.PORT || 4000;
+const publicWebsite = publicWebOrigin(process.env.PUBLIC_WEB_URL);
 const scrypt = promisify(scryptCallback);
 const trustedProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS || "0", 10);
 if (!Number.isSafeInteger(trustedProxyHops) || trustedProxyHops < 0) {
@@ -30,6 +32,8 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "https://zindaplay.com",
+  "https://www.zindaplay.com",
+  publicWebsite,
   ...(process.env.CLIENT_ORIGIN || "").split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
 ];
 
@@ -834,8 +838,7 @@ app.get("/api/share/video/:id", asyncRoute(async (req, res) => {
   if (!video || !await videoAvailableInViewerCity(video, req) || !await campaignVideoIsAvailable(video, req)) {
     return res.status(404).type("text/plain").send("Video not found");
   }
-  const clientOrigin = (process.env.CLIENT_ORIGIN || "").split(",").map(origin => origin.trim().replace(/\/+$/, "")).find(Boolean) || allowedOrigins[0];
-  const target = `${clientOrigin}/?video=${encodeURIComponent(video._id)}`;
+  const target = videoLandingUrl(video, publicWebsite);
   const image = video.thumbnailImageId ? `${req.protocol}://${req.get("host")}/api/videos/thumbnail/${video.thumbnailImageId}` : "";
   const title = String(video.title || "Zinda Play").slice(0, 120);
   const description = String(video.description || "Watch this video on Zinda Play.").slice(0, 200);
