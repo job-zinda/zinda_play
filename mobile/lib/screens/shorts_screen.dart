@@ -308,6 +308,7 @@ class _ShortPlayerState extends State<_ShortPlayer> {
   int _likes = 0;
   int _views = 0;
   List<Map<String, dynamic>> _comments = [];
+  int _commentCount = 0;
   String? _error;
   String? _playbackError;
   String? _ticket;
@@ -368,7 +369,9 @@ class _ShortPlayerState extends State<_ShortPlayer> {
         _lastPosition = controller.value.position.inMilliseconds;
       } catch (error) {
         if (mounted && generation == _generation) {
-          setState(() => _playbackError = 'Could not play this Simply video: $error');
+          setState(
+            () => _playbackError = 'Could not play this Simply video: $error',
+          );
         }
       } finally {
         if (mounted && generation == _generation) {
@@ -457,6 +460,8 @@ class _ShortPlayerState extends State<_ShortPlayer> {
         _comments = (data['comments'] as List)
             .map((item) => Map<String, dynamic>.from(item as Map))
             .toList();
+        _commentCount =
+            (data['commentCount'] as num?)?.toInt() ?? _comments.length;
         _following = follow?['following'] == true;
         _self = follow?['isSelf'] == true;
         _saved = saved?['saved'] == true;
@@ -536,7 +541,11 @@ class _ShortPlayerState extends State<_ShortPlayer> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => ShortComments(id: _id, comments: _comments),
+      builder: (_) => ShortComments(
+        id: _id,
+        comments: _comments,
+        commentCount: _commentCount,
+      ),
     );
     if (mounted) await _interactions();
   }, signIn: false);
@@ -696,7 +705,11 @@ class _ShortPlayerState extends State<_ShortPlayer> {
                 _like,
                 color: _liked ? Colors.pinkAccent : null,
               ),
-              _button('Comments', Icons.chat_bubble_outline, _commentSheet),
+              _button(
+                '$_commentCount comments',
+                Icons.chat_bubble_outline,
+                _commentSheet,
+              ),
               _button(
                 'Share',
                 Icons.share,

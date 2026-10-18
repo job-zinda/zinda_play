@@ -10,6 +10,7 @@
 .ad-must{border-color:#ffffff24;font-weight:500}
 .ad-visit{position:absolute;left:12px;bottom:14px;z-index:3;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:8px;background:linear-gradient(120deg,#7c3aed,#d946ef);color:#fff;font-weight:700;font-size:13px;text-decoration:none}
 .ad-play{position:absolute;inset:0;margin:auto;z-index:3;display:grid;place-items:center;width:64px;height:64px;border:0;border-radius:50%;background:#7c3aedcc;color:#fff}
+.ad-error{position:absolute;inset:20%;z-index:4;background:#15111fee;border-radius:12px;padding:16px;display:grid;place-content:center;text-align:center;color:#fff}
 .ads-form{margin-bottom:24px}
 .ads-table td:first-child .table-title img{width:70px;height:34px;object-fit:cover}
 .ads-table th svg{vertical-align:-2px}

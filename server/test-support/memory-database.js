@@ -14,6 +14,18 @@ function matches(document, filter) {
   return Object.entries(filter).every(([key, value]) => {
     if (key === "$or") return value.some(item => matches(document, item));
     if (key === "$and") return value.every(item => matches(document, item));
+    if (key === "$expr") {
+      const evaluate = expression => {
+        if (typeof expression === "string" && expression.startsWith("$")) return get(document, expression.slice(1));
+        if (!expression || typeof expression !== "object") return expression;
+        if (expression.$ifNull) return evaluate(expression.$ifNull[0]) ?? evaluate(expression.$ifNull[1]);
+        if (expression.$or) return expression.$or.some(evaluate);
+        if (expression.$lte) return evaluate(expression.$lte[0]) <= evaluate(expression.$lte[1]);
+        if (expression.$lt) return evaluate(expression.$lt[0]) < evaluate(expression.$lt[1]);
+        throw new Error("Unsupported test expression");
+      };
+      return evaluate(value);
+    }
     const actual = get(document, key);
     if (value instanceof ObjectId) return equal(actual, value);
     if (value && typeof value === "object") {

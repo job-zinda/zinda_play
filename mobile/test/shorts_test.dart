@@ -219,6 +219,7 @@ class _Request extends Fake implements HttpClientRequest {
         'liked': network.liked,
         'likeCount': network.liked ? 1 : 0,
         'comments': network.comments,
+        'commentCount': network.comments.length + 101,
       });
     }
     return _Response({'saved': false});
@@ -452,7 +453,7 @@ void main() {
     await mount(tester, _Feed(items));
     for (final tooltip in [
       '0 likes',
-      'Comments',
+      '101 comments',
       'Share',
       'Save',
       'Report',
@@ -491,9 +492,10 @@ void main() {
       await tester.tap(find.byTooltip('Saved'));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Save'), findsOneWidget);
-      await tester.tap(find.byTooltip('Comments'));
+      await tester.tap(find.byTooltip('101 comments'));
       await tester.pumpAndSettle();
       expect(players.playing, isEmpty);
+      expect(find.text('Comments (101)'), findsOneWidget);
       tester.view.physicalSize = const Size(360, 640);
       tester.view.devicePixelRatio = 1;
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
@@ -506,6 +508,7 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pumpAndSettle();
       expect(network.comments.single['text'], 'Great Short!');
+      expect(find.text('Comments (102)'), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
         isEmpty,
@@ -525,6 +528,7 @@ void main() {
       await tester.tap(find.text('Send'));
       await tester.pumpAndSettle();
       expect(network.comments, hasLength(2));
+      expect(find.text('Comments (103)'), findsOneWidget);
       expect(find.text('Retry this comment'), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,

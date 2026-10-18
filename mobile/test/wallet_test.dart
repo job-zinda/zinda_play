@@ -92,6 +92,8 @@ void main() {
   testWidgets(
     'creator wallet displays Simply and regular rates with combined estimates',
     (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       HttpOverrides.global = _Network({
         'rateRupees': 50,
         'rateViews': 1000,
@@ -99,7 +101,12 @@ void main() {
         'simplyRateViews': 1000,
         'totalViews': 1600,
         'eligibleViews': 1500,
-        'estimatedEarningsRupees': 62.5,
+        'estimatedEarningsRupees': 92.5,
+        'creatorAdRateRupees': 200,
+        'simplyAdRateRupees': 100,
+        'adRateViews': 1000,
+        'adEstimatedEarningsRupees': 30,
+        'adEligibleViews': 200,
         'videos': [
           {
             'title': 'Portrait clip',
@@ -107,6 +114,9 @@ void main() {
             'totalViews': 600,
             'eligibleViews': 500,
             'estimatedEarningsRupees': 12.5,
+            'totalEstimatedEarningsRupees': 22.5,
+            'adEstimatedEarningsRupees': 10,
+            'adEligibleViews': 100,
           },
           {
             'title': 'Landscape video',
@@ -114,13 +124,21 @@ void main() {
             'totalViews': 1000,
             'eligibleViews': 1000,
             'estimatedEarningsRupees': 50,
+            'totalEstimatedEarningsRupees': 70,
+            'adEstimatedEarningsRupees': 20,
+            'adEligibleViews': 100,
+            'deleted': true,
           },
         ],
       });
       await tester.pumpWidget(const MaterialApp(home: WalletScreen()));
       await tester.pumpAndSettle();
-      expect(find.text('₹62.50'), findsOneWidget);
-      expect(find.text('₹12.50'), findsOneWidget);
+      expect(find.text('₹92.50'), findsOneWidget);
+      expect(find.text('₹22.50'), findsOneWidget);
+      expect(find.text('₹70.00'), findsOneWidget);
+      expect(find.text('Deleted · Landscape video'), findsOneWidget);
+      expect(find.textContaining('Simply ads ₹100.00'), findsOneWidget);
+      expect(find.textContaining('Ad earnings: ₹30.00'), findsOneWidget);
       expect(
         find.text('Simply: ₹25.00 per 1000 qualifying views.'),
         findsOneWidget,

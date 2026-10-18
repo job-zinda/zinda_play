@@ -64,3 +64,21 @@ test("converting a regular video to Simply retains previous regular earnings at 
   assert.equal(wallet.videos.find(video => video.id === "simply").legacyRegularEligibleViews, 1);
   assert.equal(wallet.eligibleViews, 2);
 });
+
+test("new full-watch ad ledgers pay 200 regular and 100 Simply per 1000 without backfilling impressions or old unpaid rows", async () => {
+  const db = await fixture();
+  await db.collection("ads").insertOne({ creatorVideoId: "regular", impressions: 999999 });
+  await db.collection("adCompletedViews").insertOne({ videoId: "regular", creatorId: "creator" });
+  await db.collection("adCompletedViews").insertOne({ videoId: "simply", creatorId: "another", earningMilliRupees: 100 });
+  for (let i = 0; i < 1000; i++) {
+    await db.collection("adCompletedViews").insertOne({ videoId: "regular", creatorId: "creator", earningMilliRupees: 200 });
+    await db.collection("adCompletedViews").insertOne({ videoId: "simply", creatorId: "creator", earningMilliRupees: 100 });
+  }
+  const wallet = await creatorWallet(db, "creator");
+  assert.equal(wallet.adEligibleViews, 2000);
+  assert.equal(wallet.adEstimatedEarningsRupees, 300);
+  assert.equal(wallet.estimatedEarningsRupees, 300);
+  assert.equal(wallet.eligibleViews, 0);
+  assert.equal(wallet.videos.find(video => video.id === "regular").adEstimatedEarningsRupees, 200);
+  assert.equal(wallet.videos.find(video => video.id === "simply").adEstimatedEarningsRupees, 100);
+});

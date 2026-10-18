@@ -29,7 +29,12 @@ class _WalletScreenState extends State<WalletScreen> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _error = '$e'; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = '$e';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -38,54 +43,118 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     final w = _wallet;
-    final videos = w == null ? <Map<String, dynamic>>[] : (w['videos'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final videos = w == null
+        ? <Map<String, dynamic>>[]
+        : (w['videos'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
     return Scaffold(
       appBar: AppBar(title: const Text('Creator wallet')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : w == null
-              ? Center(child: Text(_error ?? 'Could not load the wallet.'))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(12), children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(children: [
-                          const Text('Estimated earnings', style: TextStyle(color: Colors.white60)),
+          ? Center(child: Text(_error ?? 'Could not load the wallet.'))
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.all(12),
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Estimated earnings',
+                            style: TextStyle(color: Colors.white60),
+                          ),
                           const SizedBox(height: 4),
-                          Text(_rupees(w['estimatedEarningsRupees']), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
+                          Text(
+                            _rupees(w['estimatedEarningsRupees']),
+                            style: const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Text('Regular videos: ${_rupees(w['rateRupees'])} per ${w['rateViews']} qualifying views.'),
+                          Text(
+                            'Regular videos: ${_rupees(w['rateRupees'])} per ${w['rateViews']} qualifying views.',
+                          ),
                           if (w['simplyRateRupees'] != null) ...[
-                            Text('Simply: ${_rupees(w['simplyRateRupees'])} per ${w['simplyRateViews']} qualifying views.'),
-                            const Text('Simply earns proportionally from new qualifying views only. Earlier views do not earn retroactively. Previously earned regular-view amounts are retained. Amounts are rounded for display.', style: TextStyle(color: Colors.white60)),
+                            Text(
+                              'Simply: ${_rupees(w['simplyRateRupees'])} per ${w['simplyRateViews']} qualifying views.',
+                            ),
+                            const Text(
+                              'Simply earns proportionally from new qualifying views only. Earlier views do not earn retroactively. Previously earned regular-view amounts are retained. Amounts are rounded for display.',
+                              style: TextStyle(color: Colors.white60),
+                            ),
                           ],
                           const SizedBox(height: 12),
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-                            _stat('${w['totalViews']}', 'Total views'),
-                            _stat('${w['eligibleViews']}', 'Unique views'),
-                          ]),
-                        ]),
+                          if (w['creatorAdRateRupees'] != null) ...[
+                            Text(
+                              'Creator ads: regular-video ads ${_rupees(w['creatorAdRateRupees'])}, Simply ads ${_rupees(w['simplyAdRateRupees'])} per ${w['adRateViews']} full watches.',
+                            ),
+                            const Text(
+                              'Each viewer earns once per ad. Skipped ads do not earn. Deleting a video retains earned credit.',
+                              style: TextStyle(color: Colors.white60),
+                            ),
+                            Text(
+                              'Ad earnings: ${_rupees(w['adEstimatedEarningsRupees'])} from ${w['adEligibleViews']} full watches.',
+                            ),
+                          ],
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _stat('${w['totalViews']}', 'Total views'),
+                              _stat('${w['eligibleViews']}', 'Unique views'),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    const Text('Earnings by video', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                    if (videos.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No videos yet.')),
-                    for (final v in videos)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text('${v['title']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('${v['videoType'] == 'short' ? 'Simply · ' : ''}${v['totalViews']} views · ${v['eligibleViews']} qualifying'),
-                        trailing: Text(_rupees(v['estimatedEarningsRupees']), style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Earnings by video',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  if (videos.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('No videos yet.'),
+                    ),
+                  for (final v in videos)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        '${v['deleted'] == true ? 'Deleted · ' : ''}${v['title']}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                  ]),
-                ),
+                      subtitle: Text(
+                        '${v['videoType'] == 'short' ? 'Simply · ' : ''}${v['totalViews']} views · ${v['eligibleViews']} qualifying${(v['adEligibleViews'] as num? ?? 0) > 0 ? '\n${v['adEligibleViews']} full ad watches · ${_rupees(v['adEstimatedEarningsRupees'])} ad earnings' : ''}',
+                      ),
+                      trailing: Text(
+                        _rupees(
+                          v['totalEstimatedEarningsRupees'] ??
+                              v['estimatedEarningsRupees'],
+                        ),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                ],
+              ),
+            ),
     );
   }
 
-  Widget _stat(String value, String label) => Column(children: [
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        Text(label, style: const TextStyle(color: Colors.white60)),
-      ]);
+  Widget _stat(String value, String label) => Column(
+    children: [
+      Text(
+        value,
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      ),
+      Text(label, style: const TextStyle(color: Colors.white60)),
+    ],
+  );
 }

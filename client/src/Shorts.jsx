@@ -174,7 +174,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
   const [busy, setBusy] = useState(false);
   const [modal, setModal] = useState("");
   const [comment, setComment] = useState("");
-  const [state, setState] = useState({ likeCount: 0, liked: false, comments: [], saved: false, following: false, isSelf: false });
+  const [state, setState] = useState({ likeCount: 0, liked: false, comments: [], commentCount: 0, saved: false, following: false, isSelf: false });
   const [views, setViews] = useState(video.views || 0);
   const [progress, setProgress] = useState(0);
   const creator = video.creatorProfile;
@@ -315,7 +315,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
         const data = await request(api, token, `/videos/${video.id}/like`, { method: "POST" });
         setState(current => ({ ...current, ...data }));
       }), state.liked)}
-      {button("Comments", MessageCircle, () => { setError(""); setModal("comments"); })}
+      {button(`${state.commentCount ?? state.comments.length} comments`, MessageCircle, () => { setError(""); setModal("comments"); })}
       {button("Share", Share2, () => action(async () => {
         const link = new URL(window.location.href); link.search = ""; link.searchParams.set("short", video.id);
         if (navigator.share) {
@@ -361,12 +361,12 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
         if (event.shiftKey && event.target === first) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && event.target === last) { event.preventDefault(); first?.focus(); }
       }}>
-      <div className="shorts-modal-heading"><h2>{modal === "comments" ? "Comments" : "Report Simply video"}</h2><button autoFocus disabled={busy} aria-label="Close dialog" onClick={() => setModal("")}><X/></button></div>
+      <div className="shorts-modal-heading"><h2>{modal === "comments" ? `Comments (${state.commentCount ?? state.comments.length})` : "Report Simply video"}</h2><button autoFocus disabled={busy} aria-label="Close dialog" onClick={() => setModal("")}><X/></button></div>
       {modal === "comments" ? <>
         <div className="shorts-comments">{state.comments.length ? state.comments.map((item, i) => <div key={item.id || i}><strong>{item.username}</strong><p>{item.text}</p></div>) : <p>Be the first to comment.</p>}</div>
         <form onSubmit={event => { event.preventDefault(); action(async () => {
           const data = await request(api, token, `/videos/${video.id}/comments`, { method: "POST", body: JSON.stringify({ text: comment.trim() }) });
-          setState(current => ({ ...current, comments: [data, ...current.comments] })); setComment("");
+          setState(current => ({ ...current, commentCount: (current.commentCount ?? current.comments.length) + 1, comments: [data, ...current.comments] })); setComment("");
         }); }}>
           <label>Add a comment<textarea maxLength={500} value={comment} disabled={busy} onChange={event => setComment(event.target.value)}/></label>
           <button className="primary-btn" disabled={busy || !comment.trim()}>Post comment</button>

@@ -6,7 +6,13 @@ import '../screens/auth_screen.dart';
 class ShortComments extends StatefulWidget {
   final String id;
   final List<Map<String, dynamic>> comments;
-  const ShortComments({super.key, required this.id, required this.comments});
+  final int commentCount;
+  const ShortComments({
+    super.key,
+    required this.id,
+    required this.comments,
+    required this.commentCount,
+  });
   @override
   State<ShortComments> createState() => _ShortCommentsState();
 }
@@ -14,6 +20,7 @@ class ShortComments extends StatefulWidget {
 class _ShortCommentsState extends State<ShortComments> {
   final _text = TextEditingController();
   late final _comments = List<Map<String, dynamic>>.of(widget.comments);
+  late int _commentCount = widget.commentCount;
   bool _sending = false;
   String? _error;
 
@@ -42,6 +49,7 @@ class _ShortCommentsState extends State<ShortComments> {
       if (!mounted) return;
       setState(() {
         _comments.insert(0, Map<String, dynamic>.from(result));
+        _commentCount++;
         _text.clear();
       });
     } catch (error) {
@@ -64,7 +72,7 @@ class _ShortCommentsState extends State<ShortComments> {
       height: MediaQuery.sizeOf(context).height * 0.65,
       child: Column(
         children: [
-          const ListTile(title: Text('Comments')),
+          ListTile(title: Text('Comments ($_commentCount)')),
           Expanded(
             child: _comments.isEmpty
                 ? const Center(child: Text('Be the first to comment.'))

@@ -19,6 +19,7 @@ class _WatchScreenState extends State<WatchScreen> {
   WebViewController? _web;
   bool _liked = false;
   int _likes = 0;
+  int _commentCount = 0;
   List<Map<String, dynamic>> _comments = [];
   final _comment = TextEditingController();
   String? _error;
@@ -57,14 +58,21 @@ class _WatchScreenState extends State<WatchScreen> {
       setState(() {
         _liked = data['liked'] == true;
         _likes = (data['likeCount'] as num?)?.toInt() ?? 0;
-        _comments = (data['comments'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        _comments = (data['comments'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        _commentCount =
+            (data['commentCount'] as num?)?.toInt() ?? _comments.length;
       });
     } catch (_) {}
   }
 
   Future<bool> _requireSignIn() async {
     if (Api.instance.signedIn) return true;
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => const AuthScreen()));
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
+    );
     return Api.instance.signedIn;
   }
 
@@ -97,60 +105,130 @@ class _WatchScreenState extends State<WatchScreen> {
   Widget build(BuildContext context) {
     final v = widget.video;
     if (v['videoType'] == 'short') {
-      return Scaffold(appBar: AppBar(title: const Text('Simply')), body: ShortsScreen(initialVideo: v));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Simply')),
+        body: ShortsScreen(initialVideo: v),
+      );
     }
     return Scaffold(
-      appBar: AppBar(title: Text('${v['title'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis)),
-      body: ListView(children: [
-        AspectRatio(
-          aspectRatio: 16 / 9,
-          child: _web == null
-              ? const Center(child: Text('Video is not available yet.'))
-              : PlayerGate(builder: (_) => WebViewWidget(controller: _web!)),
+      appBar: AppBar(
+        title: Text(
+          '${v['title'] ?? ''}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Row(children: [
-            const Icon(Icons.remove_red_eye_outlined, size: 14, color: Colors.white70),
-            const SizedBox(width: 4),
-            Text('${v['views'] ?? 0} views', style: const TextStyle(fontSize: 12, color: Colors.white70)),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text('${v['title'] ?? ''}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        ),
-        Row(children: [
-          const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: _like,
-            icon: Icon(_liked ? Icons.favorite : Icons.favorite_border, color: _liked ? Colors.redAccent : null),
-            label: Text('$_likes'),
+      ),
+      body: ListView(
+        children: [
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: _web == null
+                ? const Center(child: Text('Video is not available yet.'))
+                : PlayerGate(builder: (_) => WebViewWidget(controller: _web!)),
           ),
-          TextButton.icon(
-            onPressed: () => SharePlus.instance.share(ShareParams(text: '${v['title']} - watch on Zinda Play\n$apiBase/share/video/$_id')),
-            icon: const Icon(Icons.share),
-            label: const Text('Share'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.remove_red_eye_outlined,
+                  size: 14,
+                  color: Colors.white70,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${v['views'] ?? 0} views',
+                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
+            ),
           ),
-        ]),
-        if ((v['description'] ?? '').toString().isNotEmpty)
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('${v['description']}')),
-        const Divider(height: 32),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(children: [
-            Expanded(child: TextField(controller: _comment, maxLength: 500, decoration: const InputDecoration(hintText: 'Add a comment', counterText: ''))),
-            IconButton(onPressed: _postComment, icon: const Icon(Icons.send)),
-          ]),
-        ),
-        if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
-        for (final c in _comments)
-          ListTile(
-            dense: true,
-            title: Text('${c['username'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.white70)),
-            subtitle: Text('${c['text'] ?? ''}', style: const TextStyle(color: Colors.white)),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              '${v['title'] ?? ''}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
           ),
-      ]),
+          Row(
+            children: [
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: _like,
+                icon: Icon(
+                  _liked ? Icons.favorite : Icons.favorite_border,
+                  color: _liked ? Colors.redAccent : null,
+                ),
+                label: Text('$_likes'),
+              ),
+              TextButton.icon(
+                onPressed: () => SharePlus.instance.share(
+                  ShareParams(
+                    text:
+                        '${v['title']} - watch on Zinda Play\n$apiBase/share/video/$_id',
+                  ),
+                ),
+                icon: const Icon(Icons.share),
+                label: const Text('Share'),
+              ),
+            ],
+          ),
+          if ((v['description'] ?? '').toString().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text('${v['description']}'),
+            ),
+          const Divider(height: 32),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'Comments ($_commentCount)',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _comment,
+                    maxLength: 500,
+                    decoration: const InputDecoration(
+                      hintText: 'Add a comment',
+                      counterText: '',
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _postComment,
+                  icon: const Icon(Icons.send),
+                ),
+              ],
+            ),
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            ),
+          for (final c in _comments)
+            ListTile(
+              dense: true,
+              title: Text(
+                '${c['username'] ?? ''}',
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+              subtitle: Text(
+                '${c['text'] ?? ''}',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

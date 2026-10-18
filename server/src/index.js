@@ -14,6 +14,7 @@ import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
+import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
@@ -302,6 +303,7 @@ function publicBannerSettings(banner) {
   };
 }
 const publicVideoQuery = {
+  deletedAt: { $exists: false },
   published: true,
   approvalStatus: { $nin: ["pending", "rejected"] },
   $or: [{ bunnyVideoId: { $exists: false } }, { processingStatus: "ready" }],
@@ -401,7 +403,7 @@ async function bunnyRequest(url, apiKey, options = {}) {
   });
   if (!response.ok) {
     const details = await response.text();
-    throw new Error(`Bunny Stream request failed (${response.status})${details ? `: ${details.slice(0, 500)}` : ""}`);
+    throw Object.assign(new Error(`Bunny Stream request failed (${response.status})${details ? `: ${details.slice(0, 500)}` : ""}`), { statusCode: response.status });
   }
   return response;
 }
@@ -431,13 +433,23 @@ const publicAd = ad => ({
   targetUrl: ad.targetUrl || "",
   skippable: ad.type === "video" ? ad.skippable !== false : true,
   skipAfterSeconds: ad.skipAfterSeconds || 20,
-  frequency: ad.frequency || 1
+  frequency: ad.frequency || 1,
+  ...(ad.creatorVideoId ? {
+    creatorVideoId: ad.creatorVideoId, creatorId: ad.creatorId, creatorVideoType: ad.creatorVideoType || ad.sourceVideoType, sourceVideoType: ad.sourceVideoType,
+    streamUrl: ad.mediaUrl, durationSeconds: ad.durationSeconds,
+    creditRateRupees: ad.creditRateRupees, creditRateViews: ad.creditRateViews
+  } : {})
 });
 const adminAd = ad => ({
   ...publicAd(ad),
   active: ad.active !== false,
   impressions: ad.impressions || 0,
   clicks: ad.clicks || 0,
+  completedViews: ad.completedViews || 0,
+  sourceDeletedAt: ad.sourceDeletedAt || null,
+  sourceAvailable: ad.sourceAvailable ?? !ad.sourceDeletedAt,
+  adEligibleViews: ad.adEligibleViews || 0,
+  adEstimatedEarningsRupees: ad.adEstimatedEarningsRupees || 0,
   targetViews: ad.targetViews || 0,
   targetCity: ad.targetCity || "",
   targetCategories: Array.isArray(ad.targetCategories) ? ad.targetCategories : [],
@@ -519,10 +531,15 @@ app.get("/api/ads", asyncRoute(async (req, res) => {
   // Interests are the categories of the videos this viewer watched recently.
   const interests = new Set(String(req.query.interests || "").split(",").map(value => value.trim()).filter(Boolean));
   ads = ads.filter(ad => !ad.targetCategories?.length || ad.targetCategories.some(id => interests.has(id)));
-  res.json(ads.slice(0, 20).map(publicAd));
+  const deliverable = [];
+  for (const ad of ads) if (await creatorAdSourceAvailable(database, ad, req, videoAvailableInViewerCity)) deliverable.push(ad);
+  res.json(deliverable.slice(0, 20).map(publicAd));
 }));
 app.post("/api/ads/:id/impression", asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found." });
+  const candidate = await adsCollection().findOne({ _id: new ObjectId(req.params.id) });
+  if (!candidate || !await creatorAdSourceAvailable(database, candidate, req, videoAvailableInViewerCity)) return res.json({ accepted: false });
+  if (candidate.creatorVideoId) return creatorAdRoutes.claimImpression(req, res);
   const accepted = await claimAdImpression(adsCollection(), new ObjectId(req.params.id));
   if (accepted) {
     const ad = await adsCollection().findOne({ _id: new ObjectId(req.params.id) });
@@ -650,8 +667,26 @@ app.delete("/api/creator/intro-video", requireCreator, asyncRoute(async (req, re
 }));
 app.get("/api/admin/ads", requireAdmin, asyncRoute(async (_req, res) => {
   const ads = await adsCollection().find({}).sort({ createdAt: -1 }).toArray();
-  res.json(ads.map(adminAd));
+  res.json((await creatorAdAdminReports(database, ads)).map(adminAd));
 }));
+async function deleteCreatorMedia(video) {
+  if (video.bunnyVideoId) {
+    const config = bunnyConfiguration();
+    try {
+      await bunnyRequest(`${config.baseUrl}/videos/${encodeURIComponent(video.bunnyVideoId)}`, config.apiKey, { method: "DELETE" });
+    } catch (error) {
+      if (error.status !== 404 && error.statusCode !== 404) throw error;
+    }
+  }
+  if (video.thumbnailImageId && ObjectId.isValid(video.thumbnailImageId)) {
+    await videoThumbnailBucket().delete(new ObjectId(video.thumbnailImageId)).catch(() => {});
+  }
+}
+const creatorAdRoutes = registerCreatorAdRoutes(app, {
+  getDb: () => database, asyncRoute, requireAdmin, requireCreator, withCreatorProfiles,
+  sessionFor: req => sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, "")),
+  availableInCity: videoAvailableInViewerCity, deleteMedia: deleteCreatorMedia
+});
 app.get("/api/admin/campaigns", requireAdmin, asyncRoute(async (_req, res) => {
   const campaigns = await businessCampaignsCollection().find({}).sort({ createdAt: -1 }).limit(500).toArray();
   res.json(campaigns.map(campaign => ({
@@ -670,19 +705,29 @@ app.get("/api/admin/campaigns", requireAdmin, asyncRoute(async (_req, res) => {
     completedAt: campaign.completedAt || null
   })));
 }));
-app.post("/api/admin/ads", requireAdmin, asyncRoute(async (req, res) => {
-  if (String(req.body?.mediaUrl || "").startsWith("/business-ad-media/")) return res.status(400).json({ error: "Business ad media can only be added through approval." });
-  const { fields, error } = normalizeAd(req.body);
-  if (error) return res.status(400).json({ error });
-  const now = new Date().toISOString();
-  const ad = { ...fields, impressions: 0, clicks: 0, createdAt: now, updatedAt: now };
-  await adsCollection().insertOne(ad);
-  res.status(201).json(adminAd(ad));
-}));
+app.post("/api/admin/ads", requireAdmin, asyncRoute(createAdminAdHandler({
+  getDb: () => database, normalizeAd, serializeAd: adminAd,
+  loadMetadata: async video => {
+    const config = bunnyConfiguration();
+    const response = await bunnyRequest(`${config.baseUrl}/videos/${encodeURIComponent(video.bunnyVideoId)}`, config.apiKey);
+    return response.json();
+  }
+})));
 app.patch("/api/admin/ads/:id", requireAdmin, asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found" });
   const existing = await adsCollection().findOne({ _id: new ObjectId(req.params.id) });
   if (!existing) return res.status(404).json({ error: "Ad not found" });
+  const sourceError = creatorAdEditError(existing, req.body);
+  if (sourceError) return res.status(400).json({ error: sourceError });
+  if (existing.creatorVideoId && req.body?.active === true && !await creatorAdSourceAvailable(database, existing)) {
+    return res.status(409).json({ error: "The source must be published, approved and ready before restarting this ad." });
+  }
+  if (existing.creatorVideoId && Object.hasOwn(req.body || {}, "targetUrl")) {
+    try {
+      const url = new URL(req.body.targetUrl);
+      if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || req.body.targetUrl.length > 2048) throw new Error();
+    } catch { return res.status(400).json({ error: "Enter a valid HTTP or HTTPS destination URL." }); }
+  }
   if (existing.businessSubmissionId) {
     const protectedFields = ["title", "type", "mediaUrl", "targetUrl", "targetCity", "targetCategories", "targetViews"];
     if (protectedFields.some(key => req.body[key] !== undefined && JSON.stringify(req.body[key]) !== JSON.stringify(existing[key]))) {
@@ -710,6 +755,7 @@ app.delete("/api/admin/ads/:id", requireAdmin, asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found" });
   const candidate = await adsCollection().findOne({ _id: new ObjectId(req.params.id) });
   if (candidate?.businessSubmissionId) return res.status(409).json({ error: "Paid business ads retain their analytics and history. Pause the ad instead of deleting it." });
+  if (candidate?.creatorVideoId) return res.status(409).json({ error: "Creator ads retain earned credit and history. Pause the ad instead of deleting it." });
   const existing = await adsCollection().findOneAndDelete({ _id: new ObjectId(req.params.id) });
   if (existing && isUploadedAdMedia(existing.mediaUrl || "")) {
     await adMediaBucket().delete(new ObjectId(existing.mediaUrl.split("/").pop())).catch(() => {});
@@ -1897,7 +1943,7 @@ app.put("/api/admin/banner/image", requireAdmin, asyncRoute(async (req, res) => 
   res.status(201).json(publicBannerSettings(banner));
 }));
 const uploadThumbnail = asyncRoute(async (req, res) => {
-  const video = await videosCollection().findOne({ _id: req.params.id });
+  const video = await videosCollection().findOne({ _id: req.params.id, deletedAt: { $exists: false } });
   if (!video || (req.session.role === "creator" && video.ownerId !== req.creatorId.toString())) {
     return res.status(404).json({ error: "Video not found" });
   }
@@ -2330,12 +2376,13 @@ app.post("/api/business/campaigns/:id/verify-payment", requireBusiness, asyncRou
   res.json({ campaignId: campaignId.toString(), status: "active" });
 }));
 app.get("/api/admin/videos", requireAdmin, asyncRoute(async (_req, res) => {
-  const videos = await videosCollection().find().sort({ createdAt: -1 }).toArray();
+  const videos = await videosCollection().find({ deletedAt: { $exists: false } }).sort({ createdAt: -1 }).toArray();
   res.json(await withCreatorProfiles(videos));
 }));
 app.get("/api/admin/videos/pending-review", requireAdmin, asyncRoute(async (_req, res) => {
   const videos = await videosCollection().find(
     {
+      deletedAt: { $exists: false },
       $or: [
         { ownerId: { $exists: true, $ne: null }, approvalStatus: "pending" },
         {
@@ -2377,6 +2424,7 @@ app.patch("/api/admin/videos/:id/review", requireAdmin, asyncRoute(async (req, r
   }
   const video = await videosCollection().findOne({
     _id: req.params.id,
+    deletedAt: { $exists: false },
     $or: [
       { ownerId: { $exists: true, $ne: null }, approvalStatus: "pending" },
       {
@@ -2470,12 +2518,13 @@ app.patch("/api/admin/videos/:id/review", requireAdmin, asyncRoute(async (req, r
   res.json({ id: video._id, decision, published: decision === "approved" && !isBusinessVideo, ownerType: isBusinessVideo ? "business" : "creator" });
 }));
 app.get("/api/creator/videos", requireCreator, asyncRoute(async (req, res) => {
-  const videos = await videosCollection().find({ ownerId: req.creatorId.toString() }).sort({ createdAt: -1 }).toArray();
+  const videos = await videosCollection().find({ ownerId: req.creatorId.toString(), deletedAt: { $exists: false } }).sort({ createdAt: -1 }).toArray();
   res.json(await withCreatorProfiles(videos));
 }));
 app.get("/api/creator/videos/processing", requireCreator, asyncRoute(async (req, res) => {
   const pendingVideos = await videosCollection().find({
     ownerId: req.creatorId.toString(),
+    deletedAt: { $exists: false },
     bunnyVideoId: { $exists: true },
     processingStatus: { $nin: ["ready", "error", "upload failed"] }
   }).toArray();
@@ -2487,7 +2536,7 @@ app.get("/api/creator/videos/processing", requireCreator, asyncRoute(async (req,
       const bunnyVideo = await response.json();
       const processingStatus = processingState(bunnyVideo.status);
       const encodeProgress = Number(bunnyVideo.encodeProgress) || 0;
-      const fields = { processingStatus, encodeProgress, ...shortProcessingFields(video, bunnyVideo, processingStatus) };
+      const fields = { processingStatus, encodeProgress, durationSeconds: Number(bunnyVideo.length) || 0, ...shortProcessingFields(video, bunnyVideo, processingStatus) };
       await videosCollection().updateOne({ _id: video._id, ownerId: req.creatorId.toString() }, { $set: fields });
       return { id: video._id, ...fields };
     }));
@@ -2498,7 +2547,7 @@ app.get("/api/creator/videos/processing", requireCreator, asyncRoute(async (req,
 }));
 app.get("/api/creator/analytics", requireCreator, asyncRoute(async (req, res) => {
   const videos = await videosCollection().find(
-    { ownerId: req.creatorId.toString() },
+    { ownerId: req.creatorId.toString(), deletedAt: { $exists: false } },
     { projection: { title: 1, views: 1, published: 1, createdAt: 1 } }
   ).sort({ createdAt: -1 }).toArray();
   res.json({
@@ -2647,6 +2696,7 @@ app.patch("/api/admin/promoter-withdrawals/:id", requireAdmin, asyncRoute(async 
 }));
 app.get("/api/admin/videos/processing", requireAdmin, asyncRoute(async (_req, res) => {
   const pendingVideos = await videosCollection().find({
+    deletedAt: { $exists: false },
     bunnyVideoId: { $exists: true },
     processingStatus: { $nin: ["ready", "error", "upload failed"] }
   }).toArray();
@@ -2659,7 +2709,7 @@ app.get("/api/admin/videos/processing", requireAdmin, asyncRoute(async (_req, re
       const bunnyVideo = await response.json();
       const processingStatus = processingState(bunnyVideo.status);
       const encodeProgress = Number(bunnyVideo.encodeProgress) || 0;
-      const fields = { processingStatus, encodeProgress, ...shortProcessingFields(video, bunnyVideo, processingStatus) };
+      const fields = { processingStatus, encodeProgress, durationSeconds: Number(bunnyVideo.length) || 0, ...shortProcessingFields(video, bunnyVideo, processingStatus) };
       await videosCollection().updateOne(
         { _id: video._id },
         { $set: fields }
@@ -2683,7 +2733,7 @@ app.post("/api/admin/videos", requireAdmin, asyncRoute(async (req, res) => {
   res.status(201).json(safeVideo(video));
 }));
 app.patch("/api/creator/videos/:id", requireCreator, asyncRoute(async (req, res) => {
-  const video = await videosCollection().findOne({ _id: req.params.id, ownerId: req.creatorId.toString() });
+  const video = await videosCollection().findOne({ _id: req.params.id, ownerId: req.creatorId.toString(), deletedAt: { $exists: false } });
   if (!video) return res.status(404).json({ error: "Video not found" });
   const { title, description, categoryId, promotionUrl, promotionType } = req.body || {};
   const hasCollectionFields = ["collectionName", "collectionType", "episodeNumber"].some(field => Object.hasOwn(req.body || {}, field));
@@ -2751,7 +2801,7 @@ app.patch("/api/creator/videos/:id", requireCreator, asyncRoute(async (req, res)
   res.json(safeVideo({ ...video, ...updates }));
 }));
 app.patch("/api/admin/videos/:id", requireAdmin, asyncRoute(async (req, res) => {
-  const video = await videosCollection().findOne({ _id: req.params.id });
+  const video = await videosCollection().findOne({ _id: req.params.id, deletedAt: { $exists: false } });
   if (!video) return res.status(404).json({ error: "Video not found" });
   const { title, description, categoryId, thumbnailUrl, playbackUrl, durationSeconds, featured, published } = req.body || {};
   const hasCollectionFields = ["collectionName", "collectionType", "episodeNumber"].some(field => Object.hasOwn(req.body || {}, field));
@@ -2799,6 +2849,14 @@ app.patch("/api/admin/videos/:id", requireAdmin, asyncRoute(async (req, res) => 
 app.delete("/api/admin/videos/:id", requireAdmin, asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id });
   if (!video) return res.status(404).json({ error: "Video not found" });
+  if (video.ownerId && !video.ownerBusinessId) {
+    await softDeleteCreatorVideo(database, video);
+    if (!video.mediaDeletedAt) {
+      await deleteCreatorMedia(video);
+      await videosCollection().updateOne({ _id: video._id }, { $set: { mediaDeletedAt: new Date().toISOString() } });
+    }
+    return res.status(204).end();
+  }
   if (video.bunnyVideoId) {
     try {
       const config = bunnyConfiguration();
@@ -2841,6 +2899,7 @@ async function start() {
   await initializeMemberships(database);
   await initializeBusinessAds(database);
   await initializeShorts(database);
+  await initializeCreatorAds(database);
 
   await database.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   for (const saved of await database.collection("sessions").find({ expiresAt: { $gt: new Date() } }).toArray()) {
