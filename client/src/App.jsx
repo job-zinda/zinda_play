@@ -393,22 +393,10 @@ function App() {
   }
   async function shareVideo(video) {
     const shareUrl = new URL(`${API}/share/video/${encodeURIComponent(video.id)}`, window.location.origin).toString();
-    const text = `${video.title}${video.description ? ` — ${video.description.slice(0, 120)}` : ""}\n${shareUrl}`;
     try {
-      let files = [];
-      if (navigator.canShare && video.thumbnailUrl) {
-        try {
-          const imageResponse = await fetch(apiAssetSrc(video.thumbnailUrl));
-          const blob = imageResponse.ok ? await imageResponse.blob() : null;
-          if (blob?.type.startsWith("image/")) {
-            const file = new File([blob], `${video.id}.${blob.type.split("/")[1].replace("jpeg", "jpg")}`, { type: blob.type });
-            if (navigator.canShare({ files: [file] })) files = [file];
-          }
-        } catch { /* share without the image */ }
-      }
       if (navigator.share) {
-        // Some apps drop the url field when files are attached, so the link is also in the text.
-        await navigator.share(files.length ? { title: video.title, text, files } : { title: video.title, text: video.description, url: shareUrl });
+        // Attaching files makes many targets drop the text/link ("empty message"), so the thumbnail travels via the link's preview card.
+        await navigator.share({ title: video.title, text: video.title, url: shareUrl });
       } else if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
         setError("Video link copied to clipboard.");
@@ -416,7 +404,11 @@ function App() {
         window.prompt("Copy this video link:", shareUrl);
       }
     } catch (err) {
-      if (err.name !== "AbortError") setError("Unable to share this video.");
+      if (err.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setError("Sharing isn't available here, so the video link was copied to your clipboard.");
+      } catch { setError("Unable to share this video."); }
     }
   }
   function closeVideo() {
