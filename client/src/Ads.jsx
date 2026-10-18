@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Megaphone, Plus, Trash2, Pencil, Eye, MousePointerClick, Play, X, ExternalLink } from "lucide-react";
 import "./ads.css";
+import { dueVideoAds, markAdDelivered } from "./ad-frequency.js";
+import { AdminBusinessAdReview, PrivateAdMedia } from "./BusinessAds.jsx";
 
-const track = (api, id, event) => fetch(`${api}/ads/${id}/${event}`, { method: "POST" }).catch(() => {});
+const track = (api, id, event) => fetch(`${api}/ads/${id}/${event}`, { method: "POST" })
+  .then(response => { if (!response.ok) throw new Error(`Ad tracking failed (${response.status}).`); })
+  .catch(error => console.error("Ad tracking failed:", error));
 const pickRandom = list => list[Math.floor(Math.random() * list.length)];
 
 // Categories of the videos this viewer opened recently, used for interest targeting.
@@ -17,6 +21,12 @@ export function recordInterest(categoryId) {
 }
 const adsUrl = (api, placement) => `${api}/ads?placement=${placement}&interests=${encodeURIComponent(readInterests().join(","))}`;
 const mediaSrc = (api, url) => (url && url.startsWith("/") ? `${api}${url}` : url);
+async function claimAd(api, ad) {
+  const response = await fetch(`${api}/ads/${ad.id}/impression`, { method: "POST" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Could not reserve ad impression.");
+  return data.accepted === true;
+}
 
 // Banner ad shown at the top, middle or bottom of the home page.
 export function AdSlot({ api, placement }) {
@@ -25,13 +35,13 @@ export function AdSlot({ api, placement }) {
     let cancelled = false;
     fetch(adsUrl(api, placement))
       .then(response => (response.ok ? response.json() : []))
-      .then(list => {
+      .then(async list => {
         if (cancelled || !list.length) return;
         const chosen = pickRandom(list);
+        if (!await claimAd(api, chosen) || cancelled) return;
         setAd(chosen);
-        track(api, chosen.id, "impression");
       })
-      .catch(() => {});
+      .catch(error => console.error("Banner ad delivery failed:", error));
     return () => { cancelled = true; };
   }, [api, placement]);
   if (!ad) return null;
@@ -53,20 +63,26 @@ export function PlayerGate({ api, children }) {
   const [elapsed, setElapsed] = useState(0);
   const [duration, setDuration] = useState(0);
   const [paused, setPaused] = useState(false);
-  const counted = useRef(false);
   const videoRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
     fetch(adsUrl(api, "video"))
       .then(response => (response.ok ? response.json() : []))
-      .then(list => {
+      .then(async list => {
         if (cancelled) return;
-        if (!list.length) return setPhase("done");
-        setAd(pickRandom(list));
+        const due = dueVideoAds(list);
+        if (!due.length) return setPhase("done");
+        const chosen = pickRandom(due);
+        if (!await claimAd(api, chosen) || cancelled) {
+          if (!cancelled) setPhase("done");
+          return;
+        }
+        markAdDelivered(chosen.id);
+        setAd(chosen);
         setPhase("ad");
       })
-      .catch(() => !cancelled && setPhase("done"));
+      .catch(error => { console.error("Video ad delivery failed:", error); if (!cancelled) setPhase("done"); });
     return () => { cancelled = true; };
   }, [api]);
 
@@ -91,7 +107,6 @@ export function PlayerGate({ api, children }) {
         onTimeUpdate={event => setElapsed(event.currentTarget.currentTime)}
         onPlay={() => {
           setPaused(false);
-          if (!counted.current) { counted.current = true; track(api, ad.id, "impression"); }
         }}
         onPause={event => !event.currentTarget.ended && setPaused(true)}
         onEnded={finish}
@@ -107,15 +122,17 @@ export function PlayerGate({ api, children }) {
   );
 }
 
-const blankAd = { title: "", type: "banner", placement: "top", mediaUrl: "", targetUrl: "", skippable: true, skipAfterSeconds: 20, active: true, targetViews: 0, targetCity: "", targetCategories: [] };
+const blankAd = { title: "", type: "banner", placement: "top", mediaUrl: "", targetUrl: "", skippable: true, skipAfterSeconds: 20, frequency: 1, active: true, targetViews: 0, targetCity: "", targetCategories: [] };
 
 export function AdminAds({ api, token, onBack, onUnauthorized }) {
   const [ads, setAds] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
   const [form, setForm] = useState(blankAd);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [businessPreview, setBusinessPreview] = useState(null);
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
   const request = async (path, options = {}) => {
@@ -126,9 +143,11 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
     if (!response.ok) throw new Error(data.error || "Request failed");
     return data;
   };
-  const load = () => request("/admin/ads").then(setAds).catch(err => setError(err.message));
+  const load = () => Promise.all([request("/admin/ads"), request("/admin/campaigns")])
+    .then(([ads, campaigns]) => { setAds(ads); setCampaigns(campaigns); })
+    .catch(err => setError(err.message));
   const [categories, setCategories] = useState([]);
-  useEffect(() => { load(); fetch(`${api}/categories`).then(r => r.json()).then(setCategories).catch(() => {}); }, []);
+  useEffect(() => { load(); request("/categories").then(setCategories).catch(err => setError(err.message)); }, []);
   const toggleCategory = id => set({ targetCategories: form.targetCategories.includes(id) ? form.targetCategories.filter(c => c !== id) : [...form.targetCategories, id] });
   const targeting = ad => [
     ad.targetViews ? `${ad.impressions.toLocaleString()} / ${ad.targetViews.toLocaleString()} views` : "Unlimited views",
@@ -182,6 +201,20 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
   };
   const where = ad => ad.type === "video" ? "Video before playback" : `Banner · ${ad.placement}`;
   const mode = ad => ad.type !== "video" ? "—" : ad.skippable ? `Skip after ${ad.skipAfterSeconds}s` : "Must watch";
+  const downloadReport = () => {
+    const columns = ["Ad", "Type", "Status", "Frequency", "Target impressions", "Impressions", "Remaining", "Clicks", "CTR (%)", "Completion (%)", "Completed at"];
+    const rows = [
+      ...ads.map(ad => [ad.title, ad.type, ad.deliveryStatus, ad.frequency, ad.targetViews, ad.impressions, ad.remainingImpressions ?? "Unlimited", ad.clicks, ad.clickThroughRate.toFixed(2), ad.completionPercent?.toFixed(2) ?? "", ad.completedAt || ""]),
+      ...campaigns.map(campaign => [campaign.businessName, "Business promotion", campaign.status, "", campaign.targetImpressions, campaign.impressions, campaign.remainingImpressions, "", "", campaign.completionPercent.toFixed(2), campaign.completedAt || ""])
+    ];
+    const csvCell = value => `"${String(value).replace(/^[=+@-]/, "'$&").replace(/"/g, '""')}"`;
+    const url = URL.createObjectURL(new Blob([[columns, ...rows].map(row => row.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "ad-analytics.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <section className="admin-panel">
@@ -191,9 +224,18 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
         {!showForm && <button className="primary-btn" onClick={startNew}><Plus size={16}/> New ad</button>}
       </div>
       {error && <p className="error" role="alert">{error}</p>}
+      <div className="admin-actions"><button className="secondary-btn" onClick={load}>Refresh analytics</button><button className="secondary-btn" onClick={downloadReport} disabled={!ads.length && !campaigns.length}>Download analytics CSV</button></div>
+      <p className="muted">Impressions count reserved ad deliveries, not unique viewers or completed watches. Video frequency is counted per eligible video opening in this browser/app session for each ad; due ads rotate when several qualify.</p>
 
       {showForm && (
         <form className="video-form ads-form" onSubmit={save}>
+          {form.businessSubmissionId ? <>
+            <p>Paid business ad from {form.businessName}. Creative, URL, targeting and impression target are locked to the approved submission.</p>
+            <p>{form.title} · {form.targetUrl} · {form.targetCity || "All locations"} · {form.targetViews} impressions</p>
+            <label>Play this ad<select value={form.frequency} onChange={e => set({ frequency: Number(e.target.value) })}><option value={1}>Every video</option><option value={5}>Every 5 videos</option><option value={10}>Every 10 videos</option></select></label>
+            <label><input type="checkbox" checked={form.skippable} onChange={e => set({ skippable: e.target.checked })}/> Allow skipping</label>
+            {form.skippable && <label>Skip after seconds<input type="number" min={1} max={120} value={form.skipAfterSeconds} onChange={e => set({ skipAfterSeconds: Number(e.target.value) })}/></label>}
+          </> : <>
           <label>Ad name<input required maxLength={120} value={form.title} onChange={e => set({ title: e.target.value })} placeholder="e.g. Diwali sale"/></label>
           <label>Ad type
             <select value={form.type} onChange={e => set({ type: e.target.value, mediaUrl: "" })}>
@@ -213,6 +255,7 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
           <label>{form.type === "video" ? "Ad video (MP4 or WebM, up to 150 MB)" : "Banner image (JPG, PNG, WebP or GIF, up to 8 MB)"}
             <input type="file" accept={form.type === "video" ? "video/mp4,video/webm" : "image/jpeg,image/png,image/webp,image/gif"} onChange={e => upload(e.target.files?.[0])} disabled={uploading}/>
           </label>
+          {form.type === "banner" && <p className="muted">Recommended test image: 1200 x 400 pixels (3:1) for all banner positions on web and mobile. The full image scales without cropping; other sizes fit with padding. Use large, readable text and keep the top-left corner clear for the Ad label. Maximum 8 MB.</p>}
           {uploading && <p className="muted">Uploading… {progress}%</p>}
           {form.mediaUrl && !uploading && (
             <div className="ad-preview">
@@ -226,6 +269,11 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
           </label>
           {form.type === "video" && (
             <>
+              <label>Play this ad
+                <select value={form.frequency} onChange={e => set({ frequency: Number(e.target.value) })}>
+                  <option value={1}>Every video</option><option value={5}>Every 5 videos</option><option value={10}>Every 10 videos</option>
+                </select>
+              </label>
               <label>Viewer option
                 <select value={form.skippable ? "skip" : "must"} onChange={e => set({ skippable: e.target.value === "skip" })}>
                   <option value="skip">Skippable after a delay</option>
@@ -256,6 +304,7 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
               <small className="muted">Leave all unchecked to show the ad to everyone.</small>
             </div>
           </fieldset>
+          </>}
           <div className="checks"><label><input type="checkbox" checked={form.active} onChange={e => set({ active: e.target.checked })}/> Active (visible to viewers)</label></div>
           <div className="admin-actions">
             <button className="primary-btn" disabled={busy || uploading || !form.mediaUrl}>{busy ? "Saving…" : editingId ? "Save changes" : "Create ad"}</button>
@@ -269,21 +318,23 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
       ) : (
         <div className="table-wrap ads-table">
           <table>
-            <thead><tr><th>Ad</th><th>Where</th><th>Viewer option</th><th>Targeting</th><th>Status</th><th><Eye size={13}/> Views</th><th><MousePointerClick size={13}/> Clicks</th><th/></tr></thead>
+            <thead><tr><th>Ad</th><th>Where / frequency</th><th>Viewer option</th><th>Targeting</th><th>Status</th><th><Eye size={13}/> Impressions</th><th><MousePointerClick size={13}/> Clicks</th><th>Report</th><th/></tr></thead>
             <tbody>
               {ads.map(ad => (
                 <tr key={ad.id}>
-                  <td><div className="table-title">{ad.type === "banner" ? <img src={mediaSrc(api, ad.mediaUrl)} alt=""/> : <span className="mini-thumb"><Play size={14}/></span>}<span>{ad.title}</span></div></td>
-                  <td>{where(ad)}</td>
+                  <td><div className="table-title">{ad.type === "banner" ? <img src={mediaSrc(api, ad.mediaUrl)} alt=""/> : <span className="mini-thumb"><Play size={14}/></span>}<span>{ad.title}{ad.businessName && <small> · {ad.businessName}</small>}</span></div></td>
+                  <td>{where(ad)}{ad.type === "video" && <div>Every {ad.frequency || 1} video(s)</div>}</td>
                   <td>{mode(ad)}</td>
                   <td className="ads-target-cell">{targeting(ad).map(line => <div key={line}>{line}</div>)}</td>
-                  <td><span className={`status ${ad.active ? "published" : ""}`}>{ad.active ? "Active" : "Paused"}</span></td>
+                  <td><span className={`status ${ad.deliveryStatus === "active" ? "published" : ""}`}>{ad.deliveryStatus}</span></td>
                   <td>{ad.impressions.toLocaleString()}</td>
                   <td>{ad.clicks.toLocaleString()}</td>
+                  <td><div>CTR: {ad.clickThroughRate.toFixed(2)}%</div><div>{ad.remainingImpressions === null ? "Unlimited" : `${ad.remainingImpressions} remaining · ${ad.completionPercent.toFixed(1)}% complete`}</div>{ad.completedAt && <div>Completed {new Date(ad.completedAt).toLocaleString()}</div>}</td>
                   <td>
-                    <button className="icon-btn" title={ad.active ? "Pause" : "Activate"} onClick={() => toggle(ad)}><Eye size={15}/></button>
+                    <button className="icon-btn" title={ad.active ? "Pause" : ad.businessSubmissionId ? "Publish business ad" : "Activate"} disabled={ad.deliveryStatus === "completed"} onClick={() => toggle(ad)}><Eye size={15}/></button>
+                    {ad.businessSubmissionId && <button className="secondary-btn" onClick={() => setBusinessPreview(ad.businessSubmissionId)}>Preview</button>}
                     <button className="icon-btn" title="Edit" onClick={() => startEdit(ad)}><Pencil size={15}/></button>
-                    <button className="icon-btn danger" title="Delete" onClick={() => remove(ad)}><Trash2 size={15}/></button>
+                    {!ad.businessSubmissionId && <button className="icon-btn danger" title="Delete" onClick={() => remove(ad)}><Trash2 size={15}/></button>}
                   </td>
                 </tr>
               ))}
@@ -291,6 +342,20 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
           </table>
         </div>
       )}
+      {businessPreview && <PrivateAdMedia api={api} token={token} path={`/admin/business-ads/${businessPreview}/video`} video onClose={() => setBusinessPreview(null)}/>}
+      <AdminBusinessAdReview api={api} token={token} onUpdated={load} categories={categories}/>
+      <h2>Legacy paid business promotion reports</h2>
+      <p className="muted">Latest 500 campaigns. Location targeting and purchased impression limits remain in effect. These feed promotions are separate from pre-roll ad frequency.</p>
+      {campaigns.length ? <div className="table-wrap"><table>
+        <thead><tr><th>Business / video</th><th>Location</th><th>Status</th><th>Amount</th><th>Impressions / target</th><th>Report</th></tr></thead>
+        <tbody>{campaigns.map(campaign => <tr key={campaign.id}>
+          <td>{campaign.businessName}<div>{campaign.videoId}</div></td>
+          <td>{campaign.countryCode}{campaign.regionCode ? ` / ${campaign.regionCode}` : ""}</td>
+          <td>{campaign.status}</td><td>₹{campaign.amountRupees}</td>
+          <td>{campaign.impressions} / {campaign.targetImpressions}</td>
+          <td>{campaign.remainingImpressions} remaining · {campaign.completionPercent.toFixed(1)}% complete{campaign.completedAt && <div>Completed {new Date(campaign.completedAt).toLocaleString()}</div>}</td>
+        </tr>)}</tbody>
+      </table></div> : <p className="muted">No paid business campaigns yet.</p>}
     </section>
   );
 }

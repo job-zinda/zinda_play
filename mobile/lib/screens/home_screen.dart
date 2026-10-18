@@ -4,6 +4,7 @@ import '../ads.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../widgets/video_card.dart';
+import '../widgets/homepage_promotion_banner.dart';
 import 'auth_screen.dart';
 import 'business_screen.dart';
 import 'collection_screen.dart';
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _videos = [];
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _popular = [];
+  Map<String, dynamic>? _promotion;
   String _category = '';
   bool _loading = true;
   String? _error;
@@ -66,12 +68,14 @@ class _HomeScreenState extends State<HomeScreen> {
         Api.instance.get('/videos${query.isEmpty ? '' : '?$query'}'),
         Api.instance.get('/categories'),
         Api.instance.get('/discover/popular-creators'),
+        Api.instance.get('/banner'),
       ]);
       if (!mounted) return;
       setState(() {
         _videos = _list(results[0]);
         _categories = _list(results[1]);
         _popular = _list(results[2]);
+        _promotion = results[3] == null ? null : Map<String, dynamic>.from(results[3] as Map);
         _featuredIndex = 0;
         _loading = false;
       });
@@ -115,6 +119,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _library() async {
     if (!Api.instance.signedIn) return _push(const AuthScreen());
+    try {
+      await Api.instance.refreshAccountRole();
+    } catch (error) {
+      if (mounted) _toast('$error');
+      return;
+    }
+    if (!mounted) return;
     switch (Api.instance.role) {
       case 'creator':
         return _push(const StudioScreen());
@@ -129,6 +140,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _profile() async {
     if (!Api.instance.signedIn) return _push(const AuthScreen());
+    try {
+      await Api.instance.refreshAccountRole();
+    } catch (error) {
+      if (mounted) _toast('$error');
+      return;
+    }
+    if (!mounted) return;
     final role = Api.instance.role;
     await showModalBottomSheet(
       context: context,
@@ -149,6 +167,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ListTile(leading: const Icon(Icons.business_center_outlined), title: const Text('Business dashboard'), onTap: () { Navigator.pop(ctx); _push(const BusinessScreen()); }),
           if (role == 'promoter')
             ListTile(leading: const Icon(Icons.campaign_outlined), title: const Text('Promoter dashboard'), onTap: () { Navigator.pop(ctx); _push(const PromoterScreen()); }),
+          if (Api.instance.promoterAccount)
+            ListTile(
+              leading: const Icon(Icons.swap_horiz),
+              title: Text(role == 'promoter' ? 'Switch to creator / apply' : 'Switch to promoter'),
+              onTap: () { Navigator.pop(ctx); _switchMode(role == 'promoter' ? 'creator' : 'promoter'); },
+            ),
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('Sign out'),
@@ -161,6 +185,25 @@ class _HomeScreenState extends State<HomeScreen> {
         ]),
       ),
     );
+  }
+
+  Future<void> _switchMode(String mode) async {
+    try {
+      final result = await Api.instance.switchMode(mode);
+      if (!mounted) return;
+      setState(() {});
+      if (result['role'] == 'creator') {
+        await _push(const StudioScreen());
+      } else if (result['role'] == 'promoter') {
+        await _push(const PromoterScreen());
+      } else {
+        _toast(result['approvalStatus'] == 'rejected'
+            ? 'Creator access was declined. Your promoter account is still available.'
+            : 'Creator application pending admin approval. Your promoter account and rewards are retained.');
+      }
+    } catch (error) {
+      if (mounted) _toast('$error');
+    }
   }
 
   Widget _avatar({double radius = 18}) {
@@ -260,6 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ]),
         ),
         const AdBanner(placement: 'top'),
+        if (_promotion != null) HomepagePromotionBanner(banner: _promotion!),
         if (_loading)
           _skeletons()
         else if (_error != null)

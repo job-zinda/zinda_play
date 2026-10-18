@@ -53,12 +53,30 @@ class Interests {
 }
 
 class AdsApi {
+  static final Map<String, int> _videoCounts = {};
+  static void markDelivered(String id) => _videoCounts[id] = 0;
+
+  static List<Map<String, dynamic>> dueVideos(List<Map<String, dynamic>> ads) {
+    return ads.where((ad) {
+      final id = '${ad['id']}';
+      final count = (_videoCounts[id] ?? 0) + 1;
+      _videoCounts[id] = count;
+      return count >= ((ad['frequency'] as num?)?.toInt() ?? 1);
+    }).toList();
+  }
+
+  static Future<bool> claim(Map<String, dynamic> ad) async {
+    final result = await Api.instance.post('/ads/${ad['id']}/impression');
+    return (result as Map)['accepted'] == true;
+  }
+
   static Future<List<Map<String, dynamic>>> fetch(String placement) async {
     try {
       final interests = Uri.encodeQueryComponent((await Interests.read()).join(','));
       final data = await Api.instance.get('/ads?placement=$placement&interests=$interests');
       return (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    } catch (_) {
+    } catch (error) {
+      debugPrint('Ad loading failed: $error');
       return [];
     }
   }
@@ -66,7 +84,9 @@ class AdsApi {
   static Future<void> track(String id, String event) async {
     try {
       await Api.instance.post('/ads/$id/$event');
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('Ad tracking failed: $error');
+    }
   }
 
   static Future<void> open(Map<String, dynamic> ad) async {
@@ -93,12 +113,12 @@ class _AdBannerState extends State<AdBanner> {
   @override
   void initState() {
     super.initState();
-    AdsApi.fetch(widget.placement).then((ads) {
+    AdsApi.fetch(widget.placement).then((ads) async {
       if (!mounted || ads.isEmpty) return;
       final ad = AdsApi.pick(ads);
+      if (!await AdsApi.claim(ad) || !mounted) return;
       setState(() => _ad = ad);
-      AdsApi.track('${ad['id']}', 'impression');
-    });
+    }).catchError((Object error) { debugPrint('Banner delivery failed: $error'); });
   }
 
   @override
@@ -112,12 +132,12 @@ class _AdBannerState extends State<AdBanner> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: Stack(children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 150),
+            AspectRatio(
+              aspectRatio: 3,
               child: Image.network(
                 assetUrl('${ad['mediaUrl']}'),
                 width: double.infinity,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
             ),
@@ -150,7 +170,6 @@ class PlayerGate extends StatefulWidget {
 class _PlayerGateState extends State<PlayerGate> {
   bool _loading = true;
   bool _done = false;
-  bool _counted = false;
   Map<String, dynamic>? _ad;
   VideoPlayerController? _video;
 
@@ -161,7 +180,7 @@ class _PlayerGateState extends State<PlayerGate> {
   }
 
   Future<void> _start() async {
-    final ads = await AdsApi.fetch('video');
+    final ads = AdsApi.dueVideos(await AdsApi.fetch('video'));
     if (!mounted) return;
     if (ads.isEmpty) return _finish();
     final ad = AdsApi.pick(ads);
@@ -169,6 +188,23 @@ class _PlayerGateState extends State<PlayerGate> {
     try {
       await controller.initialize();
     } catch (_) {
+      await controller.dispose();
+      if (mounted) _finish();
+      return;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    try {
+      if (!await AdsApi.claim(ad)) {
+        await controller.dispose();
+        if (mounted) _finish();
+        return;
+      }
+      AdsApi.markDelivered('${ad['id']}');
+    } catch (error) {
+      debugPrint('Video ad delivery failed: $error');
       await controller.dispose();
       if (mounted) _finish();
       return;
@@ -195,10 +231,6 @@ class _PlayerGateState extends State<PlayerGate> {
     if (value.hasError || (value.duration > Duration.zero && value.position >= value.duration)) {
       _finish();
       return;
-    }
-    if (value.isPlaying && !_counted) {
-      _counted = true;
-      AdsApi.track('${_ad!['id']}', 'impression');
     }
     setState(() {});
   }

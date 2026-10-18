@@ -8,6 +8,10 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { GridFSBucket, MongoClient, ObjectId } from "mongodb";
 import { open as openGeoReader } from "maxmind";
+import { initializeMemberships, membershipSettings, registerMembershipRoutes } from "./memberships.js";
+import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency } from "./ad-delivery.js";
+import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./account-modes.js";
+import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
@@ -166,6 +170,9 @@ const requireCreator = asyncRoute(async (req, res, next) => {
   }
   const user = await usersCollection().findOne({ _id: new ObjectId(session.userId) });
   if (!user) return res.status(401).json({ error: "Member account not found" });
+  if (user.accountType === "business" || (user.accountType === "promoter" && !user.creatorRequested)) {
+    return res.status(403).json({ error: "Apply for creator access before opening Creator studio." });
+  }
   if (user.approvalStatus !== "approved" && user.approvalStatus !== undefined) {
     return res.status(403).json({ error: user.approvalStatus === "rejected" ? "Your creator application was not approved." : "Your creator membership is awaiting admin approval." });
   }
@@ -184,7 +191,7 @@ function publicUser(user, token) {
     return { token, username: user.username, role: "business" };
   }
   if (user.accountType === "promoter") {
-    return { token, username: user.username, role: "promoter" };
+    return { token, username: user.username, role: "promoter", promoterAccount: true, approvalStatus: user.creatorRequested ? user.approvalStatus : null };
   }
   const approvalStatus = user.approvalStatus || "approved";
   return {
@@ -281,6 +288,7 @@ function publicBannerSettings(banner) {
 }
 const publicVideoQuery = {
   published: true,
+  approvalStatus: { $nin: ["pending", "rejected"] },
   $or: [{ bunnyVideoId: { $exists: false } }, { processingStatus: "ready" }]
 };
 async function viewerLocation(req) {
@@ -406,7 +414,8 @@ const publicAd = ad => ({
   mediaUrl: ad.mediaUrl,
   targetUrl: ad.targetUrl || "",
   skippable: ad.type === "video" ? ad.skippable !== false : true,
-  skipAfterSeconds: ad.skipAfterSeconds || 20
+  skipAfterSeconds: ad.skipAfterSeconds || 20,
+  frequency: ad.frequency || 1
 });
 const adminAd = ad => ({
   ...publicAd(ad),
@@ -416,7 +425,11 @@ const adminAd = ad => ({
   targetViews: ad.targetViews || 0,
   targetCity: ad.targetCity || "",
   targetCategories: Array.isArray(ad.targetCategories) ? ad.targetCategories : [],
-  createdAt: ad.createdAt
+  createdAt: ad.createdAt,
+  ...adReport(ad),
+  ...(ad.businessSubmissionId && ad.active === false && !ad.publishedAt ? { deliveryStatus: "unpublished" } : {}),
+  businessSubmissionId: ad.businessSubmissionId || null,
+  businessName: ad.businessName || ""
 });
 const isHttpUrl = value => {
   try {
@@ -434,13 +447,17 @@ function normalizeAd(body) {
   if (!title || title.length > 120) return { error: "Enter an ad name (up to 120 characters)." };
   if (!mediaUrl) return { error: type === "video" ? "Upload a video file for this ad." : "Upload an image for this ad." };
   if (!isUploadedAdMedia(mediaUrl)) {
-    if (!isHttpUrl(mediaUrl)) return { error: "Upload a file for this ad." };
-    if (type === "video" && !/\.(mp4|webm|ogv|ogg|m3u8)(?:$|[?#])/i.test(mediaUrl)) {
+    const businessMedia = /^\/business-ad-media\/[0-9a-f]{24}$/.test(mediaUrl);
+    if (!businessMedia && !isHttpUrl(mediaUrl)) return { error: "Upload a file for this ad." };
+    if (!businessMedia && type === "video" && !/\.(mp4|webm|ogv|ogg|m3u8)(?:$|[?#])/i.test(mediaUrl)) {
       return { error: "Video ads need a direct video file ending in .mp4 or .webm." };
     }
   }
   if (targetUrl && !isHttpUrl(targetUrl)) return { error: "The click-through URL must be a valid HTTP or HTTPS URL." };
   const fields = { title, type, mediaUrl, targetUrl, active: body?.active !== false };
+  const frequency = normalizeAdFrequency(body?.frequency);
+  if (frequency === null) return { error: "Ad frequency must be every 1, 5, or 10 videos." };
+  fields.frequency = frequency;
   const targetViews = Number(body?.targetViews ?? 0);
   if (!Number.isInteger(targetViews) || targetViews < 0 || targetViews > 100000000) {
     return { error: "Target views must be a whole number (0 means unlimited)." };
@@ -473,10 +490,7 @@ app.get("/api/ads", asyncRoute(async (req, res) => {
   // Ads stop once they reach their target number of views (0 = unlimited).
   const query = {
     active: { $ne: false },
-    $expr: { $or: [
-      { $lte: [{ $ifNull: ["$targetViews", 0] }, 0] },
-      { $lt: [{ $ifNull: ["$impressions", 0] }, "$targetViews"] }
-    ] }
+    $expr: adCapacityExpression
   };
   if (placement === "video") query.type = "video";
   else if (adPlacements.includes(placement)) Object.assign(query, { type: "banner", placement });
@@ -491,14 +505,30 @@ app.get("/api/ads", asyncRoute(async (req, res) => {
   ads = ads.filter(ad => !ad.targetCategories?.length || ad.targetCategories.some(id => interests.has(id)));
   res.json(ads.slice(0, 20).map(publicAd));
 }));
-const countAdEvent = field => asyncRoute(async (req, res) => {
-  if (ObjectId.isValid(req.params.id)) {
-    await adsCollection().updateOne({ _id: new ObjectId(req.params.id) }, { $inc: { [field]: 1 } });
+app.post("/api/ads/:id/impression", asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found." });
+  const accepted = await claimAdImpression(adsCollection(), new ObjectId(req.params.id));
+  if (accepted) {
+    const ad = await adsCollection().findOne({ _id: new ObjectId(req.params.id) });
+    if (ad?.businessSubmissionId && adReport(ad).deliveryStatus === "completed") {
+      await notificationsCollection().updateOne(
+        { type: "business_ad_completed", adId: ad._id.toString() },
+        { $setOnInsert: {
+          recipientId: ad.businessId, title: "Your ad target is complete",
+          message: `"${ad.title}" reached its ${ad.targetViews} impression target and has stopped serving.`,
+          readAt: null, createdAt: new Date().toISOString()
+        } }, { upsert: true }
+      );
+    }
   }
+  res.json({ accepted });
+}));
+app.post("/api/ads/:id/click", asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found." });
+  const result = await adsCollection().updateOne({ _id: new ObjectId(req.params.id) }, { $inc: { clicks: 1 } });
+  if (!result.matchedCount) return res.status(404).json({ error: "Ad not found." });
   res.status(204).end();
-});
-app.post("/api/ads/:id/impression", countAdEvent("impressions"));
-app.post("/api/ads/:id/click", countAdEvent("clicks"));
+}));
 app.put("/api/admin/ads/media", requireAdmin, asyncRoute(async (req, res) => {
   const contentType = String(req.get("Content-Type") || "").split(";")[0].toLowerCase();
   const isVideo = supportedAdVideoTypes.has(contentType);
@@ -534,7 +564,7 @@ async function streamGridFile(req, res, bucket, filesName, id, notFound) {
   const headers = {
     "Content-Type": file.metadata?.contentType || "application/octet-stream",
     "Accept-Ranges": "bytes",
-    "Cache-Control": "public, max-age=3600",
+    "Cache-Control": res.getHeader("Cache-Control") || "public, max-age=3600",
     "X-Content-Type-Options": "nosniff"
   };
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.get("Range") || "");
@@ -606,7 +636,26 @@ app.get("/api/admin/ads", requireAdmin, asyncRoute(async (_req, res) => {
   const ads = await adsCollection().find({}).sort({ createdAt: -1 }).toArray();
   res.json(ads.map(adminAd));
 }));
+app.get("/api/admin/campaigns", requireAdmin, asyncRoute(async (_req, res) => {
+  const campaigns = await businessCampaignsCollection().find({}).sort({ createdAt: -1 }).limit(500).toArray();
+  res.json(campaigns.map(campaign => ({
+    id: campaign._id.toString(),
+    businessName: campaign.businessName,
+    videoId: campaign.videoId,
+    amountRupees: campaign.amountRupees,
+    countryCode: campaign.countryCode,
+    regionCode: campaign.regionCode,
+    status: campaign.status,
+    targetImpressions: campaign.targetImpressions,
+    impressions: campaign.impressions || 0,
+    remainingImpressions: Math.max(0, campaign.targetImpressions - (campaign.impressions || 0)),
+    completionPercent: Math.min(100, (campaign.impressions || 0) / campaign.targetImpressions * 100),
+    createdAt: campaign.createdAt,
+    completedAt: campaign.completedAt || null
+  })));
+}));
 app.post("/api/admin/ads", requireAdmin, asyncRoute(async (req, res) => {
+  if (String(req.body?.mediaUrl || "").startsWith("/business-ad-media/")) return res.status(400).json({ error: "Business ad media can only be added through approval." });
   const { fields, error } = normalizeAd(req.body);
   if (error) return res.status(400).json({ error });
   const now = new Date().toISOString();
@@ -618,13 +667,33 @@ app.patch("/api/admin/ads/:id", requireAdmin, asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found" });
   const existing = await adsCollection().findOne({ _id: new ObjectId(req.params.id) });
   if (!existing) return res.status(404).json({ error: "Ad not found" });
+  if (existing.businessSubmissionId) {
+    const protectedFields = ["title", "type", "mediaUrl", "targetUrl", "targetCity", "targetCategories", "targetViews"];
+    if (protectedFields.some(key => req.body[key] !== undefined && JSON.stringify(req.body[key]) !== JSON.stringify(existing[key]))) {
+      return res.status(400).json({ error: "Business creative, destination, targeting and paid impression target are locked. Change only publication, frequency or skip settings." });
+    }
+  } else if (String(req.body?.mediaUrl || "").startsWith("/business-ad-media/")) {
+    return res.status(400).json({ error: "Business ad media can only be added through approval." });
+  }
   const { fields, error } = normalizeAd({ ...existing, ...req.body });
   if (error) return res.status(400).json({ error });
-  await adsCollection().updateOne({ _id: existing._id }, { $set: { ...fields, updatedAt: new Date().toISOString() } });
-  res.json(adminAd(await adsCollection().findOne({ _id: existing._id })));
+  const reopened = !fields.targetViews || (existing.impressions || 0) < fields.targetViews;
+  await adsCollection().updateOne({ _id: existing._id }, {
+    $set: {
+      ...fields, updatedAt: new Date().toISOString(),
+      ...(existing.businessSubmissionId && fields.active && !existing.publishedAt ? { publishedAt: new Date().toISOString() } : {}),
+      ...(!reopened && !existing.completedAt ? { completedAt: new Date().toISOString() } : {})
+    },
+    ...(reopened ? { $unset: { completedAt: "" } } : {})
+  });
+  const updatedAd = await adsCollection().findOne({ _id: existing._id });
+  await notifyBusinessAdPublication(database, updatedAd, existing.active);
+  res.json(adminAd(updatedAd));
 }));
 app.delete("/api/admin/ads/:id", requireAdmin, asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Ad not found" });
+  const candidate = await adsCollection().findOne({ _id: new ObjectId(req.params.id) });
+  if (candidate?.businessSubmissionId) return res.status(409).json({ error: "Paid business ads retain their analytics and history. Pause the ad instead of deleting it." });
   const existing = await adsCollection().findOneAndDelete({ _id: new ObjectId(req.params.id) });
   if (existing && isUploadedAdMedia(existing.mediaUrl || "")) {
     await adMediaBucket().delete(new ObjectId(existing.mediaUrl.split("/").pop())).catch(() => {});
@@ -1089,12 +1158,15 @@ app.post("/api/auth/login", asyncRoute(async (req, res) => {
   const token = createSession(user.username, role, user._id.toString());
   res.json(publicUser(user, token));
 }));
+registerAccountModeRoutes(app, {
+  users: usersCollection, notifications: notificationsCollection, requireMember, asyncRoute, publicUser,
+  userId: req => new ObjectId(req.session.userId),
+  saveSession: req => sessions.set(req.get("authorization").replace(/^Bearer\s+/i, ""), req.session)
+});
 app.get("/api/account", requireMember, asyncRoute(async (req, res) => {
   const user = await usersCollection().findOne({ _id: new ObjectId(req.session.userId) });
   if (!user) return res.status(401).json({ error: "Member account not found" });
-  if (user.accountType === "promoter") req.session.role = "promoter";
-  else if (user.approvalStatus === "approved" || user.approvalStatus === undefined) req.session.role = "creator";
-  else req.session.role = "member";
+  req.session.role = accountRole(user, req.session.role);
   res.json({
     username: user.username,
     displayName: user.displayName || user.username,
@@ -1102,6 +1174,7 @@ app.get("/api/account", requireMember, asyncRoute(async (req, res) => {
     profilePhotoUrl: user.profilePhotoImageId ? `/creators/${user._id}/profile-photo` : "",
     introVideoUrl: user.introVideoId ? `/creators/${user._id}/intro-video` : "",
     role: req.session.role,
+    promoterAccount: user.accountType === "promoter",
     approvalStatus: user.approvalStatus || "approved"
   });
 }));
@@ -1203,8 +1276,7 @@ app.patch("/api/business/profile", requireBusiness, asyncRoute(async (req, res) 
 }));
 app.get("/api/business/creators", requireBusiness, asyncRoute(async (_req, res) => {
   const creators = await usersCollection().find({
-    accountType: { $ne: "business" },
-    $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
+    ...approvedCreatorQuery
   }, {
     projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 }
   }).sort({ username: 1 }).toArray();
@@ -1261,8 +1333,7 @@ app.post("/api/business/creator-requests", requireBusiness, asyncRoute(async (re
 }));
 app.get("/api/admin/creators", requireAdmin, asyncRoute(async (_req, res) => {
   const creators = await usersCollection().find({
-    accountType: { $nin: ["business", "promoter"] },
-    $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
+    ...approvedCreatorQuery
   }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } }).sort({ username: 1 }).limit(500).toArray();
   res.json(creators.map(publicCreatorProfile));
 }));
@@ -1440,8 +1511,7 @@ async function findApprovedCreator(id) {
   if (!ObjectId.isValid(id)) return null;
   return usersCollection().findOne({
     _id: new ObjectId(id),
-    accountType: { $nin: ["business", "promoter"] },
-    $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
+    ...approvedCreatorQuery
   }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1, introVideoId: 1 } });
 }
 function publicCreatorProfile(creator) {
@@ -1459,8 +1529,7 @@ async function creatorFollowerCount(creatorId) {
 }
 app.get("/api/discover/creators", asyncRoute(async (_req, res) => {
   const creators = await usersCollection().find({
-    accountType: { $nin: ["business", "promoter"] },
-    $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
+    ...approvedCreatorQuery
   }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } })
     .sort({ displayName: 1, username: 1 })
     .limit(200)
@@ -1476,8 +1545,7 @@ app.get("/api/discover/popular-creators", asyncRoute(async (_req, res) => {
   const ids = counts.map(item => item._id).filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
   const creators = ids.length ? await usersCollection().find({
     _id: { $in: ids },
-    accountType: { $nin: ["business", "promoter"] },
-    $or: [{ approvalStatus: "approved" }, { approvalStatus: { $exists: false } }]
+    ...approvedCreatorQuery
   }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } }).toArray() : [];
   const byId = new Map(creators.map(creator => [creator._id.toString(), creator]));
   res.json(counts
@@ -1624,17 +1692,16 @@ app.get("/api/notifications", asyncRoute(async (req, res) => {
     .toArray();
   let approvalStatus = null;
   if (session.userId) {
-    const user = await usersCollection().findOne({ _id: new ObjectId(session.userId) }, { projection: { accountType: 1, approvalStatus: 1 } });
-    if (user?.accountType === "promoter") {
-      session.role = "promoter";
-    } else if (user?.accountType !== "business") {
-      approvalStatus = user?.approvalStatus || "approved";
-      session.role = approvalStatus === "approved" ? "creator" : "member";
+    const user = await usersCollection().findOne({ _id: new ObjectId(session.userId) }, { projection: { accountType: 1, approvalStatus: 1, creatorRequested: 1 } });
+    if (user) {
+      session.role = accountRole(user, session.role);
+      if (session.role !== "promoter" && session.role !== "business") approvalStatus = user.approvalStatus || "approved";
     }
   }
   res.json({
     notifications: notifications.map(({ _id, recipientId: _recipientId, ...notification }) => ({ id: _id, ...notification })),
     unreadCount: notifications.filter(notification => !notification.readAt).length,
+    role: session.role,
     approvalStatus
   });
 }));
@@ -2031,18 +2098,17 @@ const uploadVideo = asyncRoute(async (req, res) => {
   }
   res.status(201).json(safeVideo(video));
 });
-const TRIAL_DAYS = 7;
 const MEMBERSHIP_DAYS = 30;
-const membershipPriceRupees = () => Math.max(1, Number(process.env.CREATOR_MEMBERSHIP_PRICE_RUPEES) || 199);
 const creatorOrdersCollection = () => database.collection("creatorMembershipOrders");
 const addDays = (date, days) => new Date(date.getTime() + days * 86400000);
 // The free trial starts the first time a creator's membership is checked, so existing creators also get a full week.
 async function creatorMembershipState(userId) {
   const now = new Date();
+  const settings = await membershipSettings(database);
   let user = await usersCollection().findOne({ _id: userId }, { projection: { creatorMembership: 1 } });
   let membership = user?.creatorMembership;
   if (!membership?.trialEndsAt) {
-    membership = { ...membership, trialStartedAt: now.toISOString(), trialEndsAt: addDays(now, TRIAL_DAYS).toISOString() };
+    membership = { ...membership, trialStartedAt: now.toISOString(), trialEndsAt: addDays(now, settings.trialDays).toISOString() };
     await usersCollection().updateOne({ _id: userId, "creatorMembership.trialEndsAt": { $exists: false } }, { $set: { creatorMembership: membership } });
     user = await usersCollection().findOne({ _id: userId }, { projection: { creatorMembership: 1 } });
     membership = user.creatorMembership;
@@ -2056,9 +2122,12 @@ async function creatorMembershipState(userId) {
     trialEndsAt: trialEndsAt.toISOString(),
     paidUntil: paidUntil ? paidUntil.toISOString() : null,
     daysLeft: status === "expired" ? 0 : Math.max(0, Math.ceil((endsAt - now) / 86400000)),
-    priceRupees: membershipPriceRupees(),
-    periodDays: MEMBERSHIP_DAYS,
-    trialDays: TRIAL_DAYS
+    priceRupees: settings.plans.find(plan => plan.enabled).priceRupees,
+    periodDays: settings.plans.find(plan => plan.enabled).durationDays,
+    trialDays: settings.trialDays,
+    plans: settings.plans.filter(plan => plan.enabled),
+    qrUrl: settings.qrUrl,
+    paymentMethod: "manual"
   };
 }
 const requireActiveMembership = asyncRoute(async (req, res, next) => {
@@ -2091,39 +2160,14 @@ app.get("/api/creator/membership", requireCreator, asyncRoute(async (req, res) =
   }
   res.json(state);
 }));
-app.post("/api/creator/membership/order", requireCreator, asyncRoute(async (req, res) => {
-  let paymentConfig;
-  try {
-    paymentConfig = razorpayConfiguration();
-  } catch (error) {
-    return res.status(503).json({ error: error.message });
-  }
-  const amountRupees = membershipPriceRupees();
-  const auth = Buffer.from(`${paymentConfig.keyId}:${paymentConfig.keySecret}`).toString("base64");
-  const orderResponse = await fetch("https://api.razorpay.com/v1/orders", {
-    method: "POST",
-    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      amount: amountRupees * 100,
-      currency: "INR",
-      receipt: `zpm_${randomUUID().slice(0, 30)}`,
-      notes: { creatorId: req.creatorId.toString(), purpose: "creator_membership" }
-    })
-  });
-  const order = await orderResponse.json();
-  if (!orderResponse.ok || !order.id) {
-    console.error("Razorpay membership order failed:", order.error?.description || orderResponse.statusText);
-    return res.status(502).json({ error: "Could not create the Razorpay payment order. Try again later." });
-  }
-  await creatorOrdersCollection().insertOne({
-    creatorId: req.creatorId.toString(),
-    orderId: order.id,
-    amountRupees,
-    status: "created",
-    createdAt: new Date().toISOString()
-  });
-  res.status(201).json({ orderId: order.id, amount: amountRupees * 100, currency: "INR", keyId: paymentConfig.keyId, amountRupees });
-}));
+registerMembershipRoutes(app, { getDb: () => database, requireAdmin, requireCreator, asyncRoute, getState: creatorMembershipState });
+registerBusinessAdRoutes(app, {
+  getDb: () => database, requireBusiness, requireAdmin, asyncRoute,
+  getCategories: () => categories, streamFile: streamGridFile
+});
+app.post("/api/creator/membership/order", requireCreator, (_req, res) => {
+  res.status(410).json({ error: "Online membership checkout is postponed. Update the app and use QR payment with manual approval." });
+});
 app.post("/api/creator/membership/verify", requireCreator, asyncRoute(async (req, res) => {
   let paymentConfig;
   try {
@@ -2176,7 +2220,9 @@ app.get("/api/creator/referrals", requireCreator, asyncRoute(async (req, res) =>
 }));
 app.post("/api/admin/videos/upload", requireAdmin, uploadVideo);
 app.post("/api/creator/videos/upload", requireCreator, requireProfilePhoto, requireActiveMembership, uploadVideo);
-app.post("/api/business/videos/upload", requireBusiness, uploadVideo);
+app.post("/api/business/videos/upload", requireBusiness, (_req, res) => {
+  res.status(410).json({ error: "Use Business Ads to upload, pay by QR and submit your ad for review. Update your app." });
+});
 app.get("/api/business/videos", requireBusiness, asyncRoute(async (req, res) => {
   const videos = await videosCollection().find({ ownerBusinessId: req.businessId.toString() }).sort({ createdAt: -1 }).toArray();
   const videoIds = videos.map(video=>video._id);
@@ -2209,101 +2255,9 @@ app.get("/api/business/videos/processing", requireBusiness, asyncRoute(async (re
   }));
   res.json(updates);
 }));
-app.post("/api/business/videos/:id/campaign-order", requireBusiness, asyncRoute(async (req, res) => {
-  let paymentConfig;
-  try {
-    paymentConfig = razorpayConfiguration();
-  } catch (error) {
-    return res.status(503).json({ error: error.message });
-  }
-  if (!process.env.MAXMIND_DB_PATH) {
-    return res.status(503).json({ error: "Location targeting is not configured. Set MAXMIND_DB_PATH to a MaxMind GeoLite2 Country/City database." });
-  }
-  try {
-    await getGeoReader();
-  } catch (error) {
-    console.error("MaxMind GeoLite2 database could not be opened:", error.message);
-    return res.status(503).json({ error: "The MaxMind GeoLite2 database is unavailable. Check MAXMIND_DB_PATH and restart the API." });
-  }
-  const countryCode = typeof req.body?.countryCode === "string" ? req.body.countryCode.trim().toUpperCase() : "";
-  const regionCode = typeof req.body?.regionCode === "string" ? req.body.regionCode.trim().toUpperCase() : "";
-  const targetImpressions = Number(req.body?.targetImpressions);
-  if (!/^[A-Z]{2}$/.test(countryCode)) return res.status(400).json({ error: "Enter a valid two-letter country code." });
-  if (regionCode && !/^[A-Z0-9-]{1,12}$/.test(regionCode)) return res.status(400).json({ error: "Enter a valid state/region code (for example, MH)." });
-  if (!Number.isSafeInteger(targetImpressions) || targetImpressions < 1000 || targetImpressions > 1000000 || targetImpressions % 1000 !== 0) {
-    return res.status(400).json({ error: "Choose a target from 1,000 to 1,000,000 impressions in increments of 1,000." });
-  }
-  const video = await videosCollection().findOne({
-    _id: req.params.id,
-    ownerBusinessId: req.businessId.toString(),
-    businessCampaignStatus: { $in: ["unpaid", "awaiting_payment"] },
-    approvalStatus: "approved",
-    processingStatus: "ready"
-  });
-  if (!video) return res.status(404).json({ error: "An approved business video must finish encoding before you can promote it." });
-  const existingCampaign = await businessCampaignsCollection().findOne({
-    videoId: video._id,
-    businessId: req.businessId.toString(),
-    status: "awaiting_payment"
-  });
-  if (existingCampaign) {
-    const existingAmount = existingCampaign.amountRupees * 100;
-    return res.json({
-      campaignId: existingCampaign._id.toString(),
-      orderId: existingCampaign.orderId,
-      amount: existingAmount,
-      currency: existingCampaign.currency,
-      keyId: paymentConfig.keyId,
-      amountRupees: existingCampaign.amountRupees
-    });
-  }
-  if (await businessCampaignsCollection().findOne({ videoId: video._id })) {
-    return res.status(409).json({ error: "A campaign already exists for this video." });
-  }
-  const amountRupees = targetImpressions / 1000 * 500;
-  const amountPaise = amountRupees * 100;
-  const auth = Buffer.from(`${paymentConfig.keyId}:${paymentConfig.keySecret}`).toString("base64");
-  const orderResponse = await fetch("https://api.razorpay.com/v1/orders", {
-    method: "POST",
-    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      amount: amountPaise,
-      currency: "INR",
-      receipt: `zp_${video._id}`.slice(0, 40),
-      notes: { businessId: req.businessId.toString(), videoId: video._id }
-    })
-  });
-  const order = await orderResponse.json();
-  if (!orderResponse.ok || !order.id) {
-    console.error("Razorpay order creation failed:", order.error?.description || orderResponse.statusText);
-    return res.status(502).json({ error: "Could not create the Razorpay payment order. Try again later." });
-  }
-  const campaign = {
-    businessId: req.businessId.toString(),
-    businessName: req.business.businessName || req.session.username,
-    videoId: video._id,
-    orderId: order.id,
-    amountRupees,
-    currency: "INR",
-    cpmRupees: 500,
-    targetImpressions,
-    impressions: 0,
-    countryCode,
-    regionCode,
-    status: "awaiting_payment",
-    createdAt: new Date().toISOString()
-  };
-  const result = await businessCampaignsCollection().insertOne(campaign);
-  await videosCollection().updateOne({ _id: video._id }, { $set: { businessCampaignStatus: "awaiting_payment" } });
-  res.status(201).json({
-    campaignId: result.insertedId.toString(),
-    orderId: order.id,
-    amount: amountPaise,
-    currency: "INR",
-    keyId: paymentConfig.keyId,
-    amountRupees
-  });
-}));
+app.post("/api/business/videos/:id/campaign-order", requireBusiness, (_req, res) => {
+  res.status(410).json({ error: "New Razorpay campaigns are postponed. Use Business Ads QR payment and manual review." });
+});
 app.post("/api/business/campaigns/:id/verify-payment", requireBusiness, asyncRoute(async (req, res) => {
   let paymentConfig;
   try {
@@ -2873,6 +2827,8 @@ async function start() {
   const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10000 });
   await client.connect();
   database = client.db(process.env.MONGODB_DATABASE || "zinda_play");
+  await initializeMemberships(database);
+  await initializeBusinessAds(database);
 
   await database.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   for (const saved of await database.collection("sessions").find({ expiresAt: { $gt: new Date() } }).toArray()) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api.dart';
+import 'studio_screen.dart';
 
 class PromoterScreen extends StatefulWidget {
   const PromoterScreen({super.key});
@@ -35,6 +36,29 @@ class _PromoterScreenState extends State<PromoterScreen> {
   }
 
   String _rupees(dynamic v) => '₹${((v as num?) ?? 0).toStringAsFixed(2)}';
+  bool _switching = false;
+
+  Future<void> _switchToCreator() async {
+    setState(() { _switching = true; _error = null; });
+    try {
+      final result = await Api.instance.switchMode('creator');
+      if (!mounted) return;
+      if (result['role'] == 'creator') {
+        await Navigator.pushReplacement(context, MaterialPageRoute<void>(builder: (_) => const StudioScreen()));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          result['approvalStatus'] == 'rejected'
+              ? 'Creator access was declined. Switch back to promoter from your profile.'
+              : 'Creator application pending admin approval. Switch back to promoter from your profile; rewards are retained.',
+        )));
+        Navigator.pop(context);
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    } finally {
+      if (mounted) setState(() => _switching = false);
+    }
+  }
 
   Future<void> _withdraw() async {
     final handle = TextEditingController();
@@ -73,6 +97,12 @@ class _PromoterScreenState extends State<PromoterScreen> {
                   child: ListView(padding: const EdgeInsets.all(12), children: [
                     if (_error != null) Card(color: Colors.red.withValues(alpha: 0.18), child: Padding(padding: const EdgeInsets.all(12), child: Text(_error!))),
                     if (_message != null) Card(color: Colors.green.withValues(alpha: 0.18), child: Padding(padding: const EdgeInsets.all(12), child: Text(_message!))),
+                    OutlinedButton.icon(
+                      onPressed: _switching ? null : _switchToCreator,
+                      icon: const Icon(Icons.swap_horiz),
+                      label: Text(_switching ? 'Switching...' : 'Switch to creator / apply'),
+                    ),
+                    const Text('Creator access needs the normal admin approval, profile photo and trial/membership flow. Your promoter earnings and withdrawal history stay on this account.'),
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),

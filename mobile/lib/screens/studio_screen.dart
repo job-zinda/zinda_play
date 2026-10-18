@@ -4,12 +4,12 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../api.dart';
 import '../intro_video.dart';
 import 'upload_screen.dart';
 import 'wallet_screen.dart';
+import 'membership_screen.dart';
 
 class StudioScreen extends StatefulWidget {
   const StudioScreen({super.key});
@@ -19,7 +19,6 @@ class StudioScreen extends StatefulWidget {
 
 class _StudioScreenState extends State<StudioScreen> {
   final _api = Api.instance;
-  late final Razorpay _razorpay;
   Timer? _poll;
 
   Map<String, dynamic>? _account, _membership, _referrals, _wallet;
@@ -30,9 +29,6 @@ class _StudioScreenState extends State<StudioScreen> {
   @override
   void initState() {
     super.initState();
-    _razorpay = Razorpay()
-      ..on(Razorpay.EVENT_PAYMENT_SUCCESS, _onPaid)
-      ..on(Razorpay.EVENT_PAYMENT_ERROR, (PaymentFailureResponse r) => setState(() => _error = 'Payment failed: ${r.message ?? 'cancelled'}'));
     _load();
     _poll = Timer.periodic(const Duration(seconds: 10), (_) => _refreshProcessing());
   }
@@ -40,7 +36,6 @@ class _StudioScreenState extends State<StudioScreen> {
   @override
   void dispose() {
     _poll?.cancel();
-    _razorpay.clear();
     super.dispose();
   }
 
@@ -80,37 +75,11 @@ class _StudioScreenState extends State<StudioScreen> {
   }
 
   Future<void> _subscribe() async {
-    try {
-      final order = _map(await _api.post('/creator/membership/order'));
-      _razorpay.open({
-        'key': order['keyId'],
-        'amount': order['amount'],
-        'currency': order['currency'],
-        'order_id': order['orderId'],
-        'name': 'Zinda Play',
-        'description': 'Creator membership',
-        'prefill': {'name': _api.username},
-      });
-    } catch (e) {
-      setState(() => _error = '$e');
-    }
-  }
-
-  Future<void> _onPaid(PaymentSuccessResponse r) async {
-    try {
-      final state = await _api.post('/creator/membership/verify', {
-        'razorpay_order_id': r.orderId,
-        'razorpay_payment_id': r.paymentId,
-        'razorpay_signature': r.signature,
-      });
-      setState(() {
-        _membership = _map(state);
-        _message = 'Membership activated. Thank you!';
-        _error = null;
-      });
-    } catch (e) {
-      setState(() => _error = '$e');
-    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MembershipScreen()),
+    );
+    if (mounted) await _load();
   }
 
   Future<void> _pickPhoto() async {
@@ -250,7 +219,7 @@ class _StudioScreenState extends State<StudioScreen> {
         padding: const EdgeInsets.all(12),
         child: Row(children: [
           Expanded(child: Text(text)),
-          FilledButton(onPressed: _subscribe, child: Text(status == 'active' ? 'Extend' : 'Upgrade ₹${m['priceRupees']}')),
+          FilledButton(onPressed: _subscribe, child: const Text('Plans & payments')),
         ]),
       ),
     );

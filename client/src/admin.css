@@ -28,7 +28,7 @@
 .profile-drawer-user>div{display:grid;min-width:0;gap:4px}
 .profile-drawer-user strong{overflow:hidden;color:#f1eff8;text-overflow:ellipsis;white-space:nowrap}
 .profile-drawer-user small{color:var(--muted);font-size:12px}
-.profile-drawer-links{display:grid;gap:7px}
+.profile-drawer-links{display:grid;gap:7px;overflow-y:auto;min-height:0;flex-shrink:1}
 .profile-drawer-links button{display:flex;align-items:center;gap:12px;width:100%;padding:13px;border:0;border-radius:10px;background:transparent;color:#d3d0e0;text-align:left}
 .profile-drawer-links button:hover,.profile-drawer-links button.active{background:#ffffff0b;color:#c4b5fd}
 .profile-drawer-links .profile-drawer-signout{margin-top:12px;border-top:1px solid var(--line);border-radius:0;color:#ff9b9b}

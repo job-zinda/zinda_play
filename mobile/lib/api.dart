@@ -30,6 +30,7 @@ class Api {
   String? token;
   String? username;
   String? role;
+  bool promoterAccount = false;
 
   bool get signedIn => token != null;
 
@@ -37,15 +38,36 @@ class Api {
     token = await _storage.read(key: 'token');
     username = await _storage.read(key: 'username');
     role = await _storage.read(key: 'role');
+    promoterAccount = await _storage.read(key: 'promoterAccount') == 'true' || role == 'promoter';
   }
 
   Future<void> _save(Map<String, dynamic> data) async {
     token = data['token'] as String?;
     username = data['username'] as String?;
     role = data['role'] as String?;
+    promoterAccount = data['promoterAccount'] == true;
     await _storage.write(key: 'token', value: token);
     await _storage.write(key: 'username', value: username);
     await _storage.write(key: 'role', value: role);
+    await _storage.write(key: 'promoterAccount', value: '$promoterAccount');
+  }
+
+  Future<Map<String, dynamic>> switchMode(String mode) async {
+    final data = Map<String, dynamic>.from(await post('/account/mode', {'mode': mode}) as Map);
+    role = data['role'] as String;
+    promoterAccount = data['promoterAccount'] == true;
+    await _storage.write(key: 'role', value: role);
+    await _storage.write(key: 'promoterAccount', value: '$promoterAccount');
+    return data;
+  }
+
+  Future<void> refreshAccountRole() async {
+    if (!signedIn || role == 'business' || role == 'admin') return;
+    final data = Map<String, dynamic>.from(await get('/account') as Map);
+    role = data['role'] as String;
+    promoterAccount = data['promoterAccount'] == true;
+    await _storage.write(key: 'role', value: role);
+    await _storage.write(key: 'promoterAccount', value: '$promoterAccount');
   }
 
   Map<String, String> get _headers => {
@@ -136,6 +158,7 @@ class Api {
     token = null;
     username = null;
     role = null;
+    promoterAccount = false;
     await _storage.deleteAll();
   }
 }

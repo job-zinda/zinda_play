@@ -3,6 +3,8 @@ import { Play, Search, Plus, Film, LayoutDashboard, X, Trash2, ExternalLink, Spa
 import VideoCard, { VideoCardSkeleton } from "./VideoCard.jsx";
 import { AdSlot, AdminAds, PlayerGate, recordInterest } from "./Ads.jsx";
 import { IntroVideo, IntroManager } from "./IntroVideo.jsx";
+import { AdminMembership, CreatorMembership } from "./Membership.jsx";
+import { BusinessAds } from "./BusinessAds.jsx";
 
 const API = import.meta.env.DEV
   ? "/api"
@@ -17,6 +19,7 @@ const apiAssetSrc = imageUrl => !imageUrl
 const isDirectVideoUrl = url => /\.(mp4|webm|ogv|ogg)(?:$|[?#])/i.test(url);
 function App() {
   const [videos, setVideos] = useState([]);
+  const [publicVideos, setPublicVideos] = useState([]);
   const [categories, setCategories] = useState([]);
   const [banner, setBanner] = useState(null);
   const [bannerForm, setBannerForm] = useState(blankBanner);
@@ -52,6 +55,8 @@ function App() {
   const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem("adminToken") || "");
   const [authRole, setAuthRole] = useState(() => sessionStorage.getItem("authRole") || (sessionStorage.getItem("adminToken") ? "admin" : ""));
   const [signedInUsername, setSignedInUsername] = useState(() => sessionStorage.getItem("signedInUsername") || "");
+  const [promoterAccount, setPromoterAccount] = useState(() => sessionStorage.getItem("promoterAccount") === "true" || sessionStorage.getItem("authRole") === "promoter");
+  const [switchingMode, setSwitchingMode] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [pendingMembers, setPendingMembers] = useState([]);
@@ -59,7 +64,6 @@ function App() {
   const [pendingPromoterWithdrawals, setPendingPromoterWithdrawals] = useState([]);
   const [videoRejectionReasons, setVideoRejectionReasons] = useState({});
   const [videoPreviewOpen, setVideoPreviewOpen] = useState({});
-  const [campaignFocusVideoId, setCampaignFocusVideoId] = useState("");
   const [creatorStats, setCreatorStats] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [promoterWallet, setPromoterWallet] = useState(null);
@@ -85,10 +89,6 @@ function App() {
   const [businessCreators, setBusinessCreators] = useState([]);
   const [businessInvitations, setBusinessInvitations] = useState([]);
   const [businessVideos, setBusinessVideos] = useState([]);
-  const [businessVideoTitle, setBusinessVideoTitle] = useState("");
-  const [businessVideoDescription, setBusinessVideoDescription] = useState("");
-  const [businessVideoFile, setBusinessVideoFile] = useState(null);
-  const [campaignSettings, setCampaignSettings] = useState({});
   const [creatorInvitations, setCreatorInvitations] = useState([]);
   const [selectedCreatorId, setSelectedCreatorId] = useState("");
   const [businessInviteMessage, setBusinessInviteMessage] = useState("");
@@ -114,7 +114,6 @@ function App() {
   const [adminCreatorId, setAdminCreatorId] = useState("");
   const [adminCreatorText, setAdminCreatorText] = useState("");
   const [adminCreatorRequestId, setAdminCreatorRequestId] = useState("");
-  const [businessUploading, setBusinessUploading] = useState(false);
   const [profileEditPhoto, setProfileEditPhoto] = useState(null);
   const [profileEditPhotoPreview, setProfileEditPhotoPreview] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
@@ -135,11 +134,13 @@ function App() {
         fetch(`${API}/discover/popular-creators`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
       if (!Array.isArray(v) || !Array.isArray(c)) throw new Error("Invalid API response");
-      setVideos(v); setCategories(c); setBanner(b); setPopularCreators(Array.isArray(pc) ? pc : []);
+      setPublicVideos(v); setCategories(c); setBanner(b); setPopularCreators(Array.isArray(pc) ? pc : []);
     } catch { setLoadFailed(true); setError("Could not connect to the API. Check VITE_API_URL and make sure the backend is available."); }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (page === "home") load();
+  }, [page, authRole]);
   useEffect(() => {
     if (!profileDrawerOpen) return undefined;
     const closeOnEscape = event => {
@@ -222,13 +223,8 @@ function App() {
     },{threshold:0.5});
     document.querySelectorAll(".vcard[data-sponsored='true']").forEach(card=>observer.observe(card));
     return ()=>observer.disconnect();
-  },[videos,search,activeCategory,loading,page]);
+  },[publicVideos,search,activeCategory,loading,page]);
   useEffect(() => { setCardLikes({}); }, [adminToken]);
-  useEffect(() => {
-    if (page !== "business" || !campaignFocusVideoId || !businessVideos.some(video => video.id === campaignFocusVideoId)) return;
-    document.getElementById(`business-video-${campaignFocusVideoId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    setCampaignFocusVideoId("");
-  }, [page, businessVideos, campaignFocusVideoId]);
   useEffect(() => {
     if (!watchSession || selected?.id !== watchSession.videoId) return undefined;
     watchActiveSeconds.current = 0;
@@ -257,14 +253,14 @@ function App() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [watchSession, selected?.id, adminToken, authRole]);
-  const sponsoredVideos = useMemo(() => videos.filter(video => video.isSponsored), [videos]);
-  const publicLibraryVideos = useMemo(() => videos.filter(video =>
+  const sponsoredVideos = useMemo(() => publicVideos.filter(video => video.isSponsored), [publicVideos]);
+  const publicLibraryVideos = useMemo(() => publicVideos.filter(video =>
     video.published &&
     video.ownerType !== "business" &&
     video.approvalStatus !== "pending" &&
     (!video.bunnyVideoId || video.processingStatus === "ready") &&
     !video.isSponsored
-  ), [videos]);
+  ), [publicVideos]);
   const trendingVideos = useMemo(() => [...publicLibraryVideos]
     .filter(video => Number(video.views || 0) > 0)
     .sort((a, b) => Number(b.views || 0) - Number(a.views || 0))
@@ -343,6 +339,7 @@ function App() {
         if (!watchStartResponse.ok) throw new Error(watchStart.error || "Unable to start promoter reward tracking.");
       }
       setVideos(current => current.map(item => item.id === video.id ? { ...item, views: viewData.views } : item));
+      setPublicVideos(current => current.map(item => item.id === video.id ? { ...item, views: viewData.views } : item));
       setSelected(current => current?.id === video.id ? { ...current, views: viewData.views } : current);
       setVideoInteractions(interactionsData);
       if (watchStart) setWatchSession({
@@ -401,16 +398,6 @@ function App() {
     setVideoInteractions({ likeCount: 0, commentCount: 0, liked: false, comments: [] });
     setCommentText("");
   }
-  async function promoteBusinessVideo(video) {
-    setCampaignFocusVideoId(video.id);
-    setSelected(null);
-    setPage("business");
-    try {
-      await loadBusiness();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
   async function shareVideo(video) {
     const shareUrl = new URL(`${API}/share/video/${encodeURIComponent(video.id)}`, window.location.origin).toString();
     try {
@@ -440,14 +427,16 @@ function App() {
   }
   useEffect(() => {
     const videoId = new URLSearchParams(window.location.search).get("video");
-    const video = videos.find(item => item.id === videoId);
+    const video = publicVideos.find(item => item.id === videoId);
     if (video && !selected) watchVideo(video);
-  }, [videos, selected]);
+  }, [publicVideos, selected]);
 
   function clearAdminSession() {
     sessionStorage.removeItem("adminToken");
     sessionStorage.removeItem("authRole");
     sessionStorage.removeItem("signedInUsername");
+    sessionStorage.removeItem("promoterAccount");
+    setPromoterAccount(false);
     setAdminToken("");
     setAuthRole("");
     setSignedInUsername("");
@@ -487,10 +476,10 @@ function App() {
     if (!response.ok) throw new Error(data.error || "Unable to load notifications.");
     setNotifications(data.notifications);
     setUnreadNotifications(data.unreadCount);
-    if (data.approvalStatus) {
-      const role = data.approvalStatus === "approved" ? "creator" : "member";
-      setAuthRole(role);
-      sessionStorage.setItem("authRole", role);
+    if (data.role || data.approvalStatus) {
+      const nextRole = data.role || (data.approvalStatus === "approved" ? "creator" : "member");
+      setAuthRole(nextRole);
+      sessionStorage.setItem("authRole", nextRole);
     }
     if (role === "admin") {
       const [membersResponse, videosResponse, withdrawalsResponse] = await Promise.all([
@@ -551,6 +540,8 @@ function App() {
       throw new Error(data.error || "Your session expired. Please sign in again.");
     }
     if (!response.ok) throw new Error(data.error || "Unable to load your profile.");
+    setPromoterAccount(data.promoterAccount === true);
+    sessionStorage.setItem("promoterAccount", String(data.promoterAccount === true));
     setAccountProfile({
       displayName: data.displayName || data.username || "",
       bio: data.bio || "",
@@ -674,82 +665,6 @@ function App() {
       setError(err.message);
     } finally {
       setDiscoverFollowSubmitting(false);
-    }
-  }
-  async function uploadBusinessVideo(event) {
-    event.preventDefault();
-    if (!businessVideoFile || !businessVideoTitle.trim()) {
-      setError("Add a video title and choose a video file.");
-      return;
-    }
-    if (!businessVideoFile.type.startsWith("video/") || businessVideoFile.size > 2 * 1024 * 1024 * 1024) {
-      setError("Choose a supported video file up to 2 GB.");
-      return;
-    }
-    setBusinessUploading(true);
-    setUploadProgress(0);
-    try {
-      await uploadVideoFile(businessVideoFile, true);
-      setBusinessVideoFile(null);
-      setBusinessVideoTitle("");
-      setBusinessVideoDescription("");
-      await loadBusiness();
-      setError("Video uploaded and submitted for admin approval. Once approved and encoded, set its location and pay to promote it.");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusinessUploading(false);
-    }
-  }
-  async function launchBusinessCampaign(video) {
-    const settings = campaignSettings[video.id] || {};
-    const targetImpressions = Number(settings.targetImpressions || 1000);
-    try {
-      const response = await fetch(`${API}/business/videos/${encodeURIComponent(video.id)}/campaign-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
-        body: JSON.stringify({
-          countryCode: (settings.countryCode || "").toUpperCase(),
-          regionCode: (settings.regionCode || "").toUpperCase(),
-          targetImpressions
-        })
-      });
-      const order = await response.json();
-      if (!response.ok) throw new Error(order.error || "Could not start paid promotion.");
-      if (!window.Razorpay) {
-        await new Promise((resolveScript,rejectScript)=>{
-          const script=document.createElement("script");
-          script.src="https://checkout.razorpay.com/v1/checkout.js";
-          script.onload=resolveScript;
-          script.onerror=()=>rejectScript(new Error("Razorpay Checkout could not load."));
-          document.body.appendChild(script);
-        });
-      }
-      const checkout=new window.Razorpay({
-        key:order.keyId,
-        amount:order.amount,
-        currency:order.currency,
-        name:businessProfile.businessName,
-        description:`${targetImpressions.toLocaleString()} location-targeted video impressions`,
-        order_id:order.orderId,
-        handler:async payment=>{
-          try {
-            const verifyResponse=await fetch(`${API}/business/campaigns/${encodeURIComponent(order.campaignId)}/verify-payment`,{
-              method:"POST",
-              headers:{"Content-Type":"application/json",Authorization:`Bearer ${adminToken}`},
-              body:JSON.stringify(payment)
-            });
-            const result=await verifyResponse.json();
-            if(!verifyResponse.ok) throw new Error(result.error || "Payment could not be verified.");
-            await loadBusiness();
-            setError("Payment verified. Your location-targeted video promotion is now live.");
-          } catch(err) { setError(err.message); }
-        },
-        modal:{ondismiss:()=>setError("Payment was not completed. Your video remains unpublished.")}
-      });
-      checkout.open();
-    } catch (err) {
-      setError(err.message);
     }
   }
   async function openProfile() {
@@ -1210,47 +1125,39 @@ function App() {
   }
   async function subscribeMembership() {
     setMembershipPaying(true);
+  }
+  async function switchAccountMode(mode) {
+    setSwitchingMode(true);
+    setError("");
     try {
-      const response = await fetch(`${API}/creator/membership/order`, { method: "POST", headers: { Authorization: `Bearer ${adminToken}` } });
-      const order = await response.json();
-      if (!response.ok) throw new Error(order.error || "Could not start the membership payment.");
-      if (!window.Razorpay) {
-        await new Promise((resolveScript, rejectScript) => {
-          const script = document.createElement("script");
-          script.src = "https://checkout.razorpay.com/v1/checkout.js";
-          script.onload = resolveScript;
-          script.onerror = () => rejectScript(new Error("Razorpay Checkout could not load."));
-          document.body.appendChild(script);
-        });
-      }
-      const checkout = new window.Razorpay({
-        key: order.keyId,
-        amount: order.amount,
-        currency: order.currency,
-        name: "Zinda Play",
-        description: "Creator membership · 30 days",
-        order_id: order.orderId,
-        handler: async payment => {
-          try {
-            const verify = await fetch(`${API}/creator/membership/verify`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
-              body: JSON.stringify(payment)
-            });
-            const result = await verify.json();
-            if (!verify.ok) throw new Error(result.error || "Payment could not be verified.");
-            setMembership(result);
-            setError("Payment verified. Your creator membership is active.");
-          } catch (err) { setError(err.message); }
-          finally { setMembershipPaying(false); }
-        },
-        modal: { ondismiss: () => { setMembershipPaying(false); setError("Payment was not completed."); } }
+      const response = await fetch(`${API}/account/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        body: JSON.stringify({ mode })
       });
-      checkout.open();
-    } catch (err) {
-      setError(err.message);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not switch account mode.");
+      sessionStorage.setItem("authRole", data.role);
+      sessionStorage.setItem("promoterAccount", "true");
+      setAuthRole(data.role);
+      setPromoterAccount(true);
+      setProfileDrawerOpen(false);
+      setSelected(null);
       setMembershipPaying(false);
-    }
+      setMembership(null);
+      setVideos([]);
+      if (data.role === "creator") {
+        await loadCreator();
+        setPage("creator");
+      } else if (data.role === "promoter") {
+        await loadPromoterWallet();
+        setPage("promoter");
+      } else {
+        setPage("notifications");
+        setError(data.approvalStatus === "rejected" ? "Creator access was declined. You can still switch back to your promoter account." : "Creator application submitted. Admin approval is required; your promoter account and rewards are preserved.");
+      }
+    } catch (err) { setError(err.message); }
+    finally { setSwitchingMode(false); }
   }
   async function openCreatorDashboard() {
     setSelected(null);
@@ -1312,24 +1219,20 @@ function App() {
     const timer = window.setInterval(update, 15000);
     return () => { stopped = true; window.clearInterval(timer); };
   }, [adminToken, authRole, page]);
-  function uploadVideoFile(file, businessUpload = false) {
+  function uploadVideoFile(file) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const uploadRoute = businessUpload
-        ? "/business/videos/upload"
-        : `/${authRole === "creator" ? "creator" : "admin"}/videos/upload`;
+      const uploadRoute = `/${authRole === "creator" ? "creator" : "admin"}/videos/upload`;
       xhr.open("POST", `${API}${uploadRoute}`);
       xhr.setRequestHeader("Authorization", `Bearer ${adminToken}`);
       xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-      xhr.setRequestHeader("X-Video-Title", businessUpload ? businessVideoTitle : form.title);
-      xhr.setRequestHeader("X-Video-Description", businessUpload ? businessVideoDescription : form.description);
-      xhr.setRequestHeader("X-Video-Category", businessUpload ? "cat-learning" : form.categoryId);
-      if (!businessUpload) {
+      xhr.setRequestHeader("X-Video-Title", form.title);
+      xhr.setRequestHeader("X-Video-Description", form.description);
+      xhr.setRequestHeader("X-Video-Category", form.categoryId);
         xhr.setRequestHeader("X-Video-Collection-Name", encodeURIComponent(form.collectionName.trim()));
         xhr.setRequestHeader("X-Video-Collection-Type", form.collectionType);
         xhr.setRequestHeader("X-Video-Episode-Number", String(form.episodeNumber));
         xhr.setRequestHeader("X-Video-Target-City", encodeURIComponent(form.targetCity.trim()));
-      }
       if (authRole === "creator") {
         xhr.setRequestHeader("X-Video-Promotion-Url", form.promotionUrl.trim());
         xhr.setRequestHeader("X-Video-Promotion-Type", form.promotionType);
@@ -1458,6 +1361,8 @@ function App() {
       setAdminToken(data.token);
       setAuthRole(data.role);
       setSignedInUsername(data.username);
+      setPromoterAccount(data.promoterAccount === true);
+      sessionStorage.setItem("promoterAccount", String(data.promoterAccount === true));
       setPassword("");
       setRegistering(false);
       if (referrerPromoterId && (!registering || registrationType === "member")) {
@@ -1733,6 +1638,9 @@ function App() {
       <nav>{authRole === "admin" ? <><button className={page === "admin" || page === "add" || page === "banner" || page === "ads" ? "nav-active" : ""} onClick={openAdmin}><LayoutDashboard size={16}/> Dashboard</button><button className={page === "notifications" ? "nav-active" : ""} onClick={openNotifications}><Bell size={16}/> Notifications{unreadNotifications > 0 && <span className="notification-count">{unreadNotifications}</span>}</button><button className="profile-menu-trigger" onClick={openDiscover} aria-label="Discover creator and brand profiles"><UserRound size={18}/></button><button onClick={logout}><LogOut size={16}/> Sign out</button></> : authRole === "business" ? <><button className={page === "business" ? "nav-active" : ""} onClick={openBusiness}><LayoutDashboard size={16}/> Business</button><button className={page === "notifications" ? "nav-active" : ""} onClick={openNotifications}><Bell size={16}/> Notifications</button><button className="profile-menu-trigger" onClick={openDiscover} aria-label="Discover creator and brand profiles"><UserRound size={18}/></button><button onClick={logout}><LogOut size={16}/> Sign out</button></> : ["creator", "member", "promoter"].includes(authRole) ? <><button className={`topbar-notifications ${page === "notifications" ? "nav-active" : ""}`} onClick={openNotifications} aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ""}`}><Bell size={17}/>{unreadNotifications > 0 && <span className="notification-count">{unreadNotifications}</span>}</button><button className={`profile-menu-trigger ${page === "my-creator-profile" ? "nav-active" : ""}`} onClick={authRole === "creator" ? openMyCreatorProfile : ()=>{setProfileDrawerOpen(true);loadAccountProfile().catch(err=>setError(err.message));}} aria-label={authRole === "creator" ? "View your creator profile" : "Open profile menu"} aria-expanded={authRole === "creator" ? undefined : profileDrawerOpen}>{accountProfile.profilePhotoUrl ? <img src={apiAssetSrc(accountProfile.profilePhotoUrl)} alt=""/> : <UserRound size={18}/>}</button></> : null}</nav>
       <div className="top-pill"><span className="live-dot"/> VIDEO STREAMING</div>
     </header>
+    {authRole === "admin" && adminToken && <div className="admin-actions"><button className="secondary-btn" onClick={() => { setSelected(null); setPage("membership-admin"); }}>Membership plans & payments</button></div>}
+    {authRole === "creator" && adminToken && page === "creator" && <button className="secondary-btn" onClick={subscribeMembership}>Membership plans, renewal & payment status</button>}
+    {membershipPaying && authRole === "creator" && adminToken && <div className="membership-dialog" role="dialog" aria-modal="true" aria-label="Creator membership"><CreatorMembership api={API} token={adminToken} onUpdated={setMembership} onClose={() => setMembershipPaying(false)}/></div>}
     {profileDrawerOpen && <div className="profile-drawer-layer">
       <button className="profile-drawer-backdrop" aria-label="Close profile menu" onClick={()=>setProfileDrawerOpen(false)}/>
       <aside className="profile-drawer" aria-label="Main menu">
@@ -1744,6 +1652,7 @@ function App() {
           {isViewerRole && <button className={page === "profile" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openProfile();}}><UserRound size={18}/> Edit profile</button>}
           {authRole === "creator" && <><button className={page === "creator" || page === "add" || page === "creator-analytics" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openCreatorDashboard();}}><LayoutDashboard size={18}/> Creator studio</button><button className={page === "invitations" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openBrandInvitations();}}><Bell size={18}/> Brand invitations</button><button className={page === "admin-chat" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openAdminChat();}}><MessageCircle size={18}/> Chat with admin</button><button className={page === "wallet" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openWallet();}}><WalletCards size={18}/> Wallet</button></>}
           {authRole === "promoter" && <button className={page === "promoter" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openPromoterDashboard();}}><WalletCards size={18}/> Promoter dashboard</button>}
+          {promoterAccount && <button disabled={switchingMode} onClick={() => switchAccountMode(authRole === "promoter" ? "creator" : "promoter")}><RefreshCw size={18}/>{switchingMode ? "Switching..." : authRole === "promoter" ? "Switch to creator / apply" : "Switch to promoter"}</button>}
           {authRole
             ? <button className="profile-drawer-signout" onClick={()=>{setProfileDrawerOpen(false);logout();}}><LogOut size={18}/> Sign out</button>
             : <button className={`profile-drawer-signin ${page === "admin" ? "active" : ""}`} onClick={()=>{setProfileDrawerOpen(false);openAdmin();}}><UserRound size={18}/> Sign in</button>}
@@ -1770,7 +1679,7 @@ function App() {
         {selected.isBusinessPreview && <div className="membership-status"><Clock3 size={20}/><div><strong>Private business preview</strong><span>This preview is only available to your business account. It is not publicly visible until approved and promoted.</span></div></div>}
         {selected.creatorProfile && <div className="creator-profile">{selected.creatorProfile.profilePhotoUrl ? <img className="creator-avatar" src={apiAssetSrc(selected.creatorProfile.profilePhotoUrl)} alt={`${selected.creatorProfile.displayName}'s profile`}/> : <span className="creator-avatar"><UserRound size={18}/></span>}<span className="creator-profile-details"><small>CREATOR</small><strong>{selected.creatorProfile.displayName || selected.creatorProfile.username}</strong>{selected.creatorProfile.bio && <span className="creator-bio">{selected.creatorProfile.bio}</span>}<span className="creator-follower-count">{(creatorFollowData.creatorId === selected.creatorProfile.id ? creatorFollowData.followerCount : 0).toLocaleString()} followers</span><IntroVideo api={API} url={selected.creatorProfile.introVideoUrl}/></span>{!(creatorFollowData.creatorId === selected.creatorProfile.id && creatorFollowData.isSelf) && authRole !== "business" && <button className={`creator-follow-btn ${creatorFollowData.following ? "following" : ""}`} disabled={creatorFollowLoading || creatorFollowSubmitting || creatorFollowData.creatorId !== selected.creatorProfile.id} onClick={toggleCreatorFollow}><UserPlus size={16}/>{creatorFollowData.following ? "Unfollow" : "Follow"}</button>}</div>}
         <div className="player-wrap" onContextMenu={event=>event.preventDefault()}><span className="player-view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span><PlayerGate key={selected.id} api={API}>{selected.playbackUrl ? isDirectVideoUrl(selected.playbackUrl) ? <video src={selected.playbackUrl} title={selected.title} controls controlsList="nodownload noremoteplayback" disablePictureInPicture disableRemotePlayback playsInline/> : <iframe src={selected.playbackUrl} title={selected.title} allow="autoplay; encrypted-media" allowFullScreen/> : <div className="empty-player"><Play size={48}/><p>Add a Bunny Stream player URL in Admin to enable playback.</p></div>}</PlayerGate></div>
-        <div className="watch-meta"><div><span className="eyebrow">{selected.category?.name || (selected.isSponsored ? "PROMOTIONAL VIDEO" : "ZINDA PLAY ORIGINAL")}</span><h1>{selected.title}</h1><p>{selected.description}</p><span className="view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span></div><div className="watch-actions">{selected.promotionUrl && /^https:\/\/\S+$/i.test(selected.promotionUrl) && <a className="primary-btn" href={selected.promotionUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={17}/> Let's Plan</a>}{authRole==="business" && selected.isBusinessPreview && selected.isBusinessOwner && selected.approvalStatus === "approved" && selected.businessCampaignStatus === "unpaid" && <button className="primary-btn" onClick={()=>promoteBusinessVideo(selected)}><Sparkles size={17}/> Promote</button>}<button className="secondary-btn share-btn" onClick={() => shareVideo(selected)}><Share2 size={17}/> Share video</button></div></div>
+        <div className="watch-meta"><div><span className="eyebrow">{selected.category?.name || (selected.isSponsored ? "PROMOTIONAL VIDEO" : "ZINDA PLAY ORIGINAL")}</span><h1>{selected.title}</h1><p>{selected.description}</p><span className="view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span></div><div className="watch-actions">{selected.promotionUrl && /^https:\/\/\S+$/i.test(selected.promotionUrl) && <a className="primary-btn" href={selected.promotionUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={17}/> Let's Plan</a>}<button className="secondary-btn share-btn" onClick={() => shareVideo(selected)}><Share2 size={17}/> Share video</button></div></div>
         {selected.isBusinessPreview ? null : <section className="video-discussion">
           <div className="discussion-actions">
             <button className={`secondary-btn like-btn ${videoInteractions.liked ? "liked" : ""}`} disabled={likeSubmitting} onClick={toggleVideoLike}><Heart size={17} fill={videoInteractions.liked ? "currentColor" : "none"}/>{videoInteractions.liked ? "Liked" : "Like"} · {videoInteractions.likeCount}</button>
@@ -1858,25 +1767,8 @@ function App() {
           </form>
           <h2 className="business-invitations-heading">My creator requests</h2>{businessInvitations.length ? <div className="notification-list">{businessInvitations.map(invitation=><article className="notification-item" key={invitation.id}><div><strong>{invitation.creatorDisplayName || invitation.creatorUsername}</strong><p>{invitation.note}</p><time>Sent {new Date(invitation.createdAt).toLocaleString()}</time></div><span className={`status ${invitation.status==="handled"?"published":""}`}>{invitation.status==="handled"?"invitation sent":invitation.status}</span></article>)}</div> : <p className="muted">No creators selected yet.</p>}
         </section>
-        <section className="notification-section"><h2>Upload and promote a video</h2><p className="muted">Business videos are reviewed by an admin before they can be promoted. After approval and encoding, select a location and pay ₹500 per 1,000 impressions. Active promotions appear at the top of Explore for viewers whose approximate IP location matches your target.</p>
-          <form className="business-invite-form" onSubmit={uploadBusinessVideo}>
-            <label>Video title<input required maxLength={120} value={businessVideoTitle} disabled={businessUploading} onChange={event=>setBusinessVideoTitle(event.target.value)}/></label>
-            <label>Description<textarea maxLength={2000} rows={3} value={businessVideoDescription} disabled={businessUploading} onChange={event=>setBusinessVideoDescription(event.target.value)}/></label>
-            <label>Video file<input required type="file" accept="video/*" disabled={businessUploading} onChange={event=>setBusinessVideoFile(event.target.files?.[0]||null)}/></label>
-            {businessVideoFile && <p className="muted">{businessVideoFile.name} · {businessUploading?`${uploadProgress}% uploaded`:"Ready to upload"}</p>}
-            <button className="primary-btn" type="submit" disabled={businessUploading || !businessVideoFile}>{businessUploading?<><Upload size={16}/> Uploading {uploadProgress}%</>:<><Upload size={16}/> Upload video</>}</button>
-          </form>
-          <div className="business-video-list">{businessVideos.map(video=><article className="business-video-card" id={`business-video-${video.id}`} key={video.id}><div className="business-video-heading"><strong>{video.title}</strong><span className={`status ${video.campaign?.status==="active"?"published":""}`}>{video.approvalStatus==="pending"?"awaiting approval":video.campaign?.status || video.businessCampaignStatus || "unpaid"}</span></div><span className="muted">Encoding: {video.processingStatus || "uploaded"}{video.processingStatus!=="ready"&&` · ${Number(video.encodeProgress||0)}%`}</span>
-            {video.approvalStatus==="pending" && <p className="business-video-review-note"><Clock3 size={15}/> Waiting for admin approval. This video is private until reviewed.</p>}
-            {video.isBusinessOwner && video.processingStatus==="ready" && <button className="secondary-btn business-video-preview" onClick={()=>previewBusinessVideo(video)}><Play size={15}/> Preview video</button>}
-            {video.campaign ? <div className="business-campaign-metrics"><span>{video.campaign.countryCode}{video.campaign.regionCode?` · ${video.campaign.regionCode}`:""} target</span><span>{Number(video.campaign.impressions||0).toLocaleString()} / {Number(video.campaign.targetImpressions||0).toLocaleString()} impressions</span><span>₹{Number(video.campaign.amountRupees||0).toLocaleString("en-IN")} at ₹500 CPM</span></div> : video.approvalStatus==="approved" && video.businessCampaignStatus==="unpaid" && <div className="business-campaign-controls">
-              <label>Target country code<input required maxLength={2} placeholder="IN" value={campaignSettings[video.id]?.countryCode||""} onChange={event=>setCampaignSettings(current=>({...current,[video.id]:{...current[video.id],countryCode:event.target.value.toUpperCase()}}))}/></label>
-              <label>State / region code (optional)<input maxLength={12} placeholder="MH" value={campaignSettings[video.id]?.regionCode||""} onChange={event=>setCampaignSettings(current=>({...current,[video.id]:{...current[video.id],regionCode:event.target.value.toUpperCase()}}))}/></label>
-              <label>Target impressions<select value={campaignSettings[video.id]?.targetImpressions||1000} onChange={event=>setCampaignSettings(current=>({...current,[video.id]:{...current[video.id],targetImpressions:Number(event.target.value)}}))}><option value={1000}>1,000 · ₹500</option><option value={5000}>5,000 · ₹2,500</option><option value={10000}>10,000 · ₹5,000</option><option value={50000}>50,000 · ₹25,000</option></select></label>
-              <button className="primary-btn" disabled={video.processingStatus!=="ready"||!campaignSettings[video.id]?.countryCode} onClick={()=>launchBusinessCampaign(video)}>{video.processingStatus==="ready"?"Pay with Razorpay & promote":"Wait for encoding"}</button>
-            </div>}
-          </article>)}</div>
-        </section>
+        <BusinessAds api={API} token={adminToken} categories={categories}/>
+        {businessVideos.length > 0 && <section className="notification-section"><h2>Legacy video campaigns</h2><p className="muted">Existing campaign history is retained. Create new ads with the QR flow above.</p>{businessVideos.map(video => <article className="business-video-card" key={video.id}><strong>{video.title}</strong><p>{video.campaign?.status || video.approvalStatus} · {video.campaign?.impressions || 0} / {video.campaign?.targetImpressions || 0} impressions</p>{video.processingStatus === "ready" && <button className="secondary-btn" onClick={() => previewBusinessVideo(video)}>Preview legacy video</button>}</article>)}</section>}
       </section>
       : page === "admin-chat" && adminToken && ["admin","creator"].includes(authRole) ? <section className="admin-panel chat-panel">
         <div className="section-heading"><div><span className="eyebrow"><MessageCircle size={14}/> {authRole==="admin"?"CREATOR CHATS":"ZINDA PLAY"}</span><h1>{authRole==="admin" ? (chatPeer?.name || "Creator chats") : "Chat with Zinda Play"}</h1><p className="muted">{authRole==="admin" ? "Conversations with creators about invitations and collaborations." : "Talk to the admin about invitations and collaborations."}</p></div>{authRole==="admin" && <button className="secondary-btn" onClick={openAdminChats}>Refresh</button>}</div>
@@ -1922,6 +1814,7 @@ function App() {
       : page === "creator-analytics" && adminToken && authRole === "creator" ? <section className="admin-panel"><button className="back-link" onClick={()=>setPage("creator")}>← Back to Creator studio</button><div className="section-heading"><div><span className="eyebrow"><BarChart3 size={14}/> VIDEO PERFORMANCE</span><h1>Your analytics</h1><p className="muted">View counts for videos in your creator library.</p></div></div><div className="analytics-stats"><div className="analytics-card"><Eye/><span>Total views</span><strong>{Number(creatorStats?.totalViews||0).toLocaleString()}</strong></div><div className="analytics-card"><Film/><span>Total videos</span><strong>{Number(creatorStats?.totalVideos||0).toLocaleString()}</strong></div><div className="analytics-card"><Play/><span>Published</span><strong>{Number(creatorStats?.publishedVideos||0).toLocaleString()}</strong></div><div className="analytics-card"><Sparkles/><span>Average views</span><strong>{creatorStats?.totalVideos ? Math.round(creatorStats.totalViews/creatorStats.totalVideos).toLocaleString() : "0"}</strong></div></div><section className="analytics-section"><h2><BarChart3 size={18}/> Video views</h2>{creatorStats?.videos.length ? <div className="ranking-list">{creatorStats.videos.map((video,index)=><div className="ranking-item" key={video.id}><span className="ranking-number">{index+1}</span><div className="ranking-content"><div className="ranking-label"><strong>{video.title}</strong><span>{Number(video.views||0).toLocaleString()} views</span></div><div className="ranking-track"><span style={{width:`${creatorStats.videos[0].views ? Math.max(3,Number(video.views||0)/Number(creatorStats.videos[0].views)*100) : 0}%`}}/></div></div></div>)}</div> : <p className="muted">Upload a video to see its analytics here.</p>}</section></section>
       : page === "analytics" && adminToken && authRole === "admin" ? <section className="admin-panel"><button className="back-link" onClick={() => setPage("admin")}>← Back to Admin</button><div className="section-heading"><div><span className="eyebrow"><BarChart3 size={14}/> PERFORMANCE</span><h1>Content analytics</h1><p className="muted">View counts for your video library since tracking began.</p></div></div><div className="analytics-stats"><div className="analytics-card"><Eye/><span>Total views</span><strong>{analytics.totalViews.toLocaleString()}</strong></div><div className="analytics-card"><Film/><span>Total content</span><strong>{videos.length.toLocaleString()}</strong></div><div className="analytics-card"><Play/><span>Published</span><strong>{videos.filter(video=>video.published).length.toLocaleString()}</strong></div><div className="analytics-card"><Sparkles/><span>Average views</span><strong>{videos.length ? Math.round(analytics.totalViews/videos.length).toLocaleString() : "0"}</strong></div></div><div className="analytics-columns"><section className="analytics-section"><h2><BarChart3 size={18}/> Top videos</h2>{analytics.topVideos.length ? <div className="ranking-list">{analytics.topVideos.slice(0,10).map((video,index)=><div className="ranking-item" key={video.id}><span className="ranking-number">{index+1}</span><div className="ranking-content"><div className="ranking-label"><strong>{video.title}</strong><span>{Number(video.views||0).toLocaleString()} views</span></div><div className="ranking-track"><span style={{width:`${analytics.topVideos[0].views ? Math.max(3,Number(video.views||0)/Number(analytics.topVideos[0].views)*100) : 0}%`}}/></div></div></div>)}</div> : <p className="muted">No videos to report yet.</p>}</section><section className="analytics-section"><h2><Tags size={18}/> Category performance</h2>{analytics.categoryStats.length ? <div className="category-analytics">{analytics.categoryStats.map(category=><div className="category-analytics-item" key={category.id}><div><strong>{category.name}</strong><span>{category.videos} {category.videos===1?"video":"videos"}</span></div><b><Eye size={14}/> {category.views.toLocaleString()}</b></div>)}</div> : <p className="muted">No categories to report yet.</p>}</section></div><p className="analytics-note">Views are counted when a published video is opened. Analytics are currently held in memory and reset when the API restarts.</p></section>
       : page === "categories" && adminToken && authRole === "admin" ? <section className="admin-panel"><button className="back-link" onClick={() => {setPage(returnToContent ? "add" : "admin");setReturnToContent(false);}}>← Back to {returnToContent ? "Content" : "Admin"}</button><div className="section-heading"><div><span className="eyebrow">CONTENT ORGANIZATION</span><h1>Categories</h1><p className="muted">Create categories to organize your video library.</p></div></div><form className="category-form" onSubmit={createCategory}><label>Category name<input required maxLength={60} value={categoryName} onChange={e=>setCategoryName(e.target.value)} placeholder="e.g. Tutorials"/></label><button className="primary-btn" type="submit"><Plus size={17}/> Create category</button></form><div className="category-list">{categories.map(category=><div className="category-list-item" key={category.id}><Tags size={17}/><span>{category.name}</span></div>)}</div></section>
+      : page === "membership-admin" && adminToken && authRole === "admin" ? <AdminMembership api={API} token={adminToken} onBack={()=>setPage("admin")}/>
       : page === "ads" && adminToken && authRole === "admin" ? <AdminAds api={API} token={adminToken} onBack={()=>setPage("admin")} onUnauthorized={()=>{clearAdminSession();setPage("admin");}}/>
       : page === "banner" && adminToken && authRole === "admin" ? <section className="admin-panel">
         <button className="back-link" onClick={() => setPage("admin")}>← Back to Admin</button>
@@ -1931,7 +1824,8 @@ function App() {
           <label>Banner title<input required={bannerForm.enabled} maxLength={120} value={bannerForm.title} onChange={e=>setBannerForm({...bannerForm,title:e.target.value})} placeholder="e.g. Discover something new"/></label>
           <label>Description<textarea maxLength={500} value={bannerForm.description} onChange={e=>setBannerForm({...bannerForm,description:e.target.value})} placeholder="A short message for your viewers"/></label>
           <div className="upload-field banner-upload-field">
-            <label>Upload background image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={bannerImageUploading} onChange={e=>{setBannerImageFile(e.target.files?.[0] || null);setBannerImageProgress(0);}}/></label>
+            <label>Upload banner image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={bannerImageUploading} onChange={e=>{setBannerImageFile(e.target.files?.[0] || null);setBannerImageProgress(0);}}/></label>
+            <p>Recommended test image: 1200 x 400 pixels (3:1) for web and mobile. The full image is shown without cropping; title, description and button appear below it. Use large, readable artwork text. Other sizes are fitted with padding.</p>
             <p>JPEG, PNG, WebP, or GIF. Maximum size: 8 MB. Images are stored in MongoDB.</p>
             {bannerForm.imageUrl && <img className="banner-image-preview" src={apiAssetSrc(bannerForm.imageUrl)} alt="Current homepage banner"/>}
             {bannerImageFile && <div className="upload-progress"><div><span>{bannerImageFile.name}</span><strong>{bannerImageUploading ? `${bannerImageProgress}% uploaded` : "Ready to upload"}</strong></div><progress max="100" value={bannerImageProgress}/><button className="secondary-btn" type="button" disabled={bannerImageUploading} onClick={saveBannerImage}><Upload size={16}/>{bannerImageUploading ? "Uploading…" : "Upload image"}</button></div>}
