@@ -12,6 +12,7 @@ import { initializeMemberships, membershipSettings, registerMembershipRoutes } f
 import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency } from "./ad-delivery.js";
 import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./account-modes.js";
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
+import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
@@ -136,6 +137,19 @@ function requireMember(req, res, next) {
   req.session = session;
   next();
 }
+function requireShortsAccount(req, res, next) {
+  const session = sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, ""));
+  if (!session?.userId || !["member", "creator", "promoter", "business"].includes(session.role)) {
+    return res.status(401).json({ error: "Sign in to interact with Shorts." });
+  }
+  req.session = session;
+  next();
+}
+const requireVideoAccount = asyncRoute(async (req, res, next) => {
+  const video = await videosCollection().findOne({ _id: req.params.id });
+  if (video?.videoType === "short") return requireShortsAccount(req, res, next);
+  requireMember(req, res, next);
+});
 const requireBusiness = asyncRoute(async (req, res, next) => {
   const token = req.get("authorization")?.replace(/^Bearer\s+/i, "");
   const session = token && sessions.get(token);
@@ -289,7 +303,8 @@ function publicBannerSettings(banner) {
 const publicVideoQuery = {
   published: true,
   approvalStatus: { $nin: ["pending", "rejected"] },
-  $or: [{ bunnyVideoId: { $exists: false } }, { processingStatus: "ready" }]
+  $or: [{ bunnyVideoId: { $exists: false } }, { processingStatus: "ready" }],
+  $and: [{ $or: [{ videoType: { $ne: "short" } }, { shortValidated: true }] }]
 };
 async function viewerLocation(req) {
   const dbPath = process.env.MAXMIND_DB_PATH;
@@ -759,6 +774,11 @@ app.get("/api/creators/:id/profile-photo", asyncRoute(async (req, res) => {
   await pipeline(creatorProfilePhotoBucket().openDownloadStream(fileId), res);
 }));
 app.get("/api/categories", (_req, res) => res.json(categories));
+const shortEngagementLimit = registerShortRoutes(app, {
+  getDb: () => database, asyncRoute, requireAccount: requireShortsAccount, requireAdmin,
+  publicVideoQuery, availableInCity: videoAvailableInViewerCity, withCreatorProfiles,
+  sessionFor: req => sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, ""))
+});
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 // Link-preview crawlers do not run the SPA, so shared links point here to get Open Graph tags before redirecting to the app.
 app.get("/api/share/video/:id", asyncRoute(async (req, res) => {
@@ -782,6 +802,7 @@ app.get("/api/videos", asyncRoute(async (req, res) => {
   const featured = req.query.featured === "true";
   const query = {
     ...publicVideoQuery,
+    videoType: { $ne: "short" },
     businessCampaignId: { $exists: false },
     ownerBusinessId: { $exists: false }
   };
@@ -789,7 +810,7 @@ app.get("/api/videos", asyncRoute(async (req, res) => {
   if (featured) query.featured = true;
   if (q) {
     const escapedQuery = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    query.$and = [{
+    query.$and = [...(query.$and || []), {
       $or: [
         { title: { $regex: escapedQuery, $options: "i" } },
         { description: { $regex: escapedQuery, $options: "i" } },
@@ -836,6 +857,7 @@ app.get("/api/videos/:id", asyncRoute(async (req, res) => {
 }));
 app.post("/api/videos/:id/watch-start", requireMember, asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
+  if (video?.videoType === "short") return res.status(400).json({ error: "Shorts do not qualify for regular-video watch rewards." });
   if (!video || !await videoAvailableInViewerCity(video, req) || !await campaignVideoIsAvailable(video, req)) {
     return res.status(404).json({ error: "Video not found." });
   }
@@ -930,6 +952,7 @@ app.post("/api/videos/:id/watch-complete", requireMember, asyncRoute(async (req,
 app.post("/api/videos/:id/view", asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
   if (!video) return res.status(404).json({ error: "Video not found" });
+  if (video.videoType === "short") return res.status(400).json({ error: "Use the Shorts view ticket flow." });
   if (!await videoAvailableInViewerCity(video, req)) return res.status(404).json({ error: "Video not found" });
   if (!await campaignVideoIsAvailable(video, req)) return res.status(404).json({ error: "Video not found" });
   const ipHashSecret = process.env.VIEW_IP_HASH_SECRET || process.env.ADMIN_PASSWORD;
@@ -1002,7 +1025,7 @@ app.get("/api/videos/:id/interactions", asyncRoute(async (req, res) => {
     comments: comments.map(({ _id, videoId: _videoId, userId: _userId, ...comment }) => ({ id: _id, ...comment }))
   });
 }));
-app.post("/api/videos/:id/like", requireMember, asyncRoute(async (req, res) => {
+app.post("/api/videos/:id/like", requireVideoAccount, shortEngagementLimit, asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
   if (!video) return res.status(404).json({ error: "Video not found." });
   if (!await videoAvailableInViewerCity(video, req)) return res.status(404).json({ error: "Video not found." });
@@ -1037,7 +1060,7 @@ app.post("/api/videos/:id/like", requireMember, asyncRoute(async (req, res) => {
   }
   res.json({ liked, likeCount: await likesCollection().countDocuments({ videoId: video._id }) });
 }));
-app.post("/api/videos/:id/comments", requireMember, asyncRoute(async (req, res) => {
+app.post("/api/videos/:id/comments", requireVideoAccount, shortEngagementLimit, asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
   if (!video) return res.status(404).json({ error: "Video not found." });
   if (!await videoAvailableInViewerCity(video, req)) return res.status(404).json({ error: "Video not found." });
@@ -1610,7 +1633,7 @@ app.get("/api/creators/:creatorId/follow", asyncRoute(async (req, res) => {
     isSelf: session?.userId === creator._id.toString()
   });
 }));
-app.post("/api/creators/:creatorId/follow", requireMember, asyncRoute(async (req, res) => {
+app.post("/api/creators/:creatorId/follow", requireShortsAccount, shortEngagementLimit, asyncRoute(async (req, res) => {
   const creator = await findApprovedCreator(req.params.creatorId);
   if (!creator) return res.status(404).json({ error: "Approved creator not found." });
   const followerId = req.session.userId;
@@ -1640,7 +1663,7 @@ app.post("/api/creators/:creatorId/follow", requireMember, asyncRoute(async (req
   }
   res.json({ creatorId, followerCount: await creatorFollowerCount(creatorId), following: true });
 }));
-app.delete("/api/creators/:creatorId/follow", requireMember, asyncRoute(async (req, res) => {
+app.delete("/api/creators/:creatorId/follow", requireShortsAccount, shortEngagementLimit, asyncRoute(async (req, res) => {
   const creator = await findApprovedCreator(req.params.creatorId);
   if (!creator) return res.status(404).json({ error: "Approved creator not found." });
   const creatorId = creator._id.toString();
@@ -1943,8 +1966,16 @@ app.post("/api/admin/categories", requireAdmin, asyncRoute(async (req, res) => {
   res.status(201).json(category);
 }));
 const uploadVideo = asyncRoute(async (req, res) => {
-  const title = String(req.get("X-Video-Title") || "").trim();
-  const description = String(req.get("X-Video-Description") || "");
+  const short = shortUpload(req);
+  if (short.error) return res.status(400).json({ error: short.error });
+  if (short.fields.videoType === "short") {
+    if (!["creator", "admin"].includes(req.session.role)) return res.status(403).json({ error: "Shorts uploads require creator access." });
+    if (!categories.some(category => category.id === req.get("X-Video-Category"))) return res.status(400).json({ error: "Choose a Shorts category." });
+    try { shortsCdnOrigin(); }
+    catch (error) { return res.status(503).json({ error: error.message }); }
+  }
+  const title = short.fields.caption?.slice(0, 120) || String(req.get("X-Video-Title") || "").trim();
+  const description = short.fields.caption || String(req.get("X-Video-Description") || "");
   const categoryId = String(req.get("X-Video-Category") || "");
   let collectionName;
   try {
@@ -2053,6 +2084,7 @@ const uploadVideo = asyncRoute(async (req, res) => {
     thumbnailUrl: "",
     playbackUrl: `https://iframe.mediadelivery.net/embed/${config.libraryId}/${bunnyVideo.guid}`,
     durationSeconds: 0,
+    ...short.fields,
     ownerId: req.creatorId?.toString() || null,
     ...(ownerBusinessId ? { ownerBusinessId, businessCampaignStatus: "unpaid", approvalStatus: "pending" } : {}),
     ...(req.session.role === "creator" ? { promotionUrl, promotionType } : {}),
@@ -2364,6 +2396,7 @@ app.patch("/api/admin/videos/:id/review", requireAdmin, asyncRoute(async (req, r
   const reviewFilter = { _id: video._id, ...currentApprovalFilter };
 
   if (decision === "approved") {
+    if (video.videoType === "short" && !video.shortValidated) return res.status(400).json({ error: "This Short must pass duration and portrait validation before approval." });
     const result = await videosCollection().updateOne(
       reviewFilter,
       {
@@ -2404,7 +2437,8 @@ app.patch("/api/admin/videos/:id/review", requireAdmin, asyncRoute(async (req, r
     await Promise.all([
       likesCollection().deleteMany({ videoId: video._id }),
       commentsCollection().deleteMany({ videoId: video._id }),
-      uniqueViewsCollection().deleteMany({ videoId: video._id })
+      uniqueViewsCollection().deleteMany({ videoId: video._id }),
+      deleteShortRecords(database, video._id)
     ]);
     if (video.thumbnailImageId && ObjectId.isValid(video.thumbnailImageId)) {
       await videoThumbnailBucket().delete(new ObjectId(video.thumbnailImageId)).catch(error => {
@@ -2452,8 +2486,9 @@ app.get("/api/creator/videos/processing", requireCreator, asyncRoute(async (req,
       const bunnyVideo = await response.json();
       const processingStatus = processingState(bunnyVideo.status);
       const encodeProgress = Number(bunnyVideo.encodeProgress) || 0;
-      await videosCollection().updateOne({ _id: video._id, ownerId: req.creatorId.toString() }, { $set: { processingStatus, encodeProgress } });
-      return { id: video._id, processingStatus, encodeProgress };
+      const fields = { processingStatus, encodeProgress, ...shortProcessingFields(video, bunnyVideo, processingStatus) };
+      await videosCollection().updateOne({ _id: video._id, ownerId: req.creatorId.toString() }, { $set: fields });
+      return { id: video._id, ...fields };
     }));
     res.json(updates);
   } catch (error) {
@@ -2654,11 +2689,12 @@ app.get("/api/admin/videos/processing", requireAdmin, asyncRoute(async (_req, re
       const bunnyVideo = await response.json();
       const processingStatus = processingState(bunnyVideo.status);
       const encodeProgress = Number(bunnyVideo.encodeProgress) || 0;
+      const fields = { processingStatus, encodeProgress, ...shortProcessingFields(video, bunnyVideo, processingStatus) };
       await videosCollection().updateOne(
         { _id: video._id },
-        { $set: { processingStatus, encodeProgress } }
+        { $set: fields }
       );
-      return { id: video._id, processingStatus, encodeProgress };
+      return { id: video._id, ...fields };
     }));
     res.json(updates);
   } catch (error) {
@@ -2691,6 +2727,9 @@ app.patch("/api/creator/videos/:id", requireCreator, asyncRoute(async (req, res)
   }
   if (description !== undefined && typeof description !== "string") {
     return res.status(400).json({ error: "Description must be text." });
+  }
+  if (video.videoType === "short" && description !== undefined && (!description.trim() || description.length > 2000)) {
+    return res.status(400).json({ error: "Shorts captions must be 1 to 2000 characters." });
   }
   if (categoryId !== undefined && (typeof categoryId !== "string" || (categoryId && !categories.some(category => category.id === categoryId)))) {
     return res.status(400).json({ error: "Choose a valid category." });
@@ -2727,6 +2766,7 @@ app.patch("/api/creator/videos/:id", requireCreator, asyncRoute(async (req, res)
   const updates = {};
   if (title !== undefined) updates.title = title.trim();
   if (description !== undefined) updates.description = description;
+  if (video.videoType === "short" && description !== undefined) updates.caption = description.trim();
   if (categoryId !== undefined) updates.categoryId = categoryId;
   if (promotionUrl !== undefined) updates.promotionUrl = promotionUrl.trim();
   if (promotionType !== undefined) updates.promotionType = promotionType;
@@ -2801,7 +2841,8 @@ app.delete("/api/admin/videos/:id", requireAdmin, asyncRoute(async (req, res) =>
   await Promise.all([
     likesCollection().deleteMany({ videoId: video._id }),
     commentsCollection().deleteMany({ videoId: video._id }),
-    uniqueViewsCollection().deleteMany({ videoId: video._id })
+    uniqueViewsCollection().deleteMany({ videoId: video._id }),
+    deleteShortRecords(database, video._id)
   ]);
   if (video.thumbnailImageId && ObjectId.isValid(video.thumbnailImageId)) {
     await videoThumbnailBucket().delete(new ObjectId(video.thumbnailImageId)).catch(error => {
@@ -2829,6 +2870,7 @@ async function start() {
   database = client.db(process.env.MONGODB_DATABASE || "zinda_play");
   await initializeMemberships(database);
   await initializeBusinessAds(database);
+  await initializeShorts(database);
 
   await database.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   for (const saved of await database.collection("sessions").find({ expiresAt: { $gt: new Date() } }).toArray()) {

@@ -285,7 +285,7 @@ class _StudioScreenState extends State<StudioScreen> {
         child: thumb.isEmpty ? Container(color: const Color(0xFF1B1F2A)) : Image.network(thumb, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(color: const Color(0xFF1B1F2A))),
       ),
       title: Text('${v['title']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${v['views'] ?? 0} views · $label'),
+      subtitle: Text('${v['videoType'] == 'short' ? 'Short · ' : ''}${v['views'] ?? 0} views · $label${(v['shortValidationError'] ?? '').toString().isNotEmpty ? '\n${v['shortValidationError']}' : ''}'),
     );
   }
 }

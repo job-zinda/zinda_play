@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../ads.dart';
 import '../api.dart';
 import 'auth_screen.dart';
+import 'shorts_screen.dart';
 
 class WatchScreen extends StatefulWidget {
   final Map<String, dynamic> video;
@@ -27,6 +28,7 @@ class _WatchScreenState extends State<WatchScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.video['videoType'] == 'short') return;
     Interests.record(widget.video['categoryId']);
     final url = widget.video['playbackUrl'] as String?;
     if (url != null && url.isNotEmpty) {
@@ -94,6 +96,9 @@ class _WatchScreenState extends State<WatchScreen> {
   @override
   Widget build(BuildContext context) {
     final v = widget.video;
+    if (v['videoType'] == 'short') {
+      return Scaffold(appBar: AppBar(title: const Text('Zinda Shorts')), body: ShortsScreen(initialVideo: v));
+    }
     return Scaffold(
       appBar: AppBar(title: Text('${v['title'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: ListView(children: [

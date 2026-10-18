@@ -37,6 +37,44 @@ New Razorpay checkout for creator membership and business promotions is disabled
 
 Run the membership API regression tests with `npm test` from the server directory. Tests use an isolated in-memory database double, not production data.
 
+## Zinda Shorts (Flutter mobile)
+
+The Android-first app includes **Home, Shorts, Create, Earn and Profile** navigation. Explore and the existing Library/dashboard remain in the Home header. Create offers both the unchanged regular upload and **Create Zinda Short**; existing creator approval, promoter-to-creator mode, profile-photo and active trial/membership checks apply. Shorts remain private until encoded, validated and approved through the existing admin review. Regular landscape playback and uploads are unchanged.
+
+Shorts use a full-height vertical paged feed with a centered 9:16 player, dark/violet overlays, creator avatar/username, captions, hashtags and views. Only the active Short plays. Swiping, app backgrounding, covering the route, opening comments/authentication or leaving the tab stops/pauses playback. Controls include pause, mute (on by default), progress/seeking, likes, comments, native sharing, follow, save and report. Watch Later is available from the bookmark icon in Shorts. Viewing is public; engagement requires a signed-in viewer, creator, promoter or business account.
+
+**Upload requirements:** MP4, MOV or WebM; 9:16 portrait (ratio tolerance 0.04); positive duration up to 60 seconds; maximum 150 MB; caption up to 2,000 characters; up to 10 hashtags of 1-30 Unicode letters/numbers/underscores; a valid category. The mobile player checks the actual selected file before uploading. The backend rechecks declared metadata and only sets `shortValidated: true` after fetching Bunny's authoritative encoded length, dimensions and rotation. Client metadata cannot publish an overlength/landscape Short. Invalid encodes stay hidden with an explicit validation error in Creator studio and Admin content.
+
+### Shorts backend deployment
+
+If the app shows `Unexpected character ... <!DOCTYPE html>` or a server-update message, check `GET /api/shorts?limit=1` on the deployed API. `404 Cannot GET /api/shorts` means the deployed backend does not include Shorts yet; rebuilding the APK alone does not deploy the server. Deploy the updated server source (including `server/src/shorts.js` and its route registration), then verify a JSON `{items, nextCursor}` response before retrying in the app.
+
+- Keep `BUNNY_STREAM_LIBRARY_ID` and `BUNNY_STREAM_API_KEY` on the API server as before.
+- Set **`BUNNY_STREAM_CDN_HOSTNAME`** to the Stream library's pull-zone hostname, e.g. `vz-example.b-cdn.net` (not the iframe embed hostname). The server constructs native adaptive HLS `playlist.m3u8` and thumbnail URLs; no Bunny API key is sent to clients. The hostname must serve playable HLS under the library's CDN access rules. A token-protected CDN additionally needs an appropriate server-side signed-playback implementation before it can be used; iframe-only access does not provide native HLS access.
+- Set a strong, stable **`VIEW_IP_HASH_SECRET`**, and the correct **`TRUST_PROXY_HOPS`** behind a proxy. Existing `ADMIN_PASSWORD` is the fallback hashing key, but a dedicated secret is recommended.
+- Deploy/restart the API, rebuild/deploy the web admin, and rebuild the Flutter APK with the same deployed API URL. Database indexes are created at startup; no destructive migration is needed. Old videos without `videoType` remain regular videos. No Shorts are seeded automatically.
+- Continue the existing encoding polls in Creator studio/Admin content. Shorts await this Bunny metadata check as well as admin approval. A creator can check processing/validation failures in Creator studio; the admin can reject invalid submissions through existing moderation.
+
+Backend additions:
+
+| API | Purpose |
+| --- | --- |
+| `GET /api/shorts?limit=6&cursor=...` | Public bounded newest-first feed, maximum 12 per page; `{items, nextCursor}`. Preserves publication, encoding and city restrictions. Empty location-filtered pages may still have a next cursor. |
+| `GET /api/shorts/:id` | Public validated Short with native stream URL, also used when opening a Short from an existing creator/profile video list. |
+| `POST /api/creator/videos/upload` | Reused raw Bunny upload with `X-Video-Type: short`, percent-encoded `X-Short-Caption`/JSON `X-Short-Hashtags`, and `X-Video-Duration`, `X-Video-Width`, `X-Video-Height`. No new public Bunny upload credentials. |
+| Existing video interactions/like/comments and creator follow APIs | Reused database records, unique likes/follows, and notifications; business accounts can engage with Shorts. Shorts engagement/follow actions have per-minute limits. |
+| `GET /api/shorts/:id/state`; `PUT`/`DELETE /api/shorts/:id/saved` | Authenticated persistent Watch Later state; save/un-save are idempotent. |
+| `GET /api/shorts/saved?before=...` | Authenticated saved-list cursor pagination (12 per page); hidden/unpublished Shorts are not leaked. |
+| `POST /api/shorts/:id/view-start`; `POST /api/shorts/:id/view` | Rate-limited HMAC-signed view ticket, then completion with `{ticket}`. The app submits only after actual foreground playback; the server requires at least 3 seconds (or the duration for shorter videos), validates ticket age/identity and counts once per IP hash per video. |
+| `POST /api/shorts/:id/report` | Authenticated, deduplicated, rate-limited report with `spam`, `harassment`, `inappropriate`, `copyright` or `other`; notifies admin. |
+| `GET /api/admin/shorts/reports`; `PATCH /api/admin/shorts/reports/:id` | Admin pending reports and `{action: "dismiss"}` / `{action: "unpublish"}`. Available in the Content dashboard; unpublishing preserves the video/engagement history. |
+
+Video records add `videoType: "short"`, `caption`, `hashtags`, `shortValidated`, `shortValidationError`, validated dimensions and duration. The existing videos collection, creator review and Bunny IDs are reused. New collections are `savedShorts`, `shortReports`, `shortViews` and TTL-expiring `shortRateLimits`. Regular feed results exclude Shorts; creator/admin lists retain them. Shorts view counters are derived from the unique view ledger so retries repair a failed counter update without counting twice. Shorts do **not** create creator earning views or promoter watch rewards; this feature does not change earning rules.
+
+Data saver is on by default: only the current player is initialized. Opt-in preloading initializes at most the next player; older controllers are paused and released. Reduced-motion preferences disable next-player preloading. HLS lets the platform choose adaptive quality. The feed paginates metadata rather than downloading every video. Public viewer-IP deduplication is intentionally conservative (people sharing an IP may count as one); signed tickets and rate limits reduce trivial replay but are not bot-proof playback attestation.
+
+Validation: run `npm test` in the server directory, and `flutter test test\shorts_test.dart` in the mobile directory. Tests cover media constraints, cursor/location/private filtering, saved-state isolation, duplicate/premature/tampered view requests, report moderation, player swipe/lifecycle cleanup, mute/pause, preload limits and mocked engagement flows. Test a real short upload and native Bunny HLS playback on a physical Android device after configuring/deploying the backend; isolated tests do not validate real CDN permissions or low-end-device throughput.
+
 ## Ad delivery and reports
 
 In **Admin -> Ads**, each video ad has its own **Every video**, **Every 5 videos**, or **Every 10 videos** setting. Existing ads default to every video. The counter is per ad, per browser/app session, and advances when an eligible public video is opened; city and interest targeting still apply. The first delivery for an interval of 5 or 10 is due on the fifth or tenth eligible opening. If several ads are due, one is selected; the others remain due. A delivered ad's counter resets; restarting/reloading the client starts a new session.

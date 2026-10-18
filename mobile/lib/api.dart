@@ -16,6 +16,27 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+dynamic decodeApiResponse(http.Response response) {
+  dynamic body;
+  if (response.body.isNotEmpty) {
+    try {
+      body = jsonDecode(response.body);
+    } on FormatException {
+      if (response.statusCode == 404) {
+        throw ApiException('This feature is not available on the server yet. Deploy the latest Zinda Play backend, then retry.');
+      }
+      if (response.statusCode >= 400) {
+        throw ApiException('The server returned an error (${response.statusCode}). Please try again later.');
+      }
+      throw ApiException('The server returned an invalid response. Check the API address and server deployment.');
+    }
+  }
+  if (response.statusCode >= 400) {
+    throw ApiException(body is Map && body['error'] != null ? '${body['error']}' : 'Request failed (${response.statusCode}).');
+  }
+  return body;
+}
+
 String assetUrl(String? path) {
   if (path == null || path.isEmpty) return '';
   if (RegExp(r'^https?://', caseSensitive: false).hasMatch(path)) return path;
@@ -82,11 +103,7 @@ class Api {
     } catch (_) {
       throw ApiException('Could not connect to the server.');
     }
-    final body = res.body.isEmpty ? null : jsonDecode(res.body);
-    if (res.statusCode >= 400) {
-      throw ApiException(body is Map && body['error'] != null ? '${body['error']}' : 'Request failed (${res.statusCode}).');
-    }
-    return body;
+    return decodeApiResponse(res);
   }
 
   Future<dynamic> get(String path) => _send(() => http.get(Uri.parse('$apiBase$path'), headers: _headers));
@@ -122,11 +139,7 @@ class Api {
     } catch (_) {
       throw ApiException('Upload failed. Check your connection and try again.');
     }
-    final body = res.body.isEmpty ? null : jsonDecode(res.body);
-    if (res.statusCode >= 400) {
-      throw ApiException(body is Map && body['error'] != null ? '${body['error']}' : 'Upload failed (${res.statusCode}).');
-    }
-    return body;
+    return decodeApiResponse(res);
   }
 
   Future<void> login(String username, String password) async {

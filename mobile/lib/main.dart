@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'navigation.dart';
 import 'screens/home_screen.dart';
 
 Future<void> main() async {
@@ -17,6 +18,7 @@ class ZindaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Zinda Play',
       debugShowCheckedModeBanner: false,
+      navigatorObservers: [appRouteObserver],
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,

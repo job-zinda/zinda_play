@@ -13,10 +13,14 @@ const equal = (a, b) => a instanceof ObjectId || b instanceof ObjectId ? a?.toSt
 function matches(document, filter) {
   return Object.entries(filter).every(([key, value]) => {
     if (key === "$or") return value.some(item => matches(document, item));
+    if (key === "$and") return value.every(item => matches(document, item));
     const actual = get(document, key);
     if (value instanceof ObjectId) return equal(actual, value);
     if (value && typeof value === "object") {
       if ("$in" in value) return value.$in.some(item => equal(actual, item));
+      if ("$nin" in value) return !value.$nin.some(item => equal(actual, item));
+      if ("$lt" in value) return String(actual) < String(value.$lt);
+      if ("$gt" in value) return String(actual) > String(value.$gt);
       if ("$exists" in value) return (actual !== undefined) === value.$exists;
       if ("$ne" in value) return !equal(actual, value.$ne);
       throw new Error(`Unsupported test query: ${JSON.stringify(value)}`);
@@ -40,6 +44,7 @@ function applyUpdate(document, update) {
     if (parent) delete parent[keys.at(-1)];
   }
   for (const [key, value] of Object.entries(update.$inc || {})) setFields(document, { [key]: (get(document, key) || 0) + value });
+  for (const [key, value] of Object.entries(update.$max || {})) setFields(document, { [key]: Math.max(get(document, key) || 0, value) });
   for (const [key, value] of Object.entries(update.$push || {})) {
     const list = get(document, key) || [];
     list.push(value);
@@ -56,12 +61,18 @@ export function memoryDatabase() {
         async createIndex() {},
         listIndexes() { return { toArray: async () => [] }; },
         async findOne(filter) { return clone(this.documents.find(document => matches(document, filter)) || null); },
+        async countDocuments(filter) { return this.documents.filter(document => matches(document, filter)).length; },
         find(filter = {}) {
           let result = this.documents.filter(document => matches(document, filter)).map(clone);
           const cursor = {
             sort(spec) {
-              const [key, direction] = Object.entries(spec)[0];
-              result.sort((a, b) => String(get(a, key)).localeCompare(String(get(b, key))) * direction);
+              result.sort((a, b) => {
+                for (const [key, direction] of Object.entries(spec)) {
+                  const difference = String(get(a, key)).localeCompare(String(get(b, key))) * direction;
+                  if (difference) return difference;
+                }
+                return 0;
+              });
               return cursor;
             },
             limit(count) { result = result.slice(0, count); return cursor; },
@@ -76,6 +87,9 @@ export function memoryDatabase() {
           }
           if (document._id && this.documents.some(item => equal(item._id, document._id))) {
             throw Object.assign(new Error("Duplicate ID"), { code: 11000 });
+          }
+          if (name === "shortViews" && this.documents.some(item => item.videoId === document.videoId && item.viewerHash === document.viewerHash)) {
+            throw Object.assign(new Error("Duplicate short view"), { code: 11000 });
           }
           document._id ??= new ObjectId();
           this.documents.push(document);
@@ -92,8 +106,13 @@ export function memoryDatabase() {
           applyUpdate(document, update);
           return { matchedCount: 1 };
         },
-        async findOneAndUpdate(filter, update) {
-          const document = this.documents.find(item => matches(item, filter));
+        async findOneAndUpdate(filter, update, options = {}) {
+          let document = this.documents.find(item => matches(item, filter));
+          if (!document && options.upsert) {
+            document = { ...filter };
+            await this.insertOne(document);
+            setFields(document, update.$setOnInsert);
+          }
           if (!document) return null;
           applyUpdate(document, update);
           return clone(document);

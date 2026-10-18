@@ -14,6 +14,9 @@ import 'promoter_screen.dart';
 import 'studio_screen.dart';
 import 'upload_screen.dart';
 import 'watch_screen.dart';
+import 'shorts_screen.dart';
+import 'create_short_screen.dart';
+import 'wallet_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -114,6 +117,44 @@ class _HomeScreenState extends State<HomeScreen> {
         return _push(const BusinessScreen());
       default:
         _toast('Uploading is available for creator and business accounts.');
+    }
+  }
+
+  Future<void> _create() async {
+    final short = await showModalBottomSheet<bool>(context: context, builder: (context) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(leading: const Icon(Icons.video_library_outlined), title: const Text('Upload regular video'), onTap: () => Navigator.pop(context, false)),
+        ListTile(leading: const Icon(Icons.video_collection_outlined), title: const Text('Create Zinda Short'), subtitle: const Text('9:16 portrait, up to 60 seconds'), onTap: () => Navigator.pop(context, true)),
+      ]),
+    ));
+    if (!mounted || short == null) return;
+    if (!short) return _upload();
+    if (!Api.instance.signedIn) await _push(const AuthScreen());
+    if (!mounted || !Api.instance.signedIn) return;
+    try {
+      await Api.instance.refreshAccountRole();
+      if (!mounted) return;
+      if (Api.instance.role != 'creator') {
+        _toast('Shorts uploads require approved creator access. Use Creator studio or Switch to creator / apply in your profile.');
+        return;
+      }
+      await _push(const CreateShortScreen());
+    } catch (error) {
+      if (mounted) _toast('$error');
+    }
+  }
+
+  Future<void> _earn() async {
+    if (!Api.instance.signedIn) await _push(const AuthScreen());
+    if (!mounted || !Api.instance.signedIn) return;
+    try {
+      await Api.instance.refreshAccountRole();
+      if (!mounted) return;
+      if (Api.instance.role == 'creator') return await _push(const WalletScreen());
+      if (Api.instance.role == 'promoter') return await _push(const PromoterScreen());
+      _toast('Earnings are available to approved creators and promoters.');
+    } catch (error) {
+      if (mounted) _toast('$error');
     }
   }
 
@@ -227,8 +268,8 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         bottom: false,
         child: Column(children: [
-          _header(),
-          Expanded(child: _tab == 0 ? _home() : _explore()),
+          if (_tab != 1) _header(),
+          Expanded(child: _tab == 1 ? const ShortsScreen() : _tab == 0 ? _home() : _explore()),
         ]),
       ),
       bottomNavigationBar: _bottomBar(),
@@ -242,6 +283,8 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(children: [
         Image.asset('assets/banner.png', height: 34, semanticLabel: 'ZindaPlay'),
         const Spacer(),
+        IconButton(tooltip: 'Explore', icon: const Icon(Icons.explore_outlined), onPressed: () => setState(() => _tab = 2)),
+        IconButton(tooltip: 'Library / dashboard', icon: const Icon(Icons.video_library_outlined), onPressed: _library),
         IconButton(
           tooltip: 'Search',
           icon: const Icon(Icons.search),
@@ -650,18 +693,18 @@ class _HomeScreenState extends State<HomeScreen> {
           height: 66,
           child: Row(children: [
             _navItem(Icons.home_rounded, Icons.home_outlined, 'Home', _tab == 0, () => setState(() => _tab = 0)),
-            _navItem(Icons.explore, Icons.explore_outlined, 'Explore', _tab == 1, () => setState(() => _tab = 1)),
+            _navItem(Icons.video_collection, Icons.video_collection_outlined, 'Shorts', _tab == 1, () => setState(() => _tab = 1)),
             Expanded(
               child: Center(
                 child: GradientButton(
-                  onPressed: _upload,
+                  onPressed: _create,
                   radius: 16,
                   padding: const EdgeInsets.all(12),
-                  child: const Icon(Icons.add, size: 28),
+                  child: const Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.add, size: 24), Text('Create', style: TextStyle(fontSize: 10))]),
                 ),
               ),
             ),
-            _navItem(Icons.video_library, Icons.video_library_outlined, 'Library', false, _library),
+            _navItem(Icons.account_balance_wallet, Icons.account_balance_wallet_outlined, 'Earn', false, _earn),
             _navItem(Icons.person, Icons.person_outline, 'Profile', false, _profile),
           ]),
         ),
