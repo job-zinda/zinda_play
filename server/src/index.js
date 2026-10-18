@@ -21,6 +21,7 @@ app.set("trust proxy", trustedProxyHops);
 const allowedOrigins = [
   "https://zindaplay.vercel.app",
   "http://localhost:5173",
+  "http://localhost:5174",
   ...(process.env.CLIENT_ORIGIN || "").split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
 ];
 
@@ -40,7 +41,25 @@ const defaultCategories = [
 ];
 let database;
 let categories = [];
-const sessions = new Map();
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const sessionKey = (token) => createHash("sha256").update(String(token)).digest("hex");
+const sessionCache = new Map();
+// In-memory cache backed by MongoDB so logins survive server restarts.
+const sessions = {
+  get: (token) => sessionCache.get(token),
+  set(token, value) {
+    sessionCache.set(token, value);
+    database?.collection("sessions").updateOne(
+      { _id: sessionKey(token) },
+      { $set: { ...value, token, expiresAt: new Date(Date.now() + SESSION_TTL_MS) } },
+      { upsert: true }
+    ).catch((error) => console.error("Session save failed", error.message));
+  },
+  delete(token) {
+    sessionCache.delete(token);
+    database?.collection("sessions").deleteOne({ _id: sessionKey(token) }).catch(() => {});
+  }
+};
 const videosCollection = () => database.collection("videos");
 const categoriesCollection = () => database.collection("categories");
 const usersCollection = () => database.collection("users");
@@ -749,12 +768,17 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
   if (accountType === "business" && (!businessName || businessName.length > 100 || businessAbout.length > 1000)) {
     return res.status(400).json({ error: "Business name is required (up to 100 characters); business description must be 1,000 characters or fewer." });
   }
+  let referrerCreatorId = "";
   if (referrerPromoterId) {
     if (accountType !== "member" || !ObjectId.isValid(referrerPromoterId)) {
       return res.status(400).json({ error: "Referral links can only be used when creating a viewer account." });
     }
-    const promoter = await usersCollection().findOne({ _id: new ObjectId(referrerPromoterId), accountType: "promoter" }, { projection: { _id: 1 } });
-    if (!promoter) return res.status(400).json({ error: "This promoter referral link is invalid." });
+    const referrer = await usersCollection().findOne({ _id: new ObjectId(referrerPromoterId) }, { projection: { accountType: 1, approvalStatus: 1 } });
+    const isPromoter = referrer?.accountType === "promoter";
+    const isCreator = referrer && !["promoter", "business"].includes(referrer.accountType) && (referrer.approvalStatus === "approved" || referrer.approvalStatus === undefined);
+    if (!isPromoter && !isCreator) return res.status(400).json({ error: "This referral link is invalid." });
+    // Creator referrals are tracked separately so they never trigger promoter rewards.
+    if (isCreator) referrerCreatorId = referrerPromoterId;
   }
   if (process.env.ADMIN_USERNAME && username.toLowerCase() === process.env.ADMIN_USERNAME.trim().toLowerCase()) {
     return res.status(409).json({ error: "That username is reserved." });
@@ -770,7 +794,7 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
       ? { businessName, businessAbout }
       : accountType === "promoter"
         ? {}
-        : { approvalStatus: "pending", ...(referrerPromoterId ? { referrerPromoterId } : {}) }),
+        : { approvalStatus: "pending", ...(referrerPromoterId && !referrerCreatorId ? { referrerPromoterId } : {}), ...(referrerCreatorId ? { referrerCreatorId } : {}) }),
     createdAt: new Date()
   };
   try {
@@ -1760,8 +1784,151 @@ const uploadVideo = asyncRoute(async (req, res) => {
   }
   res.status(201).json(safeVideo(video));
 });
+const TRIAL_DAYS = 7;
+const MEMBERSHIP_DAYS = 30;
+const membershipPriceRupees = () => Math.max(1, Number(process.env.CREATOR_MEMBERSHIP_PRICE_RUPEES) || 199);
+const creatorOrdersCollection = () => database.collection("creatorMembershipOrders");
+const addDays = (date, days) => new Date(date.getTime() + days * 86400000);
+// The free trial starts the first time a creator's membership is checked, so existing creators also get a full week.
+async function creatorMembershipState(userId) {
+  const now = new Date();
+  let user = await usersCollection().findOne({ _id: userId }, { projection: { creatorMembership: 1 } });
+  let membership = user?.creatorMembership;
+  if (!membership?.trialEndsAt) {
+    membership = { ...membership, trialStartedAt: now.toISOString(), trialEndsAt: addDays(now, TRIAL_DAYS).toISOString() };
+    await usersCollection().updateOne({ _id: userId, "creatorMembership.trialEndsAt": { $exists: false } }, { $set: { creatorMembership: membership } });
+    user = await usersCollection().findOne({ _id: userId }, { projection: { creatorMembership: 1 } });
+    membership = user.creatorMembership;
+  }
+  const paidUntil = membership.paidUntil ? new Date(membership.paidUntil) : null;
+  const trialEndsAt = new Date(membership.trialEndsAt);
+  const status = paidUntil && paidUntil > now ? "active" : trialEndsAt > now ? "trial" : "expired";
+  const endsAt = status === "active" ? paidUntil : trialEndsAt;
+  return {
+    status,
+    trialEndsAt: trialEndsAt.toISOString(),
+    paidUntil: paidUntil ? paidUntil.toISOString() : null,
+    daysLeft: status === "expired" ? 0 : Math.max(0, Math.ceil((endsAt - now) / 86400000)),
+    priceRupees: membershipPriceRupees(),
+    periodDays: MEMBERSHIP_DAYS,
+    trialDays: TRIAL_DAYS
+  };
+}
+const requireActiveMembership = asyncRoute(async (req, res, next) => {
+  const state = await creatorMembershipState(req.creatorId);
+  if (state.status === "expired") {
+    return res.status(402).json({ error: "Your free trial has ended. Subscribe to the creator membership to keep uploading videos." });
+  }
+  next();
+});
+app.get("/api/creator/membership", requireCreator, asyncRoute(async (req, res) => {
+  const state = await creatorMembershipState(req.creatorId);
+  const dueSoon = state.status !== "trial" && state.status !== "active" ? state.status === "expired" : state.daysLeft <= 2 || (state.status === "active" && state.daysLeft <= 3);
+  if (dueSoon) {
+    const endsAt = state.status === "active" ? state.paidUntil : state.trialEndsAt;
+    const reminderKey = `${req.creatorId}:${state.status}:${endsAt}`;
+    const exists = await notificationsCollection().findOne({ recipientId: req.creatorId.toString(), reminderKey });
+    if (!exists) {
+      await notificationsCollection().insertOne({
+        recipientId: req.creatorId.toString(),
+        type: "membership_reminder",
+        reminderKey,
+        title: state.status === "expired" ? "Your free trial has ended" : state.status === "trial" ? "Your free trial is ending soon" : "Your membership is ending soon",
+        message: state.status === "expired"
+          ? `Upgrade for ₹${state.priceRupees} per ${state.periodDays} days to keep uploading videos.`
+          : `${state.daysLeft} ${state.daysLeft === 1 ? "day" : "days"} left. Upgrade for ₹${state.priceRupees} per ${state.periodDays} days to keep uploading videos.`,
+        readAt: null,
+        createdAt: new Date().toISOString()
+      });
+    }
+  }
+  res.json(state);
+}));
+app.post("/api/creator/membership/order", requireCreator, asyncRoute(async (req, res) => {
+  let paymentConfig;
+  try {
+    paymentConfig = razorpayConfiguration();
+  } catch (error) {
+    return res.status(503).json({ error: error.message });
+  }
+  const amountRupees = membershipPriceRupees();
+  const auth = Buffer.from(`${paymentConfig.keyId}:${paymentConfig.keySecret}`).toString("base64");
+  const orderResponse = await fetch("https://api.razorpay.com/v1/orders", {
+    method: "POST",
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amount: amountRupees * 100,
+      currency: "INR",
+      receipt: `zpm_${randomUUID().slice(0, 30)}`,
+      notes: { creatorId: req.creatorId.toString(), purpose: "creator_membership" }
+    })
+  });
+  const order = await orderResponse.json();
+  if (!orderResponse.ok || !order.id) {
+    console.error("Razorpay membership order failed:", order.error?.description || orderResponse.statusText);
+    return res.status(502).json({ error: "Could not create the Razorpay payment order. Try again later." });
+  }
+  await creatorOrdersCollection().insertOne({
+    creatorId: req.creatorId.toString(),
+    orderId: order.id,
+    amountRupees,
+    status: "created",
+    createdAt: new Date().toISOString()
+  });
+  res.status(201).json({ orderId: order.id, amount: amountRupees * 100, currency: "INR", keyId: paymentConfig.keyId, amountRupees });
+}));
+app.post("/api/creator/membership/verify", requireCreator, asyncRoute(async (req, res) => {
+  let paymentConfig;
+  try {
+    paymentConfig = razorpayConfiguration();
+  } catch (error) {
+    return res.status(503).json({ error: error.message });
+  }
+  const orderId = typeof req.body?.razorpay_order_id === "string" ? req.body.razorpay_order_id : "";
+  const paymentId = typeof req.body?.razorpay_payment_id === "string" ? req.body.razorpay_payment_id : "";
+  const signature = typeof req.body?.razorpay_signature === "string" ? req.body.razorpay_signature : "";
+  if (!orderId || !paymentId || !/^[a-f0-9]{64}$/i.test(signature)) {
+    return res.status(400).json({ error: "Invalid Razorpay payment confirmation." });
+  }
+  const expectedSignature = createHmac("sha256", paymentConfig.keySecret).update(`${orderId}|${paymentId}`).digest();
+  const suppliedSignature = Buffer.from(signature, "hex");
+  if (suppliedSignature.length !== expectedSignature.length || !timingSafeEqual(suppliedSignature, expectedSignature)) {
+    return res.status(400).json({ error: "Razorpay payment signature verification failed." });
+  }
+  const claimed = await creatorOrdersCollection().findOneAndUpdate(
+    { orderId, creatorId: req.creatorId.toString(), status: "created" },
+    { $set: { status: "paid", paymentId, paidAt: new Date().toISOString() } }
+  );
+  if (!claimed) return res.status(409).json({ error: "This payment was already processed or the order was not found." });
+  const current = await creatorMembershipState(req.creatorId);
+  const base = current.paidUntil && new Date(current.paidUntil) > new Date() ? new Date(current.paidUntil) : new Date();
+  await usersCollection().updateOne(
+    { _id: req.creatorId },
+    { $set: { "creatorMembership.paidUntil": addDays(base, MEMBERSHIP_DAYS).toISOString(), "creatorMembership.lastPaymentId": paymentId } }
+  );
+  res.json(await creatorMembershipState(req.creatorId));
+}));
+const requireProfilePhoto = asyncRoute(async (req, res, next) => {
+  const user = await usersCollection().findOne({ _id: req.creatorId }, { projection: { profilePhotoImageId: 1 } });
+  if (!user?.profilePhotoImageId) {
+    return res.status(403).json({ error: "Add a profile photo to your creator account before uploading videos." });
+  }
+  next();
+});
+app.get("/api/creator/referrals", requireCreator, asyncRoute(async (req, res) => {
+  const referralCode = req.creatorId.toString();
+  const referred = await usersCollection().find(
+    { referrerCreatorId: referralCode },
+    { projection: { username: 1, createdAt: 1 } }
+  ).sort({ createdAt: -1 }).limit(100).toArray();
+  res.json({
+    referralCode,
+    total: await usersCollection().countDocuments({ referrerCreatorId: referralCode }),
+    referred: referred.map(user => ({ id: user._id.toString(), username: user.username, joinedAt: user.createdAt }))
+  });
+}));
 app.post("/api/admin/videos/upload", requireAdmin, uploadVideo);
-app.post("/api/creator/videos/upload", requireCreator, uploadVideo);
+app.post("/api/creator/videos/upload", requireCreator, requireProfilePhoto, requireActiveMembership, uploadVideo);
 app.post("/api/business/videos/upload", requireBusiness, uploadVideo);
 app.get("/api/business/videos", requireBusiness, asyncRoute(async (req, res) => {
   const videos = await videosCollection().find({ ownerBusinessId: req.businessId.toString() }).sort({ createdAt: -1 }).toArray();
@@ -2460,6 +2627,10 @@ async function start() {
   await client.connect();
   database = client.db(process.env.MONGODB_DATABASE || "zinda_play");
 
+  await database.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  for (const saved of await database.collection("sessions").find({ expiresAt: { $gt: new Date() } }).toArray()) {
+    sessionCache.set(saved.token, { username: saved.username, role: saved.role, userId: saved.userId });
+  }
   await usersCollection().createIndex({ usernameKey: 1 }, { unique: true });
   await likesCollection().createIndex({ videoId: 1, userId: 1 }, { unique: true });
   await commentsCollection().createIndex({ videoId: 1, createdAt: -1 });
@@ -2474,6 +2645,7 @@ async function start() {
     { unique: true, partialFilterExpression: { status: "pending" } }
   );
   await adminChatsCollection().createIndex({ creatorId: 1, createdAt: 1 });
+  await creatorOrdersCollection().createIndex({ orderId: 1 }, { unique: true });
   await creatorRequestsCollection().createIndex(
     { businessId: 1, creatorId: 1 },
     { unique: true, partialFilterExpression: { status: "pending" } }

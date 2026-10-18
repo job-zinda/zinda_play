@@ -1,0 +1,317 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+
+import '../api.dart';
+import 'upload_screen.dart';
+import 'wallet_screen.dart';
+
+class StudioScreen extends StatefulWidget {
+  const StudioScreen({super.key});
+  @override
+  State<StudioScreen> createState() => _StudioScreenState();
+}
+
+class _StudioScreenState extends State<StudioScreen> {
+  final _api = Api.instance;
+  late final Razorpay _razorpay;
+  Timer? _poll;
+
+  Map<String, dynamic>? _account, _membership, _referrals, _wallet;
+  List<Map<String, dynamic>> _videos = [];
+  bool _loading = true;
+  String? _error, _message;
+
+  @override
+  void initState() {
+    super.initState();
+    _razorpay = Razorpay()
+      ..on(Razorpay.EVENT_PAYMENT_SUCCESS, _onPaid)
+      ..on(Razorpay.EVENT_PAYMENT_ERROR, (PaymentFailureResponse r) => setState(() => _error = 'Payment failed: ${r.message ?? 'cancelled'}'));
+    _load();
+    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _refreshProcessing());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _razorpay.clear();
+    super.dispose();
+  }
+
+  Map<String, dynamic> _map(dynamic v) => Map<String, dynamic>.from(v as Map);
+
+  Future<void> _load() async {
+    try {
+      final r = await Future.wait([
+        _api.get('/account'),
+        _api.get('/creator/membership'),
+        _api.get('/creator/referrals'),
+        _api.get('/creator/wallet'),
+        _api.get('/creator/videos'),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _account = _map(r[0]);
+        _membership = _map(r[1]);
+        _referrals = _map(r[2]);
+        _wallet = _map(r[3]);
+        _videos = (r[4] as List).map(_map).toList();
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _error = '$e'; _loading = false; });
+    }
+  }
+
+  Future<void> _refreshProcessing() async {
+    if (!mounted || !_videos.any((v) => v['processingStatus'] != null && v['processingStatus'] != 'ready' && v['processingStatus'] != 'error')) return;
+    try {
+      await _api.get('/creator/videos/processing');
+      final list = await _api.get('/creator/videos') as List;
+      if (mounted) setState(() => _videos = list.map(_map).toList());
+    } catch (_) {}
+  }
+
+  Future<void> _subscribe() async {
+    try {
+      final order = _map(await _api.post('/creator/membership/order'));
+      _razorpay.open({
+        'key': order['keyId'],
+        'amount': order['amount'],
+        'currency': order['currency'],
+        'order_id': order['orderId'],
+        'name': 'Zinda Play',
+        'description': 'Creator membership',
+        'prefill': {'name': _api.username},
+      });
+    } catch (e) {
+      setState(() => _error = '$e');
+    }
+  }
+
+  Future<void> _onPaid(PaymentSuccessResponse r) async {
+    try {
+      final state = await _api.post('/creator/membership/verify', {
+        'razorpay_order_id': r.orderId,
+        'razorpay_payment_id': r.paymentId,
+        'razorpay_signature': r.signature,
+      });
+      setState(() {
+        _membership = _map(state);
+        _message = 'Membership activated. Thank you!';
+        _error = null;
+      });
+    } catch (e) {
+      setState(() => _error = '$e');
+    }
+  }
+
+  Future<void> _pickPhoto() async {
+    final picked = await FilePicker.pickFile(type: FileType.image);
+    final path = picked?.path;
+    if (path == null) return;
+    final ext = path.split('.').last.toLowerCase();
+    const types = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp', 'gif': 'image/gif'};
+    if (!types.containsKey(ext)) {
+      setState(() => _error = 'Choose a JPEG, PNG, WebP, or GIF photo.');
+      return;
+    }
+    try {
+      await _api.uploadFile('PUT', '/account/profile-photo', File(path), types[ext]!);
+      _message = 'Profile photo updated.';
+      await _load();
+    } catch (e) {
+      setState(() => _error = '$e');
+    }
+  }
+
+  Future<void> _editProfile() async {
+    final name = TextEditingController(text: '${_account?['displayName'] ?? ''}');
+    final bio = TextEditingController(text: '${_account?['bio'] ?? ''}');
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit profile'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: name, maxLength: 60, decoration: const InputDecoration(labelText: 'Display name')),
+          TextField(controller: bio, maxLength: 300, maxLines: 3, decoration: const InputDecoration(labelText: 'Bio')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (save != true) return;
+    try {
+      await _api.patch('/account', {'displayName': name.text.trim(), 'bio': bio.text.trim()});
+      await _load();
+    } catch (e) {
+      setState(() => _error = '$e');
+    }
+  }
+
+  Future<void> _upload() async {
+    final uploaded = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const UploadScreen()));
+    if (uploaded == true) {
+      _message = 'Video uploaded. It will be reviewed before it is published.';
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final noPhoto = (_account?['profilePhotoUrl'] ?? '') == '';
+    final expired = _membership?['status'] == 'expired';
+    return Scaffold(
+      appBar: AppBar(title: const Text('Creator studio')),
+      floatingActionButton: _loading
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: noPhoto || expired ? null : _upload,
+              icon: const Icon(Icons.upload),
+              label: const Text('Upload'),
+            ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(padding: const EdgeInsets.all(12), children: [
+                if (_error != null) _banner(_error!, Colors.redAccent),
+                if (_message != null) _banner(_message!, Colors.green),
+                _profileCard(noPhoto),
+                _membershipCard(),
+                _statsCard(),
+                _referralCard(),
+                const SizedBox(height: 12),
+                const Text('Your videos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                if (_videos.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No videos yet.')),
+                for (final v in _videos) _videoTile(v),
+                const SizedBox(height: 80),
+              ]),
+            ),
+    );
+  }
+
+  Widget _banner(String text, Color color) => Card(
+        color: color.withValues(alpha: 0.18),
+        child: Padding(padding: const EdgeInsets.all(12), child: Text(text)),
+      );
+
+  Widget _profileCard(bool noPhoto) {
+    final photo = assetUrl('${_account?['profilePhotoUrl'] ?? ''}');
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            CircleAvatar(radius: 28, backgroundImage: photo.isEmpty ? null : NetworkImage(photo), child: photo.isEmpty ? const Icon(Icons.person) : null),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${_account?['displayName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                Text('@${_account?['username'] ?? ''}', style: const TextStyle(color: Colors.white60)),
+              ]),
+            ),
+            IconButton(onPressed: _editProfile, icon: const Icon(Icons.edit)),
+          ]),
+          if (noPhoto) ...[
+            const SizedBox(height: 8),
+            const Text('A profile photo is required before you can upload videos.', style: TextStyle(color: Colors.orangeAccent)),
+          ],
+          TextButton.icon(onPressed: _pickPhoto, icon: const Icon(Icons.photo_camera), label: Text(noPhoto ? 'Add profile photo' : 'Change photo')),
+        ]),
+      ),
+    );
+  }
+
+  Widget _membershipCard() {
+    final m = _membership!;
+    final status = m['status'];
+    final text = status == 'expired'
+        ? 'Your free trial has ended. Upgrade to keep uploading.'
+        : status == 'trial'
+            ? 'Free trial: ${m['daysLeft']} day(s) left.'
+            : 'Membership active: ${m['daysLeft']} day(s) left.';
+    return Card(
+      color: status == 'expired' ? Colors.red.withValues(alpha: 0.15) : null,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(children: [
+          Expanded(child: Text(text)),
+          FilledButton(onPressed: _subscribe, child: Text(status == 'active' ? 'Extend' : 'Upgrade ₹${m['priceRupees']}')),
+        ]),
+      ),
+    );
+  }
+
+  Widget _statsCard() {
+    final w = _wallet!;
+    final earned = (w['estimatedEarningsRupees'] as num).toStringAsFixed(2);
+    return Card(
+      child: InkWell(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+            _stat('${_videos.length}', 'Videos'),
+            _stat('${w['totalViews']}', 'Views'),
+            _stat('₹$earned', 'Earnings'),
+            const Icon(Icons.chevron_right),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _stat(String value, String label) => Column(children: [
+        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        Text(label, style: const TextStyle(color: Colors.white60)),
+      ]);
+
+  Widget _referralCard() {
+    final code = '${_referrals?['referralCode']}';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Invite people', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          SelectableText('Referral code: $code'),
+          Text('${_referrals?['total']} joined through your code'),
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: code));
+              if (mounted) setState(() => _message = 'Referral code copied.');
+            },
+            icon: const Icon(Icons.copy),
+            label: const Text('Copy code'),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _videoTile(Map<String, dynamic> v) {
+    final thumb = assetUrl(v['thumbnailUrl'] as String?);
+    final status = '${v['processingStatus'] ?? 'ready'}';
+    final approval = '${v['approvalStatus'] ?? ''}';
+    final label = status != 'ready' ? '$status · ${v['encodeProgress'] ?? 0}%' : (approval == 'pending' ? 'Awaiting approval' : (v['published'] == true ? 'Published' : 'Hidden'));
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: SizedBox(
+        width: 80,
+        height: 45,
+        child: thumb.isEmpty ? Container(color: const Color(0xFF1B1F2A)) : Image.network(thumb, fit: BoxFit.cover, errorBuilder: (_, _, _) => Container(color: const Color(0xFF1B1F2A))),
+      ),
+      title: Text('${v['title']}', maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text('${v['views'] ?? 0} views · $label'),
+    );
+  }
+}
