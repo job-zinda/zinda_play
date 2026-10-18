@@ -97,7 +97,7 @@ class _WatchScreenState extends State<WatchScreen> {
   Widget build(BuildContext context) {
     final v = widget.video;
     if (v['videoType'] == 'short') {
-      return Scaffold(appBar: AppBar(title: const Text('Zinda Shorts')), body: ShortsScreen(initialVideo: v));
+      return Scaffold(appBar: AppBar(title: const Text('Simply')), body: ShortsScreen(initialVideo: v));
     }
     return Scaffold(
       appBar: AppBar(title: Text('${v['title'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis)),

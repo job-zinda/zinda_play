@@ -16,13 +16,13 @@ async function request(api, token, path, options = {}) {
 
 export default function Shorts({ api, token, role, onSignIn, initialId, suspended = false }) {
   const [saved, setSaved] = useState(false);
-  return <section className="web-shorts" aria-label="Zinda Shorts">
+  return <section className="web-shorts" aria-label="Simply">
     <div className="shorts-heading">
-      <h1>{saved ? "Watch Later" : "Zinda Shorts"}</h1>
+      <h1>{saved ? "Watch Later" : "Simply"}</h1>
       <button className="secondary-btn" aria-pressed={saved} onClick={() => {
         if (!token) return onSignIn();
         setSaved(value => !value);
-      }}><Bookmark size={18}/>{saved ? "All Shorts" : "Watch Later"}</button>
+      }}><Bookmark size={18}/>{saved ? "All Simply videos" : "Watch Later"}</button>
     </div>
     <ShortFeed key={`${saved}:${initialId || ""}`} api={api} token={token} role={role} onSignIn={onSignIn} saved={saved} initialId={saved ? null : initialId} suspended={suspended}/>
   </section>;
@@ -105,10 +105,10 @@ function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) 
   return <>
     <div className="shorts-toolbar">
       <span>Swipe, scroll or use arrow keys. Data saver: only the active video loads.</span>
-      <button className="secondary-btn" disabled={loading} onClick={() => load(true)}><RefreshCw size={16}/>Refresh Shorts</button>
+      <button className="secondary-btn" disabled={loading} onClick={() => load(true)}><RefreshCw size={16}/>Refresh Simply</button>
     </div>
     <div className="shorts-stage">
-      <div className="shorts-feed" ref={feed} tabIndex={0} aria-label="Vertical Shorts feed"
+      <div className="shorts-feed" ref={feed} tabIndex={0} aria-label="Vertical Simply feed"
         onKeyDown={event => {
           if (event.target !== event.currentTarget || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
           event.preventDefault(); navigate(event.key === "ArrowDown" ? 1 : -1);
@@ -120,14 +120,14 @@ function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) 
         {items.map((video, i) => <ShortVideo key={video.id} video={video} api={api} token={token} role={role}
           active={visible && !suspended && i === index} muted={muted} onMute={() => setMuted(value => !value)} onSignIn={onSignIn}/>)}
         <div key={`status-${items.length}`} className="shorts-status" role="status">
-          {loading ? <><div className="shorts-skeleton"/><p>Loading Shorts...</p></> : error ? <><p role="alert">{error}</p><button className="primary-btn" onClick={() => load()}>Retry</button></> :
-            <><p>{more ? "More Shorts are available." : items.length ? "You're all caught up." : saved ? "No saved Shorts yet." : "No Shorts yet. Upload one from the mobile app to get started."}</p>
-              <button className="primary-btn" onClick={() => load(!more)}>{more ? "Load more Shorts" : "Refresh"}</button></>}
+          {loading ? <><div className="shorts-skeleton"/><p>Loading Simply...</p></> : error ? <><p role="alert">{error}</p><button className="primary-btn" onClick={() => load()}>Retry</button></> :
+            <><p>{more ? "More Simply videos are available." : items.length ? "You're all caught up." : saved ? "No saved Simply videos yet." : "No Simply videos yet. Upload one from the mobile app to get started."}</p>
+              <button className="primary-btn" onClick={() => load(!more)}>{more ? "Load more Simply videos" : "Refresh"}</button></>}
         </div>
       </div>
       <div className="shorts-arrows">
-        <button className="secondary-btn" aria-label="Previous Short" disabled={index === 0} onClick={() => navigate(-1)}><ChevronUp/></button>
-        <button className="secondary-btn" aria-label="Next Short" disabled={index >= items.length} onClick={() => navigate(1)}><ChevronDown/></button>
+        <button className="secondary-btn" aria-label="Previous Simply video" disabled={index === 0} onClick={() => navigate(-1)}><ChevronUp/></button>
+        <button className="secondary-btn" aria-label="Next Simply video" disabled={index >= items.length} onClick={() => navigate(1)}><ChevronDown/></button>
       </div>
     </div>
   </>;
@@ -200,7 +200,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
           hls.on(Hls.Events.ERROR, (_event, data) => {
             if (!cancelled && data.fatal) {
               hls.stopLoad();
-              setPlayError(`Could not play this Short (${data.details}). Check CDN access or retry.`);
+              setPlayError(`Could not play this Simply video (${data.details}). Check CDN access or retry.`);
             }
           });
           hls.loadSource(video.streamUrl);
@@ -226,7 +226,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
     const play = () => {
       if (active && !paused && !modal && media.readyState >= 2) media.play().catch(failure => {
         if (failure.name === "NotAllowedError") setPaused(true);
-        else if (failure.name !== "AbortError") setPlayError(`Could not play this Short: ${failure.message}`);
+        else if (failure.name !== "AbortError") setPlayError(`Could not play this Simply video: ${failure.message}`);
       });
       else media.pause();
     };
@@ -239,7 +239,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
     if (busy) return;
     if (needsAuth && !canEngage) {
       if (!token) onSignIn();
-      else setError("Use a viewer, creator, promoter or business account to interact with Shorts.");
+      else setError("Use a viewer, creator, promoter or business account to interact with Simply.");
       return;
     }
     setBusy(true); setError("");
@@ -271,7 +271,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
         const message = element.current?.error?.message || "";
         setPlayError(/DECODER_ERROR_NOT_SUPPORTED|UnsupportedConfig/i.test(message)
           ? "This browser cannot decode this video. Try opening Zinda Play in Chrome, Edge or Safari."
-          : "Could not load this Short. Check the video CDN permissions, then retry.");
+          : "Could not load this Simply video. Check the video CDN permissions, then retry.");
       }}
       onTimeUpdate={timeUpdate} onSeeked={() => { lastPosition.current = element.current.currentTime; }}/>}
     <div className="shorts-gradient"/>
@@ -319,7 +319,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
       }}/>
       <button aria-label={muted ? "Unmute" : "Mute"} onClick={onMute}>{muted ? <VolumeX/> : <Volume2/>}</button>
     </div>
-    {modal && active && <div className="shorts-modal" role="dialog" aria-modal="true" aria-label={modal === "comments" ? "Comments" : "Report Short"}
+    {modal && active && <div className="shorts-modal" role="dialog" aria-modal="true" aria-label={modal === "comments" ? "Comments" : "Report Simply video"}
       onKeyDown={event => {
         if (event.key === "Escape" && !busy) setModal("");
         if (event.key !== "Tab") return;
@@ -328,7 +328,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
         if (event.shiftKey && event.target === first) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && event.target === last) { event.preventDefault(); first?.focus(); }
       }}>
-      <div className="shorts-modal-heading"><h2>{modal === "comments" ? "Comments" : "Report Short"}</h2><button autoFocus disabled={busy} aria-label="Close dialog" onClick={() => setModal("")}><X/></button></div>
+      <div className="shorts-modal-heading"><h2>{modal === "comments" ? "Comments" : "Report Simply video"}</h2><button autoFocus disabled={busy} aria-label="Close dialog" onClick={() => setModal("")}><X/></button></div>
       {modal === "comments" ? <>
         <div className="shorts-comments">{state.comments.length ? state.comments.map((item, i) => <div key={item.id || i}><strong>{item.username}</strong><p>{item.text}</p></div>) : <p>Be the first to comment.</p>}</div>
         <form onSubmit={event => { event.preventDefault(); action(async () => {

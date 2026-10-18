@@ -168,7 +168,7 @@ class _ShortsScreenState extends State<ShortsScreen>
                     const BackButton(),
                   Expanded(
                     child: Text(
-                      widget.saved ? 'Watch Later' : 'Zinda Shorts',
+                      widget.saved ? 'Watch Later' : 'Simply',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 20,
@@ -243,10 +243,10 @@ class _ShortsScreenState extends State<ShortsScreen>
               _error ??
                   (_items.isEmpty
                       ? widget.saved
-                            ? 'No saved Shorts yet.'
-                            : 'No Shorts yet. Be the first to create one!'
+                            ? 'No saved Simply videos yet.'
+                            : 'No Simply videos yet. Be the first to create one!'
                       : _hasMore
-                      ? 'More Shorts are available.'
+                      ? 'More Simply videos are available.'
                       : 'You are all caught up.'),
             ),
             const SizedBox(height: 12),
@@ -351,7 +351,7 @@ class _ShortPlayerState extends State<_ShortPlayer> {
       if (url == null || url.scheme != 'https') {
         setState(
           () => _playbackError =
-              'Shorts playback is unavailable. Check server CDN configuration.',
+              'Simply playback is unavailable. Check server CDN configuration.',
         );
         return;
       }
@@ -368,7 +368,7 @@ class _ShortPlayerState extends State<_ShortPlayer> {
         _lastPosition = controller.value.position.inMilliseconds;
       } catch (error) {
         if (mounted && generation == _generation) {
-          setState(() => _playbackError = 'Could not play this Short: $error');
+          setState(() => _playbackError = 'Could not play this Simply video: $error');
         }
       } finally {
         if (mounted && generation == _generation) {
@@ -549,7 +549,7 @@ class _ShortPlayerState extends State<_ShortPlayer> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(title: Text('Report Short')),
+            const ListTile(title: Text('Report Simply video')),
             for (final reason in [
               'spam',
               'harassment',

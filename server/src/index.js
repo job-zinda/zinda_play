@@ -140,7 +140,7 @@ function requireMember(req, res, next) {
 function requireShortsAccount(req, res, next) {
   const session = sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, ""));
   if (!session?.userId || !["member", "creator", "promoter", "business"].includes(session.role)) {
-    return res.status(401).json({ error: "Sign in to interact with Shorts." });
+    return res.status(401).json({ error: "Sign in to interact with Simply." });
   }
   req.session = session;
   next();
@@ -857,7 +857,7 @@ app.get("/api/videos/:id", asyncRoute(async (req, res) => {
 }));
 app.post("/api/videos/:id/watch-start", requireMember, asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
-  if (video?.videoType === "short") return res.status(400).json({ error: "Shorts do not qualify for regular-video watch rewards." });
+  if (video?.videoType === "short") return res.status(400).json({ error: "Simply videos do not qualify for regular-video watch rewards." });
   if (!video || !await videoAvailableInViewerCity(video, req) || !await campaignVideoIsAvailable(video, req)) {
     return res.status(404).json({ error: "Video not found." });
   }
@@ -952,7 +952,7 @@ app.post("/api/videos/:id/watch-complete", requireMember, asyncRoute(async (req,
 app.post("/api/videos/:id/view", asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
   if (!video) return res.status(404).json({ error: "Video not found" });
-  if (video.videoType === "short") return res.status(400).json({ error: "Use the Shorts view ticket flow." });
+  if (video.videoType === "short") return res.status(400).json({ error: "Use the Simply view ticket flow." });
   if (!await videoAvailableInViewerCity(video, req)) return res.status(404).json({ error: "Video not found" });
   if (!await campaignVideoIsAvailable(video, req)) return res.status(404).json({ error: "Video not found" });
   const ipHashSecret = process.env.VIEW_IP_HASH_SECRET || process.env.ADMIN_PASSWORD;
@@ -1969,8 +1969,8 @@ const uploadVideo = asyncRoute(async (req, res) => {
   const short = shortUpload(req);
   if (short.error) return res.status(400).json({ error: short.error });
   if (short.fields.videoType === "short") {
-    if (!["creator", "admin"].includes(req.session.role)) return res.status(403).json({ error: "Shorts uploads require creator access." });
-    if (!categories.some(category => category.id === req.get("X-Video-Category"))) return res.status(400).json({ error: "Choose a Shorts category." });
+    if (!["creator", "admin"].includes(req.session.role)) return res.status(403).json({ error: "Simply uploads require creator access." });
+    if (!categories.some(category => category.id === req.get("X-Video-Category"))) return res.status(400).json({ error: "Choose a Simply category." });
     try { shortsCdnOrigin(); }
     catch (error) { return res.status(503).json({ error: error.message }); }
   }
@@ -2729,7 +2729,7 @@ app.patch("/api/creator/videos/:id", requireCreator, asyncRoute(async (req, res)
     return res.status(400).json({ error: "Description must be text." });
   }
   if (video.videoType === "short" && description !== undefined && (!description.trim() || description.length > 2000)) {
-    return res.status(400).json({ error: "Shorts captions must be 1 to 2000 characters." });
+    return res.status(400).json({ error: "Simply captions must be 1 to 2000 characters." });
   }
   if (categoryId !== undefined && (typeof categoryId !== "string" || (categoryId && !categories.some(category => category.id === categoryId)))) {
     return res.status(400).json({ error: "Choose a valid category." });

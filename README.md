@@ -37,7 +37,9 @@ New Razorpay checkout for creator membership and business promotions is disabled
 
 Run the membership API regression tests with `npm test` from the server directory. Tests use an isolated in-memory database double, not production data.
 
-## Zinda Shorts (mobile and web)
+## Simply (mobile and web)
+
+The feature previously named Zinda Shorts is now displayed as **Simply** in both apps, upload screens, Creator studio and admin reports. Existing `/api/shorts` endpoints, `?short=` share links, `videoType: "short"` records and internal code names remain unchanged for backward compatibility. No video migration is required. The technical instructions below retain the former name where they describe those existing integrations.
 
 ### Web Shorts
 

@@ -124,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final short = await showModalBottomSheet<bool>(context: context, builder: (context) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         ListTile(leading: const Icon(Icons.video_library_outlined), title: const Text('Upload regular video'), onTap: () => Navigator.pop(context, false)),
-        ListTile(leading: const Icon(Icons.video_collection_outlined), title: const Text('Create Zinda Short'), subtitle: const Text('9:16 portrait, up to 60 seconds'), onTap: () => Navigator.pop(context, true)),
+        ListTile(leading: const Icon(Icons.video_collection_outlined), title: const Text('Create Simply'), subtitle: const Text('9:16 portrait, up to 60 seconds'), onTap: () => Navigator.pop(context, true)),
       ]),
     ));
     if (!mounted || short == null) return;
@@ -135,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await Api.instance.refreshAccountRole();
       if (!mounted) return;
       if (Api.instance.role != 'creator') {
-        _toast('Shorts uploads require approved creator access. Use Creator studio or Switch to creator / apply in your profile.');
+        _toast('Simply uploads require approved creator access. Use Creator studio or Switch to creator / apply in your profile.');
         return;
       }
       await _push(const CreateShortScreen());
@@ -693,7 +693,7 @@ class _HomeScreenState extends State<HomeScreen> {
           height: 66,
           child: Row(children: [
             _navItem(Icons.home_rounded, Icons.home_outlined, 'Home', _tab == 0, () => setState(() => _tab = 0)),
-            _navItem(Icons.video_collection, Icons.video_collection_outlined, 'Shorts', _tab == 1, () => setState(() => _tab = 1)),
+            _navItem(Icons.video_collection, Icons.video_collection_outlined, 'Simply', _tab == 1, () => setState(() => _tab = 1)),
             Expanded(
               child: Center(
                 child: GradientButton(

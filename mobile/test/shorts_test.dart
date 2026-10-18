@@ -309,6 +309,8 @@ void main() {
     'active video autoplays muted, swipe changes playback and lifecycle pauses it',
     (tester) async {
       await mount(tester, _Feed(items));
+      expect(find.text('Simply'), findsOneWidget);
+      expect(find.text('Zinda Shorts'), findsNothing);
       expect(players.created, 1);
       expect(players.playing, hasLength(1));
       expect(players.volumes.values, everyElement(0));
@@ -401,7 +403,7 @@ void main() {
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
     expect(
-      find.text('No Shorts yet. Be the first to create one!'),
+      find.text('No Simply videos yet. Be the first to create one!'),
       findsOneWidget,
     );
     expect(find.text('Refresh'), findsOneWidget);

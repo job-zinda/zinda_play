@@ -7,17 +7,17 @@ export function shortMetadata(source) {
   let width = Number(source.width);
   let height = Number(source.height);
   if (Number(source.rotation) % 180 !== 0 && Number.isFinite(Number(source.rotation))) [width, height] = [height, width];
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 60) return { error: "Shorts must be longer than 0 and no longer than 60 seconds." };
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || durationSeconds > 60) return { error: "Simply videos must be longer than 0 and no longer than 60 seconds." };
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= width || Math.abs(width / height - 9 / 16) > 0.04) {
-    return { error: "Shorts must be portrait videos close to a 9:16 aspect ratio." };
+    return { error: "Simply videos must be portrait videos close to a 9:16 aspect ratio." };
   }
   return { fields: { durationSeconds, width, height } };
 }
 
 export function shortUpload(req) {
   if (req.get("X-Video-Type") !== "short") return { fields: {} };
-  if (!["video/mp4", "video/quicktime", "video/webm"].includes(req.get("Content-Type")?.split(";")[0])) return { error: "Shorts support MP4, MOV or WebM." };
-  if (Number(req.get("Content-Length") || req.get("X-Upload-Size")) > maxShortBytes) return { error: "Shorts uploads are limited to 150 MB." };
+  if (!["video/mp4", "video/quicktime", "video/webm"].includes(req.get("Content-Type")?.split(";")[0])) return { error: "Simply supports MP4, MOV or WebM." };
+  if (Number(req.get("Content-Length") || req.get("X-Upload-Size")) > maxShortBytes) return { error: "Simply uploads are limited to 150 MB." };
   const metadata = shortMetadata({
     durationSeconds: req.get("X-Video-Duration"), width: req.get("X-Video-Width"), height: req.get("X-Video-Height")
   });
@@ -28,7 +28,7 @@ export function shortUpload(req) {
     caption = decodeURIComponent(req.get("X-Short-Caption") || "");
     hashtags = JSON.parse(decodeURIComponent(req.get("X-Short-Hashtags") || "[]"));
   } catch {
-    return { error: "Invalid Shorts caption or hashtags encoding." };
+    return { error: "Invalid Simply caption or hashtags encoding." };
   }
   if (!caption.trim() || caption.length > 2000) return { error: "Enter a caption of 1 to 2000 characters." };
   if (!Array.isArray(hashtags) || hashtags.length > 10 || hashtags.some(tag => typeof tag !== "string" || !/^[\p{L}\p{N}_]{1,30}$/u.test(tag))) {
@@ -48,7 +48,7 @@ export function shortProcessingFields(video, bunnyVideo, processingStatus) {
 
 export function shortsCdnOrigin() {
   const raw = process.env.BUNNY_STREAM_CDN_HOSTNAME;
-  if (!raw) throw new Error("Configure BUNNY_STREAM_CDN_HOSTNAME for native Shorts playback.");
+  if (!raw) throw new Error("Configure BUNNY_STREAM_CDN_HOSTNAME for native Simply playback.");
   const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
   if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
     throw new Error("BUNNY_STREAM_CDN_HOSTNAME must be an HTTPS CDN hostname without a path.");
@@ -78,17 +78,17 @@ export function registerShortRoutes(app, {
   const query = () => ({ ...publicVideoQuery, videoType: "short", shortValidated: true, ownerBusinessId: { $exists: false } });
   const secret = () => {
     const value = process.env.VIEW_IP_HASH_SECRET || process.env.ADMIN_PASSWORD;
-    if (!value) throw new Error("Configure VIEW_IP_HASH_SECRET for Shorts views.");
+    if (!value) throw new Error("Configure VIEW_IP_HASH_SECRET for Simply views.");
     return value;
   };
   const viewerHash = req => {
-    if (!req.ip) throw new Error("Cannot determine viewer IP for Shorts.");
+    if (!req.ip) throw new Error("Cannot determine viewer IP for Simply.");
     return createHmac("sha256", secret()).update(req.ip).digest("hex");
   };
   async function find(req, res) {
     const video = await db().collection("videos").findOne({ ...query(), _id: req.params.id });
     if (!video || !await availableInCity(video, req)) {
-      res.status(404).json({ error: "Short not found." });
+      res.status(404).json({ error: "Simply video not found." });
       return null;
     }
     return video;
@@ -103,14 +103,14 @@ export function registerShortRoutes(app, {
   }
   app.get("/api/shorts", asyncRoute(async (req, res) => {
     const limit = Number(req.query.limit || 6);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 12) return res.status(400).json({ error: "Shorts page size must be 1 to 12." });
+    if (!Number.isInteger(limit) || limit < 1 || limit > 12) return res.status(400).json({ error: "Simply page size must be 1 to 12." });
     let cursor;
     if (req.query.cursor) {
       try {
         cursor = JSON.parse(Buffer.from(String(req.query.cursor), "base64url").toString());
         if (typeof cursor.id !== "string" || cursor.id.length > 64 || typeof cursor.at !== "string" || new Date(cursor.at).toISOString() !== cursor.at) throw new Error("Invalid cursor");
       } catch {
-        return res.status(400).json({ error: "Invalid Shorts cursor." });
+        return res.status(400).json({ error: "Invalid Simply cursor." });
       }
     }
     const filter = query();
@@ -128,7 +128,7 @@ export function registerShortRoutes(app, {
   }));
   app.get("/api/shorts/saved", requireAccount, asyncRoute(async (req, res) => {
     const before = String(req.query.before || "");
-    if (before && !/^[a-f\d]{24}$/i.test(before)) return res.status(400).json({ error: "Invalid saved Shorts cursor." });
+    if (before && !/^[a-f\d]{24}$/i.test(before)) return res.status(400).json({ error: "Invalid saved Simply cursor." });
     const rows = await db().collection("savedShorts").find({
       userId: req.session.userId, ...(before ? { _id: { $lt: new ObjectId(before) } } : {})
     }).sort({ _id: -1 }).limit(13).toArray();
@@ -179,7 +179,7 @@ export function registerShortRoutes(app, {
     await db().collection("shortReports").updateOne({ userId: req.session.userId, videoId: video._id },
       { $setOnInsert: { reason, status: "pending", createdAt: new Date(now()).toISOString() } }, { upsert: true });
     await db().collection("notifications").updateOne({ recipientId: "admin", type: "short_report", videoId: video._id, reporterId: req.session.userId },
-      { $setOnInsert: { title: "Zinda Short reported", message: `${req.session.username} reported "${video.title}": ${reason}. Review the video in Admin content.`, readAt: null, createdAt: new Date(now()).toISOString() } },
+      { $setOnInsert: { title: "Simply reported", message: `${req.session.username} reported "${video.title}": ${reason}. Review the video in Admin content.`, readAt: null, createdAt: new Date(now()).toISOString() } },
       { upsert: true });
     res.json({ reported: true });
   }));

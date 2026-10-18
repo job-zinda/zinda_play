@@ -132,7 +132,7 @@ class _CreateShortScreenState extends State<CreateShortScreen> {
         _type!,
         headers: {
           'X-Video-Type': 'short',
-          'X-Video-Title': 'Zinda Short',
+          'X-Video-Title': 'Simply',
           'X-Short-Caption': Uri.encodeComponent(_caption.text.trim()),
           'X-Short-Hashtags': Uri.encodeComponent(jsonEncode(tags)),
           'X-Video-Category': _category!,
@@ -165,7 +165,7 @@ class _CreateShortScreenState extends State<CreateShortScreen> {
   Widget build(BuildContext context) => PopScope(
     canPop: !_busy && !_picking,
     child: Scaffold(
-      appBar: AppBar(title: const Text('Create Zinda Short')),
+      appBar: AppBar(title: const Text('Create Simply')),
       body: _submitted
           ? Center(
               child: Padding(
@@ -179,7 +179,7 @@ class _CreateShortScreenState extends State<CreateShortScreen> {
                       size: 56,
                     ),
                     const Text(
-                      'Short uploaded. Encoding and admin approval are required before it appears. Check Creator studio for status.',
+                      'Simply video uploaded. Encoding and admin approval are required before it appears. Check Creator studio for status.',
                     ),
                     FilledButton(
                       onPressed: () => Navigator.pop(context, true),
