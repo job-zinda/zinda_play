@@ -36,7 +36,7 @@ const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({
 
 export function videoPreviewHtml(video, { website, apiOrigin, cdnOrigin, creatorName = "" }) {
   const target = videoLandingUrl(video, website);
-  const shareUrl = new URL(`/share/video/${encodeURIComponent(video._id)}`, website).href;
+  const shareUrl = new URL(`/share/video/${encodeURIComponent(video._id)}?preview=video-frame-v2`, website).href;
   const image = videoPreviewImage(video, apiOrigin, cdnOrigin);
   const title = String(video.title || "Zinda Play").slice(0, 120);
   const byline = creatorName ? `By ${String(creatorName).slice(0, 60)} · ` : "";

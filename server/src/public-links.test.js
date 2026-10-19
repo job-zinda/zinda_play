@@ -75,8 +75,8 @@ test("preview metadata stays on the share URL while clicks open the correct play
     const html = videoPreviewHtml({ _id: "video-id", title: "My video", bunnyVideoId: "bunny-id", videoType }, previewConfig);
     assert.match(html, /property="og:image" content="https:\/\/example.b-cdn.net\/bunny-id\/thumbnail.jpg"/);
     assert.match(html, /name="twitter:card" content="summary_large_image"/);
-    assert.match(html, /property="og:url" content="https:\/\/zindaplay.com\/share\/video\/video-id"/);
-    assert.match(html, /rel="canonical" href="https:\/\/zindaplay.com\/share\/video\/video-id"/);
+    assert.match(html, /property="og:url" content="https:\/\/zindaplay.com\/share\/video\/video-id\?preview=video-frame-v2"/);
+    assert.match(html, /rel="canonical" href="https:\/\/zindaplay.com\/share\/video\/video-id\?preview=video-frame-v2"/);
     assert.ok(html.includes(`location.replace("https://zindaplay.com/?${videoType === "short" ? "short" : "video"}=video-id")`));
     assert.ok(!html.includes('http-equiv="refresh"'));
     assert.ok(!html.includes("app-icon"));

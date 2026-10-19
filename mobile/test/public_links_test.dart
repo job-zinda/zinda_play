@@ -7,13 +7,16 @@ void main() {
   test('video shares and invitation links use the custom domain', () {
     expect(
       videoShareUrl('regular-id'),
-      'https://zindaplay.com/share/video/regular-id',
+      'https://zindaplay.com/share/video/regular-id?preview=video-frame-v2',
     );
     expect(
       videoShareUrl('short-id'),
-      'https://zindaplay.com/share/video/short-id',
+      'https://zindaplay.com/share/video/short-id?preview=video-frame-v2',
     );
-    expect(videoShareUrl('id/?'), 'https://zindaplay.com/share/video/id%2F%3F');
+    expect(
+      videoShareUrl('id/?'),
+      'https://zindaplay.com/share/video/id%2F%3F?preview=video-frame-v2',
+    );
     expect(referralUrl('123456'), 'https://zindaplay.com/?ref=123456');
     expect(
       creatorShareUrl('creator id'),

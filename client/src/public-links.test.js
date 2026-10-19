@@ -12,9 +12,9 @@ afterEach(() => {
 const navigatorWith = value => Object.defineProperty(globalThis, "navigator", { configurable: true, value });
 
 test("all share and invitation links use the public domain, with encoded IDs", () => {
-  assert.equal(videoShareUrl("video-id"), "https://zindaplay.com/share/video/video-id");
+  assert.equal(videoShareUrl("video-id"), "https://zindaplay.com/share/video/video-id?preview=video-frame-v2");
   assert.equal(creatorShareUrl("a b"), "https://zindaplay.com/share/creator/a%20b");
-  assert.equal(videoShareUrl("id/?"), "https://zindaplay.com/share/video/id%2F%3F");
+  assert.equal(videoShareUrl("id/?"), "https://zindaplay.com/share/video/id%2F%3F?preview=video-frame-v2");
   assert.equal(referralUrl("123456"), "https://zindaplay.com/?ref=123456");
   assert.throws(() => referralUrl(undefined), /not available/);
 });
@@ -37,7 +37,7 @@ test("native share receives a title and a non-empty canonical URL", async () => 
   let payload;
   navigatorWith({ share: async value => { payload = value; } });
   assert.equal(await shareLink("Watch me", videoShareUrl("id")), "shared");
-  assert.deepEqual(payload, { title: "Watch me", text: "Watch me", url: "https://zindaplay.com/share/video/id" });
+  assert.deepEqual(payload, { title: "Watch me", text: "Watch me", url: "https://zindaplay.com/share/video/id?preview=video-frame-v2" });
 });
 
 test("cancelling share does not copy a link unexpectedly", async () => {
@@ -74,4 +74,25 @@ test("Vercel forwards the public preview route to the existing API, preserving t
     source: "/share/creator/:id",
     destination: "https://zinda-play.onrender.com/api/share/creator/:id"
   }]);
+});
+
+test("new shares and preview metadata use the same stable cache-refresh URL", async () => {
+  const { videoPreviewHtml } = await import("../../server/src/public-links.js");
+  const id = "cc4f6af0-d6b9-4de0-80c1-dd473d79f74d";
+  const url = videoShareUrl(id);
+  const html = videoPreviewHtml({
+    _id: id,
+    bunnyVideoId: "473630ad-ab12-4cf0-954f-a5441282a7ba",
+    thumbnailImageId: "6ad2dee1ff9411f5fae99747"
+  }, {
+    website: "https://zindaplay.com",
+    apiOrigin: "https://zinda-play.onrender.com",
+    cdnOrigin: "https://vz-7e54a108-ab4.b-cdn.net"
+  });
+  assert.equal(videoShareUrl(id), url);
+  assert.ok(html.includes(`rel="canonical" href="${url}"`));
+  assert.ok(html.includes(`property="og:url" content="${url}"`));
+  assert.ok(html.includes('property="og:image" content="https://vz-7e54a108-ab4.b-cdn.net/473630ad-ab12-4cf0-954f-a5441282a7ba/thumbnail.jpg"'));
+  assert.ok(!html.includes("/api/videos/thumbnail/"));
+  assert.ok(html.includes(`location.replace("https://zindaplay.com/?video=${id}")`));
 });

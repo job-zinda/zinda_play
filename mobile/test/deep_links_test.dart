@@ -17,6 +17,14 @@ void main() {
       const DeepLink(DeepLinkKind.video, 'abc-123'),
     );
     expect(
+      parseDeepLink(
+        Uri.parse(
+          'https://zindaplay.com/share/video/abc-123?preview=video-frame-v2',
+        ),
+      ),
+      const DeepLink(DeepLinkKind.video, 'abc-123'),
+    );
+    expect(
       parseDeepLink(Uri.parse('https://www.zindaplay.com/share/creator/6ad2')),
       const DeepLink(DeepLinkKind.creator, '6ad2'),
     );
