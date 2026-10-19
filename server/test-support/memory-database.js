@@ -119,6 +119,10 @@ export function memoryDatabase() {
             item.creatorId === document.creatorId && ["pending", "approving"].includes(item.status))) {
             throw Object.assign(new Error("Duplicate pending payment"), { code: 11000 });
           }
+          if (name === "creatorWithdrawals" && document.status === "pending" && this.documents.some(item =>
+            item.creatorId === document.creatorId && item.status === "pending")) {
+            throw Object.assign(new Error("Duplicate pending withdrawal"), { code: 11000 });
+          }
           if (document._id && this.documents.some(item => equal(item._id, document._id))) {
             throw Object.assign(new Error("Duplicate ID"), { code: 11000 });
           }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../widgets/withdraw_card.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -113,6 +114,8 @@ class _WalletScreenState extends State<WalletScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  WithdrawCard(wallet: w, onChanged: _load),
                   const SizedBox(height: 12),
                   const Text(
                     'Earnings by video',

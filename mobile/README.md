@@ -45,6 +45,14 @@ profile from Creator studio. Profile links use
 creator, promoter and business) can follow creators and like or comment on
 videos. The bottom navigation keeps Home, Simply, Create, Earn and Profile actions.
 
+The creator wallet has a **Withdraw** button once at least ₹100 is available.
+Creators withdraw the full balance or a custom amount (minimum ₹100) to a Google
+Pay or PhonePe number, one request at a time. The admin pays manually and marks
+the request paid (deducted from the wallet) or rejects it with a reason (amount
+returned), from web admin → **Creator payouts**, where they can also send an
+amount to a creator's wallet. Every step creates a notification. Tests:
+`flutter test test/withdraw_card_test.dart`.
+
 Run the home layout, promotion, sharing and creator-search tests with:
 `flutter test test/homepage_promotion_banner_test.dart test/home_featured_spacing_test.dart test/share_search_banner_test.dart`.
 

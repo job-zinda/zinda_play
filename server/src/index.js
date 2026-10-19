@@ -17,6 +17,7 @@ import { ensureReferralCode, initializeReferrals, referralOwner } from "./referr
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
+import { initializeCreatorWithdrawals, registerCreatorWithdrawalRoutes } from "./creator-withdrawals.js";
 import { creatorPreviewHtml, publicWebOrigin, videoPreviewHtml } from "./public-links.js";
 import { accountAccessGuard, accountDeletionHandler } from "./account-deletion.js";
 import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, deliverCreatorAdNotifications, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
@@ -2546,9 +2547,9 @@ app.get("/api/creator/analytics", requireCreator, asyncRoute(async (req, res) =>
     videos: videos.map(video => ({ id: video._id, title: video.title, views: Number(video.views || 0) }))
   });
 }));
-app.get("/api/creator/wallet", requireCreator, asyncRoute(async (req, res) => {
-  res.json(await creatorWallet(database, req.creatorId.toString()));
-}));
+registerCreatorWithdrawalRoutes(app, {
+  getDb: () => database, requireCreator, requireAdmin, asyncRoute, creatorWallet
+});
 app.get("/api/promoter/wallet", requirePromoter, asyncRoute(async (req, res) => {
   const promoterId = req.promoterId;
   const [referredViews, watchedVideos, rewardTotals, withdrawals] = await Promise.all([
@@ -2937,6 +2938,7 @@ async function start() {
   })));
   await videosCollection().createIndex({ published: 1, processingStatus: 1, createdAt: -1 });
   await initializeBanners(database);
+  await initializeCreatorWithdrawals(database);
 
   categories = (await categoryCollection.find().toArray()).map(({ _id, ...category }) => ({
     id: _id,

@@ -363,3 +363,25 @@
   .my-creator-profile-stats .my-creator-profile-count+ .my-creator-profile-count{padding-left:18px;border-left:1px solid var(--line)}
   .my-creator-profile-count span{white-space:normal}
 }
+
+/* Creator withdrawals and admin payouts */
+.creator-withdraw{display:grid;gap:12px}
+.creator-withdraw h2{margin:10px 0 0}
+.creator-withdraw-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.creator-withdraw-summary div{display:grid;gap:4px;padding:14px;border:1px solid #ffffff12;border-radius:12px;background:#090a11}
+.creator-withdraw-summary span{color:var(--muted);font-size:12px}
+.creator-withdraw-summary strong{font-size:20px}
+.creator-withdraw-summary div:first-child strong{color:#86efac}
+.creator-withdraw>.primary-btn{justify-self:start}
+.withdraw-choice{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0;padding:0;border:0;color:#d3d0e0;font-size:13px}
+.withdraw-choice legend{width:100%;margin-bottom:6px}
+.business-invite-form .withdraw-choice label{display:flex;align-items:center;gap:7px;cursor:pointer}
+.business-invite-form .withdraw-choice input{width:auto;padding:0}
+.payout-notice{margin:0;padding:10px 12px;border-radius:10px;background:#14532d55;color:#bbf7d0}
+.payout-request>div:first-child{display:grid;gap:3px}
+.payout-number{color:#fff;font-size:15px;letter-spacing:.04em}
+.payout-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.payout-actions input{min-width:200px;border:1px solid #ffffff1c;border-radius:10px;background:#11121b;color:inherit;padding:10px;font:inherit}
+.payout-credit-form{max-width:520px;margin-bottom:14px}
+.creator-payouts h2 svg{vertical-align:-3px}
+@media(max-width:700px){.payout-actions{width:100%}.payout-actions input{flex:1 1 100%;min-width:0}.payout-actions button{flex:1}}
