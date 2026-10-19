@@ -120,6 +120,8 @@ function App() {
   const [upgradeReminderHidden, setUpgradeReminderHidden] = useState(false);
   const [discoverBrands, setDiscoverBrands] = useState([]);
   const [discoverCreatorProfile, setDiscoverCreatorProfile] = useState(null);
+  const [profileFromDirectory, setProfileFromDirectory] = useState(false);
+  const [discoverProfileLoading, setDiscoverProfileLoading] = useState(false);
   const [discoverBrandProfile, setDiscoverBrandProfile] = useState(null);
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverFollowSubmitting, setDiscoverFollowSubmitting] = useState(false);
@@ -216,6 +218,9 @@ function App() {
   useEffect(() => {
     if (!referrerPromoterId || adminToken || referralEntryHandled.current) return;
     referralEntryHandled.current = true;
+    // Only an actual invitation link opens sign-up; shared video/profile links go straight to the content.
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("ref") || ["video", "short", "creator"].some(key => params.has(key))) return;
     setPage("admin");
     setRegistering(true);
     setRegistrationType("member");
@@ -395,10 +400,21 @@ function App() {
     } catch (err) { setError(err.message); }
   }
   async function openCreatorFromCard(creator) {
-    setPage("discover");
+    setError("");
     setSelected(null);
-    await openDiscover();
+    setProfileDrawerOpen(false);
+    setDiscoverBrandProfile(null);
+    setDiscoverCreatorProfile(null);
+    setProfileFromDirectory(false);
+    setPage("discover");
+    window.scrollTo({ top: 0 });
     await openDiscoveredCreator(creator);
+  }
+  function closeDiscoverProfile() {
+    setDiscoverCreatorProfile(null);
+    setDiscoverBrandProfile(null);
+    if (!profileFromDirectory) setPage("home");
+    else if (!discoverCreators.length && !discoverBrands.length) openDiscover();
   }
   const scrollTrending = direction => {
     const row = trendingRow.current;
@@ -443,11 +459,21 @@ function App() {
     url.searchParams.delete("creator");
     window.history.replaceState({}, "", url);
   }, [initialCreatorId]);
+  const sharedVideoHandled = useRef(false);
   useEffect(() => {
     const videoId = new URLSearchParams(window.location.search).get("video");
-    const video = publicVideos.find(item => item.id === videoId);
-    if (video && !selected) watchVideo(video);
-  }, [publicVideos, selected]);
+    if (!videoId || sharedVideoHandled.current || loading) return;
+    sharedVideoHandled.current = true;
+    const loaded = publicVideos.find(item => item.id === videoId);
+    if (loaded) { watchVideo(loaded); return; }
+    fetch(`${API}/videos/${encodeURIComponent(videoId)}`)
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error === "Video not found" ? "This shared video is no longer available." : data.error || "Unable to open this video.");
+        watchVideo(data);
+      })
+      .catch(err => { setError(err.message); closeVideo(); });
+  }, [publicVideos, loading]);
 
   function clearAdminSession() {
     sessionStorage.removeItem("adminToken");
@@ -627,6 +653,7 @@ function App() {
   }
   async function openDiscover() {
     setError("");
+    setProfileFromDirectory(true);
     setSelected(null);
     setDiscoverCreatorProfile(null);
     setDiscoverBrandProfile(null);
@@ -652,6 +679,7 @@ function App() {
   async function openDiscoveredCreator(creator) {
     setError("");
     setDiscoverBrandProfile(null);
+    setDiscoverProfileLoading(true);
     try {
       const response = await fetch(`${API}/creators/${encodeURIComponent(creator.id)}/profile`, {
         headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {}
@@ -661,6 +689,8 @@ function App() {
       setDiscoverCreatorProfile(data);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setDiscoverProfileLoading(false);
     }
   }
   async function toggleDiscoveredCreatorFollow() {
@@ -1699,23 +1729,26 @@ function App() {
         </section>}
       </section>
       : page === "discover" ? <section className="admin-panel discovery-panel">
+        {!(discoverCreatorProfile || discoverBrandProfile || discoverProfileLoading) && <>
         <div className="section-heading"><div><span className="eyebrow"><Building2 size={14}/> COMMUNITY</span><h1>Creators & brands</h1><p className="muted">Discover creators, explore their published videos, and learn about brands on Zinda Play.</p></div><button className="secondary-btn" onClick={openDiscover}>Refresh</button></div>
         {discoverLoading && <p className="muted">Loading creators and brands…</p>}
         <section className="notification-section"><h2>Creator profiles</h2><div className="creator-directory">{discoverCreators.map(creator=><article className="creator-directory-card" key={creator.id}>
           {creator.profilePhotoUrl ? <img src={apiAssetSrc(creator.profilePhotoUrl)} alt={`${creator.displayName} profile`}/> : <span className="creator-directory-avatar"><UserRound size={24}/></span>}
           <div><strong>{creator.displayName}</strong><small>@{creator.username}</small><p>{creator.bio || "Creator on Zinda Play."}</p></div>
-          <div className="creator-directory-actions"><button className="primary-btn" onClick={()=>openDiscoveredCreator(creator)}>View profile</button>{authRole==="business" && <button className="secondary-btn" onClick={()=>{setSelectedCreatorId(creator.id);openBusiness();}}><UserPlus size={15}/> Select</button>}</div>
+          <div className="creator-directory-actions"><button className="primary-btn" onClick={()=>{setProfileFromDirectory(true);window.scrollTo({top:0});openDiscoveredCreator(creator);}}>View profile</button>{authRole==="business" && <button className="secondary-btn" onClick={()=>{setSelectedCreatorId(creator.id);openBusiness();}}><UserPlus size={15}/> Select</button>}</div>
         </article>)}</div>{!discoverLoading && !discoverCreators.length && <p className="muted">No approved creator profiles are available yet.</p>}</section>
         <section className="notification-section"><h2>Businesses & brands</h2><div className="creator-directory">{discoverBrands.map(brand=><article className="creator-directory-card" key={brand.id}>
           {brand.logoUrl ? <img src={apiAssetSrc(brand.logoUrl)} alt={`${brand.businessName} logo`}/> : <span className="creator-directory-avatar"><Building2 size={24}/></span>}
           <div><strong>{brand.businessName}</strong><small>@{brand.username}</small><p>{brand.businessAbout || "Business on Zinda Play."}</p></div>
-          <div className="creator-directory-actions"><button className="secondary-btn" onClick={()=>{setDiscoverCreatorProfile(null);setDiscoverBrandProfile(brand);}}>View brand</button></div>
+          <div className="creator-directory-actions"><button className="secondary-btn" onClick={()=>{setProfileFromDirectory(true);setDiscoverCreatorProfile(null);setDiscoverBrandProfile(brand);window.scrollTo({top:0});}}>View brand</button></div>
         </article>)}</div>{!discoverLoading && !discoverBrands.length && <p className="muted">No business or brand profiles are available yet.</p>}</section>
-        {discoverCreatorProfile && <section className="notification-section discovery-detail"><button className="secondary-btn" onClick={()=>setDiscoverCreatorProfile(null)}>Close creator profile</button>
+        </>}
+        {discoverProfileLoading && !discoverCreatorProfile && <p className="muted">Loading profile…</p>}
+        {discoverCreatorProfile && <section className="notification-section discovery-detail"><button className="back-link" onClick={closeDiscoverProfile}>← {profileFromDirectory ? "Back to creators & brands" : "Back to home"}</button>
           <div className="creator-detail-heading">{discoverCreatorProfile.profilePhotoUrl ? <img src={apiAssetSrc(discoverCreatorProfile.profilePhotoUrl)} alt={`${discoverCreatorProfile.displayName} profile`}/> : <span className="creator-directory-avatar"><UserRound size={28}/></span>}<div><span className="eyebrow">CREATOR PROFILE</span><h2>{discoverCreatorProfile.displayName}</h2><small>@{discoverCreatorProfile.username} · {Number(discoverCreatorProfile.followerCount || 0).toLocaleString()} followers</small><p>{discoverCreatorProfile.bio || "No bio provided."}</p><IntroVideo api={API} url={discoverCreatorProfile.introVideoUrl}/></div>{authRole==="business" && <button className="primary-btn" onClick={()=>{setSelectedCreatorId(discoverCreatorProfile.id);openBusiness();}}><UserPlus size={16}/> Select creator</button>}<button className="secondary-btn" onClick={()=>shareCreator(discoverCreatorProfile)}><Share2 size={16}/> Share profile</button>{!(discoverCreatorProfile.isSelf || authRole === "admin") && <button className={`creator-follow-btn ${discoverCreatorProfile.following ? "following" : ""}`} disabled={discoverFollowSubmitting} onClick={toggleDiscoveredCreatorFollow}><UserPlus size={16}/>{discoverCreatorProfile.following ? "Unfollow" : "Follow"}</button>}</div>
           <CreatorVideos videos={discoverCreatorProfile.videos} renderCard={renderCard}/>
         </section>}
-        {discoverBrandProfile && <section className="notification-section discovery-detail"><button className="secondary-btn" onClick={()=>setDiscoverBrandProfile(null)}>Close brand profile</button><div className="creator-detail-heading">
+        {discoverBrandProfile && <section className="notification-section discovery-detail"><button className="back-link" onClick={closeDiscoverProfile}>← {profileFromDirectory ? "Back to creators & brands" : "Back to home"}</button><div className="creator-detail-heading">
           {discoverBrandProfile.logoUrl ? <img src={apiAssetSrc(discoverBrandProfile.logoUrl)} alt={`${discoverBrandProfile.businessName} logo`}/> : <span className="creator-directory-avatar"><Building2 size={28}/></span>}<div><span className="eyebrow">BUSINESS / BRAND</span><h2>{discoverBrandProfile.businessName}</h2><small>@{discoverBrandProfile.username}</small><p>{discoverBrandProfile.businessAbout || "Business on Zinda Play."}</p></div>
         </div></section>}
       </section>
