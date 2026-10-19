@@ -838,7 +838,7 @@ app.get("/api/share/video/:id", asyncRoute(async (req, res) => {
     website: publicWebsite,
     apiOrigin: publicApiOrigin,
     creatorName: owner ? owner.displayName || owner.businessName || owner.username : "",
-    cdnOrigin: video.bunnyVideoId && !video.thumbnailImageId && !video.thumbnailUrl ? shortsCdnOrigin() : undefined
+    cdnOrigin: video.bunnyVideoId ? shortsCdnOrigin() : undefined
   }));
 }));
 app.get("/api/share/creator/:id", asyncRoute(async (req, res) => {

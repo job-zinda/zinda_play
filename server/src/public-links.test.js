@@ -26,11 +26,14 @@ const previewConfig = {
   cdnOrigin: "https://example.b-cdn.net"
 };
 
-test("uploaded thumbnail wins over thumbnail URLs and Bunny, using the public HTTPS API", () => {
+test("uploaded thumbnail remains the fallback when no generated video frame is available", () => {
   assert.equal(videoPreviewImage({
-    thumbnailImageId: "image-id", thumbnailUrl: "https://images.example/other.jpg", bunnyVideoId: "bunny-id"
+    thumbnailImageId: "image-id", thumbnailUrl: "https://images.example/other.jpg"
   }, previewConfig.apiOrigin, previewConfig.cdnOrigin),
   "https://zinda-play.onrender.com/api/videos/thumbnail/image-id");
+  assert.equal(videoPreviewImage({
+    thumbnailImageId: "image-id", bunnyVideoId: "bunny-id"
+  }, previewConfig.apiOrigin), "https://zinda-play.onrender.com/api/videos/thumbnail/image-id");
 });
 
 test("external and relative thumbnail URLs are included in social previews", () => {
@@ -44,10 +47,25 @@ test("external and relative thumbnail URLs are included in social previews", () 
   assert.throws(() => videoPreviewImage({ thumbnailUrl: "javascript:alert(1)" }, previewConfig.apiOrigin), /HTTP/);
 });
 
-test("Bunny regular and Simply uploads get a generated thumbnail when no custom image exists", () => {
+test("Bunny regular and Simply shares use the same video frame with or without a banner", () => {
   for (const videoType of ["regular", "short"]) {
-    assert.equal(videoPreviewImage({ bunnyVideoId: "bunny-id", videoType }, previewConfig.apiOrigin, previewConfig.cdnOrigin),
-      "https://example.b-cdn.net/bunny-id/thumbnail.jpg");
+    for (const banner of [
+      {},
+      { thumbnailImageId: "image-id" },
+      { thumbnailUrl: "https://images.example/banner.jpg" },
+      { thumbnailImageId: "image-id", thumbnailUrl: "/videos/thumbnail/image-id" }
+    ]) {
+      const video = { _id: "video-id", bunnyVideoId: "bunny-id", videoType, ...banner };
+      assert.equal(videoPreviewImage(video, previewConfig.apiOrigin, previewConfig.cdnOrigin),
+        "https://example.b-cdn.net/bunny-id/thumbnail.jpg");
+      const html = videoPreviewHtml(video, previewConfig);
+      assert.match(html, /property="og:image" content="https:\/\/example.b-cdn.net\/bunny-id\/thumbnail.jpg"/);
+      assert.match(html, /name="twitter:image" content="https:\/\/example.b-cdn.net\/bunny-id\/thumbnail.jpg"/);
+      assert.match(html, /name="twitter:card" content="summary_large_image"/);
+      assert.ok(html.includes(`location.replace("https://zindaplay.com/?${videoType === "short" ? "short" : "video"}=video-id")`));
+      assert.ok(!html.includes("images.example/banner.jpg"));
+      assert.ok(!html.includes("/api/videos/thumbnail/"));
+    }
   }
   assert.equal(videoPreviewImage({}, previewConfig.apiOrigin), "");
 });

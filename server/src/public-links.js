@@ -13,6 +13,9 @@ export function videoLandingUrl(video, origin) {
 }
 
 export function videoPreviewImage(video, apiOrigin, cdnOrigin) {
+  if (video.bunnyVideoId && cdnOrigin) {
+    return new URL(`/${encodeURIComponent(video.bunnyVideoId)}/thumbnail.jpg`, cdnOrigin).href;
+  }
   if (video.thumbnailImageId) {
     return new URL(`/api/videos/thumbnail/${encodeURIComponent(video.thumbnailImageId)}`, apiOrigin).href;
   }
@@ -23,9 +26,6 @@ export function videoPreviewImage(video, apiOrigin, cdnOrigin) {
       throw new Error("Video preview thumbnail must be a public HTTP(S) image URL.");
     }
     return image.href;
-  }
-  if (video.bunnyVideoId && cdnOrigin) {
-    return new URL(`/${encodeURIComponent(video.bunnyVideoId)}/thumbnail.jpg`, cdnOrigin).href;
   }
   return "";
 }
