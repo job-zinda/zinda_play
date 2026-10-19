@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'deep_links.dart';
 import 'navigation.dart';
 import 'screens/home_screen.dart';
 
@@ -18,6 +19,7 @@ class ZindaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Zinda Play',
       debugShowCheckedModeBanner: false,
+      navigatorKey: appNavigatorKey,
       navigatorObservers: [appRouteObserver],
       theme: ThemeData(
         useMaterial3: true,
@@ -49,7 +51,7 @@ class ZindaApp extends StatelessWidget {
         cardColor: const Color(0xFF11121B),
         dividerColor: const Color(0xFF242532),
       ),
-      home: const HomeScreen(),
+      home: const DeepLinkListener(child: HomeScreen()),
     );
   }
 }

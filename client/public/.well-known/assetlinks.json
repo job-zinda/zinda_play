@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.zindaplay.zinda_play",
+      "sha256_cert_fingerprints": [
+        "70:54:CC:71:CE:F7:77:8B:80:75:55:B9:10:1D:68:92:47:B7:AB:68:76:73:8D:2E:30:37:2E:0F:12:29:67:70"
+      ]
+    }
+  }
+]

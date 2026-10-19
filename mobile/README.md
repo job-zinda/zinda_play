@@ -85,6 +85,17 @@ Old long account-ID invitations are no longer accepted. Existing referrals and
 reward records keep their original internal account IDs, so earnings and
 attribution are unchanged.
 
+## Shared links open the app
+
+Android App Links send `https://zindaplay.com/share/video/<id>` and
+`/share/creator/<id>` straight into the installed app (`lib/deep_links.dart`);
+without the app they open the website. Android verifies the link using
+`client/public/.well-known/assetlinks.json`, which lists the SHA-256 fingerprint
+of the key that signs the APK. Release APKs are currently signed with this PC's
+debug key, so build them on this PC. If you add a release keystore or publish
+through Google Play (Play App Signing), add that key's SHA-256 fingerprint to
+`assetlinks.json` and redeploy the website.
+
 ## Getting Started
 
 Cards without thumbnails play muted, looping previews only while at least half
