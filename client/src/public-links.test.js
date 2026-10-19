@@ -1,7 +1,7 @@
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { isReferralCode, referralUrl, shareLink, videoShareUrl, whatsAppHelpUrl } from "./public-links.js";
+import { creatorShareUrl, isReferralCode, referralUrl, shareLink, videoShareUrl, whatsAppHelpUrl } from "./public-links.js";
 
 const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
 afterEach(() => {
@@ -13,6 +13,7 @@ const navigatorWith = value => Object.defineProperty(globalThis, "navigator", { 
 
 test("all share and invitation links use the public domain, with encoded IDs", () => {
   assert.equal(videoShareUrl("video-id"), "https://zindaplay.com/share/video/video-id");
+  assert.equal(creatorShareUrl("a b"), "https://zindaplay.com/share/creator/a%20b");
   assert.equal(videoShareUrl("id/?"), "https://zindaplay.com/share/video/id%2F%3F");
   assert.equal(referralUrl("123456"), "https://zindaplay.com/?ref=123456");
   assert.throws(() => referralUrl(undefined), /not available/);
@@ -69,5 +70,8 @@ test("Vercel forwards the public preview route to the existing API, preserving t
   assert.deepEqual(config.rewrites, [{
     source: "/share/video/:id",
     destination: "https://zinda-play.onrender.com/api/share/video/:id"
+  }, {
+    source: "/share/creator/:id",
+    destination: "https://zinda-play.onrender.com/api/share/creator/:id"
   }]);
 });

@@ -31,14 +31,40 @@ Creators, before the category filters. Videos without uploaded thumbnail images
 play muted previews in both the carousel and home feed; uploaded thumbnails stay
 still. The floating WhatsApp **Ask me** button opens
 `https://wa.me/919847561998?text=Zindaplay` externally.
-Search is opened from the header. Creator profiles, video
-playback, sharing, promotion banners and ad placements remain available. A
-configured promotion is placed after the first three feed videos instead of
-above the creator and category rows. The bottom navigation keeps Home, Simply,
-Create, Earn and Profile actions.
+Search is opened from the header; searches also list matching creators above the
+video results. A **Search content creators** field above Popular Creators opens a
+dedicated creator search. Creator profiles, video playback, sharing and ad
+placements remain available. Admins can add, edit, hide and delete multiple
+homepage banners (web admin → **Banners**); enabled banners rotate every five
+seconds in a carousel placed after the first three feed videos.
 
-Run the home layout and promotion tests with:
-`flutter test test/homepage_promotion_banner_test.dart test/home_featured_spacing_test.dart`.
+Sharing a video or creator profile opens a sheet with the creator's photo and
+name plus Share, WhatsApp and Copy link actions. Creators can share their own
+profile from Creator studio. Profile links use
+`https://zindaplay.com/share/creator/<id>`. Every signed-in account (viewer,
+creator, promoter and business) can follow creators and like or comment on
+videos. The bottom navigation keeps Home, Simply, Create, Earn and Profile actions.
+
+Run the home layout, promotion, sharing and creator-search tests with:
+`flutter test test/homepage_promotion_banner_test.dart test/home_featured_spacing_test.dart test/share_search_banner_test.dart`.
+
+## Profile settings, creator applications and recovery
+
+Open **Profile & account settings** from Profile or the creator, promoter or
+business dashboard. Every personal role can change its username with the current
+password and set a verified recovery email. Signup requires an email; the backend
+saves it, emails a verification code, and notifies the admin (who also sees a
+**Joined users** list with emails on the web). At sign-in, **Forgot password?**
+and **Forgot username?** send instructions through Brevo; paste the emailed code to reset a
+password or verify an address. Codes expire after 30 minutes. Recovery requires
+a verified email; verify the signup email (or add one) in Profile & account settings.
+
+Creator applicants stay viewers until approval. Add a required profile photo,
+optionally upload an introduction video (recommended for quicker approval), then
+tap **Submit for approval**. Switching modes alone does not submit an application.
+Deploy the matching backend and web app, including Brevo sender configuration.
+Legacy pending applications without an explicit submission return to draft on
+backend startup; approved creators keep their access.
 
 ## Invitation IDs
 

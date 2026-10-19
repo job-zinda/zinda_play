@@ -38,7 +38,7 @@ void main() {
           );
         }
         return http.Response(
-          jsonEncode(request.url.path == '/api/banner' ? null : []),
+          jsonEncode([]),
           200,
         );
       });

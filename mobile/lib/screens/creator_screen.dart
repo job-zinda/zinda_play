@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../intro_video.dart';
+import '../widgets/share_sheet.dart';
 import '../widgets/video_card.dart';
 import 'auth_screen.dart';
 import 'watch_screen.dart';
@@ -18,6 +19,7 @@ class _CreatorScreenState extends State<CreatorScreen> {
   bool _isSelf = false;
   int _followers = 0;
   String _introUrl = '';
+  String _photoUrl = '';
   List<Map<String, dynamic>> _videos = [];
   String? _error;
 
@@ -37,6 +39,7 @@ class _CreatorScreenState extends State<CreatorScreen> {
         _following = profile['following'] == true;
         _isSelf = profile['isSelf'] == true;
         _introUrl = '${profile['introVideoUrl'] ?? ''}';
+        _photoUrl = '${profile['profilePhotoUrl'] ?? ''}';
         _followers = (profile['followerCount'] as num?)?.toInt() ?? 0;
         final list = profile['videos'];
         _videos = list is List
@@ -76,7 +79,19 @@ class _CreatorScreenState extends State<CreatorScreen> {
     final c = widget.creator;
     final photo = assetUrl(c['profilePhotoUrl'] as String?);
     return Scaffold(
-      appBar: AppBar(title: Text('${c['displayName'] ?? c['username']}')),
+      appBar: AppBar(
+        title: Text('${c['displayName'] ?? c['username']}'),
+        actions: [
+          IconButton(
+            tooltip: 'Share profile',
+            icon: const Icon(Icons.share),
+            onPressed: () => showCreatorShareSheet(context, {
+              ...c,
+              if (_photoUrl.isNotEmpty) 'profilePhotoUrl': _photoUrl,
+            }),
+          ),
+        ],
+      ),
       body: ListView(
         children: [
           Padding(

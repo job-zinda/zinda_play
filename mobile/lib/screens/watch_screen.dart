@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import '../public_links.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../ads.dart';
 import '../api.dart';
 import 'auth_screen.dart';
 import 'shorts_screen.dart';
+import '../widgets/share_sheet.dart';
 
 class WatchScreen extends StatefulWidget {
   final Map<String, dynamic> video;
@@ -162,8 +162,7 @@ class _WatchScreenState extends State<WatchScreen> {
                 label: Text('$_likes'),
               ),
               TextButton.icon(
-                onPressed: () => sharePublicLink(context,
-                  '${v['title']} - watch on Zinda Play', videoShareUrl(_id)),
+                onPressed: () => showVideoShareSheet(context, v),
                 icon: const Icon(Icons.share),
                 label: const Text('Share'),
               ),

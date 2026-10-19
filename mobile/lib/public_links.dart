@@ -8,6 +8,9 @@ const whatsAppHelpUrl = 'https://wa.me/919847561998?text=Zindaplay';
 String videoShareUrl(String id) =>
     '$publicWebsite/share/video/${Uri.encodeComponent(id)}';
 
+String creatorShareUrl(String id) =>
+    '$publicWebsite/share/creator/${Uri.encodeComponent(id)}';
+
 String referralUrl(String code) =>
     Uri.parse(publicWebsite)
         .replace(path: '/', queryParameters: {'ref': code})

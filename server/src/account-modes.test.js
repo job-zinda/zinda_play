@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
 import express from "express";
-import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./account-modes.js";
+import { accountRole, approvedCreatorQuery, initializeCreatorApplications, registerAccountModeRoutes } from "./account-modes.js";
+import { memoryDatabase } from "../test-support/memory-database.js";
 
 test("promoter creator access is opt-in and never bypasses approval", () => {
   assert.equal(accountRole({ accountType: "promoter" }, "creator"), "promoter");
@@ -17,17 +18,11 @@ test("promoter creator access is opt-in and never bypasses approval", () => {
 });
 
 async function fixture(t, accountType = "promoter") {
-  const user = { _id: "user-1", username: "promoter-test", accountType, promoterRewards: 150, withdrawalHistory: ["paid-1"], creatorMembership: null };
+  const user = { _id: "user-1", username: "promoter-test", accountType, ...(accountType === "member" ? { approvalStatus: "draft" } : {}), promoterRewards: 150, withdrawalHistory: ["paid-1"], creatorMembership: null };
   const notifications = [];
   const session = { userId: user._id, role: accountType, username: user.username };
-  const collection = {
-    async findOne() { return user; },
-    async updateOne(filter, update) {
-      if (filter.creatorRequested?.$ne === true && user.creatorRequested === true) return { matchedCount: 0 };
-      Object.assign(user, update.$set);
-      return { matchedCount: 1 };
-    }
-  };
+  const collection = memoryDatabase().collection("users");
+  await collection.insertOne(user);
   const app = express();
   app.use(express.json());
   let saved = 0;
@@ -46,26 +41,33 @@ async function fixture(t, accountType = "promoter") {
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => new Promise(resolve => server.close(resolve)));
-  async function switchMode(mode, token = "test") {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/account/mode`, {
+  async function switchMode(mode, token = "test", path = "mode") {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/account/${path}`, {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ mode })
     });
     return { status: response.status, body: await response.json() };
   }
-  return { user, session, notifications, switchMode, saved: () => saved };
+  return { user, session, notifications, switchMode, apply: () => switchMode(null, "test", "creator-application"), saved: () => saved };
 }
 
-test("switching applies once, preserves promoter data, and follows normal approval before creator access", async t => {
+test("switching only opens a draft; photo and explicit submission are required, with promoter data retained", async t => {
   const f = await fixture(t);
   assert.equal((await f.switchMode("creator", "invalid")).status, 401);
   assert.equal((await f.switchMode("admin")).status, 400);
   const application = await f.switchMode("creator");
   assert.equal(application.status, 200);
   assert.equal(application.body.role, "member");
-  assert.equal(f.user.approvalStatus, "pending");
+  assert.equal(f.user.approvalStatus, "draft");
   assert.equal(f.user.creatorMembership, null);
-  assert.equal(f.notifications.length, 1);
+  assert.equal(f.notifications.length, 0);
+  assert.equal((await f.apply()).status, 400);
+  f.user.profilePhotoImageId = "photo";
+  assert.equal((await f.apply()).status, 200);
+  assert.equal(f.user.approvalStatus, "pending");
+  assert.ok(f.user.creatorSubmittedAt);
+  assert.equal(f.user.introVideoId, undefined);
+  assert.equal((await f.apply()).status, 409);
   assert.equal((await f.switchMode("promoter")).body.role, "promoter");
   assert.equal((await f.switchMode("creator")).body.role, "member");
   assert.equal(f.notifications.length, 1);
@@ -86,7 +88,35 @@ test("a rejected creator application cannot be reset by switching modes", async 
   const response = await f.switchMode("creator");
   assert.equal(response.body.role, "member");
   assert.equal(response.body.approvalStatus, "rejected");
+  assert.equal(f.notifications.length, 0);
+});
+
+test("viewers submit only once and rejected applicants can resubmit with a photo", async t => {
+  const f = await fixture(t, "member");
+  assert.equal((await f.apply()).status, 400);
+  assert.equal(f.user.approvalStatus, "draft");
+  f.user.profilePhotoImageId = "photo";
+  const results = await Promise.all([f.apply(), f.apply()]);
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
   assert.equal(f.notifications.length, 1);
+  assert.equal(f.session.role, "member");
+  f.user.approvalStatus = "rejected";
+  assert.equal((await f.apply()).status, 200);
+  f.user.approvalStatus = "approved";
+  assert.equal((await f.apply()).status, 409);
+});
+
+test("legacy pending accounts become drafts without changing approved creators", async () => {
+  const db = memoryDatabase();
+  const users = db.collection("users");
+  await users.insertOne({ _id: "legacy", approvalStatus: "pending" });
+  await users.insertOne({ _id: "submitted", approvalStatus: "pending", creatorSubmittedAt: "2026-10-19" });
+  await users.insertOne({ _id: "approved", approvalStatus: "approved" });
+  await initializeCreatorApplications(db);
+  await initializeCreatorApplications(db);
+  assert.equal((await users.findOne({ _id: "legacy" })).approvalStatus, "draft");
+  assert.equal((await users.findOne({ _id: "submitted" })).approvalStatus, "pending");
+  assert.equal((await users.findOne({ _id: "approved" })).approvalStatus, "approved");
 });
 
 test("normal and business accounts cannot obtain promoter mode", async t => {

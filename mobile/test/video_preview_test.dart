@@ -165,7 +165,7 @@ void main() {
     VideoPlayerPlatform.instance = players;
     addTearDown(() => VideoPlayerPlatform.instance = original);
     final client = MockClient((request) async {
-      final Object? body = switch (request.url.path) {
+      final Object body = switch (request.url.path) {
         '/api/videos' => [
           {
             'id': 'preview',
@@ -180,7 +180,6 @@ void main() {
             'streamUrl': 'https://example.test/still.mp4',
           },
         ],
-        '/api/banner' => null,
         _ => [],
       };
       return http.Response(jsonEncode(body), 200);

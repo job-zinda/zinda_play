@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import 'business_ads_screen.dart';
+import 'account_screen.dart';
 
 class BusinessScreen extends StatefulWidget {
   const BusinessScreen({super.key});
@@ -143,6 +144,10 @@ class _BusinessScreenState extends State<BusinessScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Business dashboard'),
+          actions: [
+            IconButton(tooltip: 'Profile & account settings', icon: const Icon(Icons.manage_accounts_outlined),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountScreen()))),
+          ],
           bottom: const TabBar(tabs: [Tab(text: 'Ads'), Tab(text: 'Creators'), Tab(text: 'Requests')]),
         ),
         body: _loading

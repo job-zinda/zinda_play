@@ -49,4 +49,13 @@
 .creator-media-section>h3{display:flex;align-items:center;gap:8px}
 .whatsapp-help{position:fixed;right:24px;bottom:24px;z-index:4;display:inline-flex;align-items:center;gap:9px;padding:12px 18px;border:1px solid #ffffff30;border-radius:28px;background:#128c4b;color:white;font-weight:700;text-decoration:none;box-shadow:0 4px 18px #0005}
 .whatsapp-help:hover{background:#107c42}.whatsapp-help:focus-visible{outline:2px solid white;outline-offset:3px}
+.account-security{max-width:680px;display:grid;gap:14px;overflow-wrap:anywhere}.account-security label{display:grid;gap:8px;color:#d3d0e0;font-size:13px}.account-security input{width:100%;min-width:0;background:#0c0d15;border:1px solid var(--line);border-radius:9px;padding:12px;color:white}.account-security form{display:grid;gap:12px}.account-security [role=alert]{color:#f28e9c}.account-security [role=status]{color:#91e0b2}
 @media(max-width:600px){.whatsapp-help{right:14px;bottom:18px;padding:10px 14px}}
+
+.forgot-links { display: flex; justify-content: space-between; gap: 12px; margin-top: -4px; }
+.forgot-links button { background: none; border: 0; padding: 0; color: #ff7a59; font-weight: 600; cursor: pointer; text-decoration: underline; }
+.field-help { display: block; margin-top: 4px; font-size: 12px; opacity: 0.7; font-weight: 400; }
+.joined-users-table { overflow-x: auto; }
+.joined-users-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.joined-users-table th, .joined-users-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.joined-users-table small { opacity: 0.6; }

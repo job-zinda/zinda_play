@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import '../public_links.dart';
 
 import '../api.dart';
 import '../theme.dart';
 import 'muted_video_preview.dart';
+import 'share_sheet.dart';
 
 String formatDuration(num? seconds) {
   final total = (seconds ?? 0).floor();
@@ -53,7 +53,7 @@ class VideoCard extends StatelessWidget {
             Text('$views views', style: const TextStyle(fontSize: 11, color: Colors.white70)),
             const Spacer(),
             InkWell(
-              onTap: () => sharePublicLink(context, '${video['title']} - watch on Zinda Play', videoShareUrl('${video['id']}')),
+              onTap: () => showVideoShareSheet(context, video),
               child: const Padding(padding: EdgeInsets.all(3), child: Icon(Icons.share_outlined, size: 16, color: Colors.white70)),
             ),
             InkWell(
@@ -98,7 +98,7 @@ class VideoCard extends StatelessWidget {
             title: const Text('Share'),
             onTap: () {
               Navigator.pop(ctx);
-              sharePublicLink(context, '${video['title']} - watch on Zinda Play', videoShareUrl('${video['id']}'));
+              showVideoShareSheet(context, video);
             },
           ),
           if (onCreator != null)

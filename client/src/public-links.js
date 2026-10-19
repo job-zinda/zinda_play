@@ -9,6 +9,10 @@ export function videoShareUrl(id) {
   return `${website}/share/video/${encodeURIComponent(id)}`;
 }
 
+export function creatorShareUrl(id) {
+  return `${website}/share/creator/${encodeURIComponent(id)}`;
+}
+
 export function referralUrl(code) {
   if (!code) throw new Error("Your referral link is not available yet. Please refresh and retry.");
   return `${website}/?ref=${encodeURIComponent(code)}`;

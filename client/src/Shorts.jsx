@@ -15,7 +15,7 @@ async function request(api, token, path, options = {}) {
   return data;
 }
 
-export default function Shorts({ api, token, role, onSignIn, initialId, suspended = false }) {
+export default function Shorts({ api, token, role, onSignIn, onShare, initialId, suspended = false }) {
   const [saved, setSaved] = useState(false);
   return <section className="web-shorts" aria-label="Simply">
     <div className="shorts-heading">
@@ -25,11 +25,11 @@ export default function Shorts({ api, token, role, onSignIn, initialId, suspende
         setSaved(value => !value);
       }}><Bookmark size={18}/>{saved ? "All Simply videos" : "Watch Later"}</button>
     </div>
-    <ShortFeed key={`${saved}:${initialId || ""}`} api={api} token={token} role={role} onSignIn={onSignIn} saved={saved} initialId={saved ? null : initialId} suspended={suspended}/>
+    <ShortFeed key={`${saved}:${initialId || ""}`} api={api} token={token} role={role} onSignIn={onSignIn} onShare={onShare} saved={saved} initialId={saved ? null : initialId} suspended={suspended}/>
   </section>;
 }
 
-function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) {
+function ShortFeed({ api, token, role, onSignIn, onShare, saved, initialId, suspended }) {
   const [items, setItems] = useState([]);
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -155,7 +155,7 @@ function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) 
           if (element.clientHeight) setIndex(Math.round(element.scrollTop / element.clientHeight));
         }}>
         {items.map((video, i) => <ShortVideo key={video.id} video={video} api={api} token={token} role={role}
-          active={visible && !suspended && i === index} muted={muted} onMute={() => setMuted(value => !value)} onSignIn={onSignIn}/>)}
+          active={visible && !suspended && i === index} muted={muted} onMute={() => setMuted(value => !value)} onSignIn={onSignIn} onShare={onShare}/>)}
         <div key={`status-${items.length}`} className="shorts-status" role="status">
           {loading ? <><div className="shorts-skeleton"/><p>Loading Simply...</p></> : error ? <><p role="alert">{error}</p><button className="primary-btn" onClick={() => load()}>Retry</button></> :
             <><p>{more ? "More Simply videos are available." : items.length ? "You're all caught up." : saved ? "No saved Simply videos yet." : "No Simply videos yet. Upload one from the mobile app to get started."}</p>
@@ -170,7 +170,7 @@ function ShortFeed({ api, token, role, onSignIn, saved, initialId, suspended }) 
   </>;
 }
 
-function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }) {
+function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, onShare }) {
   const element = useRef(null);
   const activeNow = useRef(active);
   activeNow.current = active;
@@ -329,7 +329,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn }
         setState(current => ({ ...current, ...data }));
       }), state.liked)}
       {button(`${state.commentCount ?? state.comments.length} comments`, MessageCircle, () => { setError(""); setModal("comments"); })}
-      {button("Share", Share2, () => action(async () => {
+      {button("Share", Share2, () => onShare ? onShare(video) : action(async () => {
         const result = await shareLink(video.title, videoShareUrl(video.id));
         if (result === "copied") setError("Share link copied.");
       }, false))}

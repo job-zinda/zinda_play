@@ -3,16 +3,17 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../ads.dart';
 import '../api.dart';
-import '../public_links.dart';
 import '../theme.dart';
 import '../widgets/video_card.dart';
 import '../widgets/homepage_promotion_banner.dart';
+import '../widgets/share_sheet.dart';
 import '../widgets/muted_video_preview.dart';
 import '../widgets/whatsapp_help_button.dart';
 import 'auth_screen.dart';
 import 'business_screen.dart';
 import 'collection_screen.dart';
 import 'creator_screen.dart';
+import 'creator_search_screen.dart';
 import 'inbox_screen.dart';
 import 'promoter_screen.dart';
 import 'studio_screen.dart';
@@ -22,6 +23,7 @@ import 'shorts_screen.dart';
 import 'create_short_screen.dart';
 import 'wallet_screen.dart';
 import 'delete_account_screen.dart';
+import 'account_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,7 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _videos = [];
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _popular = [];
-  Map<String, dynamic>? _promotion;
+  List<Map<String, dynamic>> _banners = [];
+  List<Map<String, dynamic>> _creatorMatches = [];
   String _category = '';
   String _sort = 'Trending';
   bool _searchVisible = false;
@@ -81,20 +84,27 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_category.isNotEmpty) 'category': _category,
         },
       ).query;
+      final term = _search.text.trim();
       final results = await Future.wait([
         Api.instance.get('/videos${query.isEmpty ? '' : '?$query'}'),
         Api.instance.get('/categories'),
         Api.instance.get('/discover/popular-creators'),
-        Api.instance.get('/banner'),
+        Api.instance.get('/banners').catchError((_) => <dynamic>[]),
+        term.length < 2
+            ? Future<dynamic>.value(<dynamic>[])
+            : Api.instance
+                  .get(
+                    '/discover/creators?search=${Uri.encodeQueryComponent(term)}',
+                  )
+                  .catchError((_) => <dynamic>[]),
       ]);
       if (!mounted) return;
       setState(() {
         _videos = _list(results[0]);
         _categories = _list(results[1]);
         _popular = _list(results[2]);
-        _promotion = results[3] == null
-            ? null
-            : Map<String, dynamic>.from(results[3] as Map);
+        _banners = results[3] is List ? _list(results[3]) : [];
+        _creatorMatches = results[4] is List ? _list(results[4]) : [];
         _loading = false;
       });
     } catch (e) {
@@ -201,7 +211,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _profile() async {
-    if (!Api.instance.signedIn) return _push(const AuthScreen());
+    if (!Api.instance.signedIn) {
+      await _push(const AuthScreen());
+      if (!mounted || !Api.instance.signedIn) return;
+    }
     try {
       await Api.instance.refreshAccountRole();
     } catch (error) {
@@ -248,6 +261,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const Divider(height: 1, color: kLine),
+              ListTile(
+                leading: const Icon(Icons.manage_accounts_outlined),
+                title: const Text('Profile & account settings'),
+                subtitle: const Text('Username, recovery email & creator application'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _push(const AccountScreen());
+                },
+              ),
               if (role == 'creator') ...[
                 ListTile(
                   leading: const Icon(Icons.video_library_outlined),
@@ -349,11 +371,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } else if (result['role'] == 'promoter') {
         await _push(const PromoterScreen());
       } else {
-        _toast(
-          result['approvalStatus'] == 'rejected'
-              ? 'Creator access was declined. Your promoter account is still available.'
-              : 'Creator application pending admin approval. Your promoter account and rewards are retained.',
-        );
+        await _push(const AccountScreen());
       }
     } catch (error) {
       if (mounted) _toast('$error');
@@ -492,16 +510,16 @@ class _HomeScreenState extends State<HomeScreen> {
       feed.add(_videoFeedRow(video));
       if (i == 2) {
         feed.add(const AdBanner(placement: 'top'));
-        if (_promotion != null) {
-          feed.add(HomepagePromotionBanner(banner: _promotion!));
+        if (_banners.isNotEmpty) {
+          feed.add(HomepagePromotionCarousel(banners: _banners));
         }
       }
       if (i == 5) feed.add(const AdBanner(placement: 'middle'));
     }
     if (videos.length < 3) {
       feed.add(const AdBanner(placement: 'top'));
-      if (_promotion != null) {
-        feed.add(HomepagePromotionBanner(banner: _promotion!));
+      if (_banners.isNotEmpty) {
+        feed.add(HomepagePromotionCarousel(banners: _banners));
       }
     }
     return RefreshIndicator(
@@ -510,6 +528,8 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.only(bottom: 96),
         children: [
           if (_searchVisible) _searchField(),
+          if (!filtering) _creatorSearchEntry(),
+          if (!_loading && _error == null && filtering) ..._matchingCreators(),
           if (!_loading && _error == null && !filtering) ..._creators(),
           if (!_loading && _error == null && !filtering) ..._trending(),
           _categoryFilters(),
@@ -740,6 +760,60 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
+  Widget _creatorSearchEntry() => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
+    child: Material(
+      color: kPanel,
+      borderRadius: BorderRadius.circular(28),
+      child: InkWell(
+        key: const ValueKey('creator-search-entry'),
+        borderRadius: BorderRadius.circular(28),
+        onTap: () => _push(const CreatorSearchScreen()),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFF3A3B4C)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.person_search_outlined, color: kMuted, size: 20),
+              SizedBox(width: 10),
+              Text(
+                'Search content creators',
+                style: TextStyle(color: kMuted, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  List<Widget> _matchingCreators() {
+    if (_creatorMatches.isEmpty) return const [];
+    return [
+      _heading('Creators', Icons.person_search_outlined, topPadding: 8),
+      for (final c in _creatorMatches.take(5))
+        ListTile(
+          dense: true,
+          leading: CircleAvatar(
+            backgroundColor: kPanel,
+            backgroundImage: assetUrl('${c['profilePhotoUrl'] ?? ''}').isEmpty
+                ? null
+                : NetworkImage(assetUrl('${c['profilePhotoUrl'] ?? ''}')),
+            child: assetUrl('${c['profilePhotoUrl'] ?? ''}').isEmpty
+                ? const Icon(Icons.person)
+                : null,
+          ),
+          title: Text('${c['displayName'] ?? c['username']}'),
+          subtitle: Text('@${c['username']}'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openCreator(c),
+        ),
+    ];
+  }
+
   List<Widget> _creators() {
     if (_popular.isEmpty) return const [];
     return [
@@ -826,7 +900,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final thumbnail = assetUrl(video['thumbnailUrl'] as String?);
     final profilePhoto = assetUrl(creator?['profilePhotoUrl'] as String?);
     final duration = formatDuration(video['durationSeconds'] as num?);
-    final id = '${video['id'] ?? video['_id'] ?? ''}';
 
     return Column(
       children: [
@@ -930,11 +1003,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           tooltip: 'Video options',
                           onSelected: (value) {
                             if (value == 'share') {
-                              sharePublicLink(
-                                context,
-                                '${video['title']} - watch on Zinda Play',
-                                videoShareUrl(id),
-                              );
+                              showVideoShareSheet(context, video);
                             } else if (value == 'creator' && creator != null) {
                               _openCreator(creator);
                             }
@@ -986,11 +1055,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                         const Spacer(),
                         InkWell(
-                          onTap: () => sharePublicLink(
-                            context,
-                            '${video['title']} - watch on Zinda Play',
-                            videoShareUrl(id),
-                          ),
+                          onTap: () => showVideoShareSheet(context, video),
                           child: const Padding(
                             padding: EdgeInsets.all(2),
                             child: Icon(

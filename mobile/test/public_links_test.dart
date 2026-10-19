@@ -15,6 +15,10 @@ void main() {
     );
     expect(videoShareUrl('id/?'), 'https://zindaplay.com/share/video/id%2F%3F');
     expect(referralUrl('123456'), 'https://zindaplay.com/?ref=123456');
+    expect(
+      creatorShareUrl('creator id'),
+      'https://zindaplay.com/share/creator/creator%20id',
+    );
     expect(Uri.parse(referralUrl('code&video=other')).queryParameters, {
       'ref': 'code&video=other',
     });

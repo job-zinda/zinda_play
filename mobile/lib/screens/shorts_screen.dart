@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../public_links.dart';
 import 'package:video_player/video_player.dart';
 
 import '../api.dart';
 import '../navigation.dart';
 import '../shorts.dart';
 import '../widgets/short_comments.dart';
+import '../widgets/share_sheet.dart';
 import 'auth_screen.dart';
 
 class ShortsScreen extends StatefulWidget {
@@ -713,11 +713,7 @@ class _ShortPlayerState extends State<_ShortPlayer> {
               _button(
                 'Share',
                 Icons.share,
-                () => _action(() async {
-                  await sharePublicLink(context,
-                    '${widget.video['caption'] ?? widget.video['title']}',
-                    videoShareUrl(_id));
-                }, signIn: false),
+                () => showVideoShareSheet(context, widget.video),
               ),
               _button(
                 _saved ? 'Saved' : 'Save',

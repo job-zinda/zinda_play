@@ -74,6 +74,7 @@ export async function deleteAccountData(db, user, { deleteVideoMedia, revokeSess
   }
   // Financial ledgers, payment evidence and outstanding payout details remain for reconciliation.
   await db.collection("sessions").deleteMany({ userId: id });
+  await db.collection("accountTokens").deleteMany({ userId: user._id });
   await revokeSessions(id);
   await db.collection("users").deleteOne({ _id: user._id });
 }

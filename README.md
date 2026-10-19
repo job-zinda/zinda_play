@@ -31,6 +31,44 @@ npm run dev
 ```
 Open the Vite URL printed by the client terminal (usually http://localhost:5173).
 
+## Creator applications and account recovery
+
+New personal accounts start as viewers, not submitted creator applications.
+In Profile, add and save a **required profile photo**, optionally upload an
+introduction video (recommended for quicker approval), then select **Submit for
+approval**. Until admin approval, the user remains a viewer and cannot upload
+regular videos or Simply. The admin review list includes the photo and optional
+intro. Promoters can prepare an application without losing rewards or their
+promoter mode. Rejected applicants may update their profile and resubmit.
+
+Deploy the API and both clients together. On startup, legacy pending applications
+without an explicit submission timestamp return to draft and must be submitted
+again; approved creators are unchanged. Simply creating an account or switching
+to creator mode no longer submits an application.
+
+Viewer, creator, promoter and business profiles include **Username & account
+recovery**. Username changes require the current password, remain case-insensitively
+unique, and update sign-in names in all sessions without changing account IDs or
+financial ownership. Existing comments keep their historical displayed names.
+Admin credentials are environment-managed and are not personal profiles.
+
+Configure `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` (a sender verified in Brevo),
+and optionally `BREVO_SENDER_NAME` on the backend. Set `PUBLIC_WEB_URL` to the
+deployed website so emailed verification/reset links open the correct app.
+No new package is required: the server uses Brevo's transactional email API.
+Each user must add and verify a recovery email using their current password.
+Existing accounts have no recovery email until they do so. An unverified
+replacement does not remove the previously verified address.
+
+**Forgot password or username?** is available at sign-in and in profile settings
+on both clients. Username recovery emails the current username; password recovery
+sends a single-use link and a copy/paste code (30-minute expiry). Website links
+open the recovery screen; Android users can paste the emailed code in the app.
+Resetting a password revokes all sessions. Tokens are stored hashed and requests
+are rate-limited in MongoDB. Accounts without a previously verified address need
+support assistance; email alone is not accepted as proof of ownership.
+Email provider failures are reported, not shown as successful sends.
+
 ## Privacy and account deletion
 
 The public policy is served at `https://zindaplay.com/privacy.html` and the public account-deletion instructions at `https://zindaplay.com/delete-account.html`. The operator is Neo jobzinda private limited, contact `jobzinda@gmail.com`. Review the policy against actual operations and obtain appropriate legal guidance before publication; no fixed legal/financial retention duration is assumed.

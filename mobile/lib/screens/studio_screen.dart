@@ -11,6 +11,8 @@ import '../intro_video.dart';
 import 'upload_screen.dart';
 import 'wallet_screen.dart';
 import 'membership_screen.dart';
+import '../widgets/share_sheet.dart';
+import 'account_screen.dart';
 
 class StudioScreen extends StatefulWidget {
   const StudioScreen({super.key});
@@ -232,7 +234,16 @@ class _StudioScreenState extends State<StudioScreen> {
     final noPhoto = (_account?['profilePhotoUrl'] ?? '') == '';
     final expired = _membership?['status'] == 'expired';
     return Scaffold(
-      appBar: AppBar(title: const Text('Creator studio')),
+      appBar: AppBar(title: const Text('Creator studio'), actions: [
+        if ('${_account?['id'] ?? ''}'.isNotEmpty)
+          IconButton(tooltip: 'Share my profile', icon: const Icon(Icons.share),
+            onPressed: () => showCreatorShareSheet(context, _account!)),
+        IconButton(tooltip: 'Profile & account settings', icon: const Icon(Icons.manage_accounts_outlined),
+          onPressed: () async {
+            await Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountScreen()));
+            if (mounted) await _load();
+          }),
+      ]),
       floatingActionButton: _loading
           ? null
           : FloatingActionButton.extended(

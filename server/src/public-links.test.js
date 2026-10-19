@@ -78,3 +78,15 @@ test("preview text and URLs are escaped, with no fabricated image for imageless 
   assert.ok(!noImage.includes('property="og:image"'));
   assert.match(noImage, /name="twitter:card" content="summary"/);
 });
+
+test("video previews name the creator and creator previews use their profile photo", async () => {
+  const { creatorPreviewHtml } = await import("./public-links.js");
+  const video = videoPreviewHtml({ _id: "v1", title: "Clip", description: "Fun", thumbnailImageId: "img" }, { ...previewConfig, creatorName: "Asha <3" });
+  assert.match(video, /content="By Asha &lt;3 \u00b7 Fun"/);
+  assert.match(video, /og:image" content="https:\/\/zinda-play.onrender.com\/api\/videos\/thumbnail\/img"/);
+  const creator = creatorPreviewHtml({ _id: "c1", username: "asha", displayName: "Asha", profilePhotoImageId: "p" }, previewConfig);
+  assert.match(creator, /og:image" content="https:\/\/zinda-play.onrender.com\/api\/creators\/c1\/profile-photo"/);
+  assert.match(creator, /og:url" content="https:\/\/zindaplay.com\/share\/creator\/c1"/);
+  assert.ok(creator.includes('location.replace("https://zindaplay.com/?creator=c1")'));
+  assert.ok(!creatorPreviewHtml({ _id: "c2", username: "x" }, previewConfig).includes("og:image"));
+});

@@ -57,6 +57,11 @@ class Api {
 
   bool get signedIn => token != null;
 
+  Future<void> updateUsername(String value) async {
+    username = value;
+    await _storage.write(key: 'username', value: value);
+  }
+
   Future<void> restore() async {
     token = await _storage.read(key: 'token');
     username = await _storage.read(key: 'username');
@@ -149,12 +154,13 @@ class Api {
     await _save(Map<String, dynamic>.from(data));
   }
 
-  Future<void> register(String username, String password, {String? referrer, String accountType = 'member', String? businessName}) async {
-    // The server has one account type for viewers and creators; creators are approved by the admin.
+  Future<void> register(String username, String password, {String? email, String? referrer, String accountType = 'member', String? businessName}) async {
+    // Creator applicants start as viewers and submit their completed profile separately.
     if (accountType == 'creator') accountType = 'member';
     final data = await post('/auth/register', {
       'username': username,
       'password': password,
+      'email': ?email,
       if (accountType != 'member') 'accountType': accountType,
       if (accountType == 'business') 'businessName': businessName ?? '',
       if (accountType == 'member' && referrer != null && referrer.isNotEmpty) 'referrerPromoterId': referrer,

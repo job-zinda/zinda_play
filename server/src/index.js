@@ -10,12 +10,14 @@ import { GridFSBucket, MongoClient, ObjectId } from "mongodb";
 import { open as openGeoReader } from "maxmind";
 import { initializeMemberships, membershipSettings, registerMembershipRoutes } from "./memberships.js";
 import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency } from "./ad-delivery.js";
-import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./account-modes.js";
+import { accountRole, approvedCreatorQuery, initializeCreatorApplications, registerAccountModeRoutes } from "./account-modes.js";
+import { initializeBanners, registerBannerRoutes } from "./banners.js";
+import { initializeAccountSecurity, normalizeEmail, registerAccountSecurityRoutes, validEmail } from "./account-security.js";
 import { ensureReferralCode, initializeReferrals, referralOwner } from "./referrals.js";
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
-import { publicWebOrigin, videoPreviewHtml } from "./public-links.js";
+import { creatorPreviewHtml, publicWebOrigin, videoPreviewHtml } from "./public-links.js";
 import { accountAccessGuard, accountDeletionHandler } from "./account-deletion.js";
 import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, deliverCreatorAdNotifications, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
 
@@ -91,7 +93,6 @@ const likesCollection = () => database.collection("videoLikes");
 const commentsCollection = () => database.collection("videoComments");
 const creatorFollowsCollection = () => database.collection("creatorFollows");
 const uniqueViewsCollection = () => database.collection("uniqueVideoViews");
-const bannerCollection = () => database.collection("siteContent");
 const adsCollection = () => database.collection("ads");
 const bannerImageBucket = () => new GridFSBucket(database, { bucketName: "bannerImages" });
 const creatorProfilePhotoBucket = () => new GridFSBucket(database, { bucketName: "creatorProfilePhotos" });
@@ -111,16 +112,6 @@ const supportedImageTypes = new Map([
   ["image/gif", "gif"]
 ]);
 const maxImageBytes = 8 * 1024 * 1024;
-const defaultBanner = {
-  _id: "homepage-banner",
-  enabled: false,
-  title: "",
-  description: "",
-  imageId: "",
-  buttonLabel: "",
-  buttonUrl: ""
-};
-
 const asyncRoute = handler => (req, res, next) => {
   Promise.resolve(handler(req, res, next)).catch(next);
 };
@@ -155,16 +146,13 @@ function requireMember(req, res, next) {
 function requireShortsAccount(req, res, next) {
   const session = sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, ""));
   if (!session?.userId || !["member", "creator", "promoter", "business"].includes(session.role)) {
-    return res.status(401).json({ error: "Sign in to interact with Simply." });
+    return res.status(401).json({ error: "Sign in to like, comment or follow." });
   }
   req.session = session;
   next();
 }
-const requireVideoAccount = asyncRoute(async (req, res, next) => {
-  const video = await videosCollection().findOne({ _id: req.params.id });
-  if (video?.videoType === "short") return requireShortsAccount(req, res, next);
-  requireMember(req, res, next);
-});
+// Every signed-in account type (viewer, creator, promoter, business) can like and comment.
+const requireVideoAccount = requireShortsAccount;
 const requireBusiness = asyncRoute(async (req, res, next) => {
   const token = req.get("authorization")?.replace(/^Bearer\s+/i, "");
   const session = token && sessions.get(token);
@@ -311,13 +299,6 @@ async function withCreatorProfiles(videos) {
       ? profilesById.get(video.ownerId)
       : null
   }));
-}
-function publicBannerSettings(banner) {
-  const { _id, imageId, imageUrl: legacyImageUrl = "", ...settings } = banner;
-  return {
-    ...settings,
-    imageUrl: imageId ? `/banner/image/${imageId}` : legacyImageUrl
-  };
 }
 const publicVideoQuery = {
   deletedAt: { $exists: false },
@@ -639,7 +620,8 @@ app.get("/api/creators/:id/intro-video", asyncRoute(async (req, res) => {
   if (!creator?.introVideoId) return res.status(404).json({ error: "Intro video not found" });
   await streamGridFile(req, res, creatorIntroBucket(), "creatorIntros.files", creator.introVideoId, "Intro video not found");
 }));
-app.put("/api/creator/intro-video", requireCreator, asyncRoute(async (req, res) => {
+app.put("/api/creator/intro-video", requireMember, asyncRoute(async (req, res) => {
+  req.creatorId = new ObjectId(req.session.userId);
   const contentType = String(req.get("Content-Type") || "").split(";")[0].toLowerCase();
   const extension = supportedAdVideoTypes.get(contentType);
   if (!extension) return res.status(415).json({ error: "Choose an MP4 or WebM video." });
@@ -671,7 +653,8 @@ app.put("/api/creator/intro-video", requireCreator, asyncRoute(async (req, res) 
   }
   res.status(201).json({ introVideoUrl: `/creators/${req.creatorId}/intro-video` });
 }));
-app.delete("/api/creator/intro-video", requireCreator, asyncRoute(async (req, res) => {
+app.delete("/api/creator/intro-video", requireMember, asyncRoute(async (req, res) => {
+  req.creatorId = new ObjectId(req.session.userId);
   const previous = await usersCollection().findOneAndUpdate(
     { _id: req.creatorId },
     { $unset: { introVideoId: "" } },
@@ -779,11 +762,9 @@ app.delete("/api/admin/ads/:id", requireAdmin, asyncRoute(async (req, res) => {
   }
   res.status(204).end();
 }));
-app.get("/api/banner", asyncRoute(async (_req, res) => {
-  const banner = await bannerCollection().findOne({ _id: defaultBanner._id });
-  if (!banner?.enabled) return res.json(null);
-  res.json(publicBannerSettings(banner));
-}));
+registerBannerRoutes(app, {
+  getDb: () => database, requireAdmin, asyncRoute, imageBucket: bannerImageBucket, supportedImageTypes, maxImageBytes
+});
 app.get("/api/banner/image/:id", asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Banner image not found" });
   const bucket = bannerImageBucket();
@@ -849,10 +830,22 @@ app.get("/api/share/video/:id", asyncRoute(async (req, res) => {
   if (!video || !await videoAvailableInViewerCity(video, req) || !await campaignVideoIsAvailable(video, req)) {
     return res.status(404).type("text/plain").send("Video not found");
   }
+  const owner = video.ownerId && ObjectId.isValid(video.ownerId)
+    ? await usersCollection().findOne({ _id: new ObjectId(video.ownerId) }, { projection: { username: 1, displayName: 1, businessName: 1 } })
+    : null;
   res.set("Cache-Control", "public, max-age=300").type("html").send(videoPreviewHtml(video, {
     website: publicWebsite,
     apiOrigin: publicApiOrigin,
+    creatorName: owner ? owner.displayName || owner.businessName || owner.username : "",
     cdnOrigin: video.bunnyVideoId && !video.thumbnailImageId && !video.thumbnailUrl ? shortsCdnOrigin() : undefined
+  }));
+}));
+app.get("/api/share/creator/:id", asyncRoute(async (req, res) => {
+  const creator = await findApprovedCreator(req.params.id);
+  if (!creator) return res.status(404).type("text/plain").send("Creator not found");
+  res.set("Cache-Control", "public, max-age=300").type("html").send(creatorPreviewHtml(creator, {
+    website: publicWebsite,
+    apiOrigin: publicApiOrigin
   }));
 }));
 app.get("/api/videos", asyncRoute(async (req, res) => {
@@ -1157,8 +1150,12 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
   const invitationCode = typeof req.body?.referrerPromoterId === "string" ? req.body.referrerPromoterId.trim() : "";
   const businessName = typeof req.body?.businessName === "string" ? req.body.businessName.trim() : "";
   const businessAbout = typeof req.body?.businessAbout === "string" ? req.body.businessAbout.trim() : "";
+  const email = normalizeEmail(req.body?.email);
   if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
     return res.status(400).json({ error: "Username must be 3–32 characters and use only letters, numbers, dots, underscores, or hyphens." });
+  }
+  if (!validEmail(email)) {
+    return res.status(400).json({ error: "Enter a valid email address. It is used to recover your password." });
   }
   if (typeof password !== "string" || password.length < 8 || password.length > 128) {
     return res.status(400).json({ error: "Password must be between 8 and 128 characters." });
@@ -1181,10 +1178,16 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
   if (process.env.ADMIN_USERNAME && username.toLowerCase() === process.env.ADMIN_USERNAME.trim().toLowerCase()) {
     return res.status(409).json({ error: "That username is reserved." });
   }
+  const emailInUse = await usersCollection().findOne({ $or: [{ email }, { recoveryEmail: email }] }, { projection: { _id: 1 } });
+  if (emailInUse) {
+    return res.status(409).json({ error: "That email is already linked to an account. Use “Forgot password?” to recover it." });
+  }
   const { salt, hash } = await hashPassword(password);
   const user = {
     username,
     usernameKey: username.toLowerCase(),
+    email,
+    pendingRecoveryEmail: email,
     passwordSalt: salt,
     passwordHash: hash,
     accountType,
@@ -1192,31 +1195,39 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
       ? { businessName, businessAbout }
       : accountType === "promoter"
         ? {}
-        : { approvalStatus: "pending", ...(referrerPromoterId && !referrerCreatorId ? { referrerPromoterId } : {}), ...(referrerCreatorId ? { referrerCreatorId } : {}) }),
+        : { approvalStatus: "draft", ...(referrerPromoterId && !referrerCreatorId ? { referrerPromoterId } : {}), ...(referrerCreatorId ? { referrerCreatorId } : {}) }),
     createdAt: new Date()
   };
   try {
     await usersCollection().insertOne(user);
   } catch (error) {
-    if (error.code === 11000) return res.status(409).json({ error: "That username is already taken." });
+    if (error.code === 11000) {
+      return res.status(409).json({ error: error.keyPattern?.email
+        ? "That email is already linked to an account. Use “Forgot password?” to recover it."
+        : "That username is already taken." });
+    }
     throw error;
   }
-  if (["business", "promoter"].includes(accountType)) {
-    const token = createSession(user.username, accountType, user._id.toString());
-    return res.status(201).json(publicUser(user, token));
-  }
-  const token = createSession(user.username, "member", user._id.toString());
+  const accountLabel = accountType === "business" ? "business" : accountType === "promoter" ? "promoter" : "viewer";
   await notificationsCollection().insertOne({
     recipientId: "admin",
-    type: "creator_application",
+    type: "account_joined",
     userId: user._id.toString(),
     username: user.username,
-    title: "Creator membership requested",
-    message: `${user.username} joined and is waiting for creator approval.`,
+    email,
+    accountType: accountLabel,
+    title: `New ${accountLabel} joined: ${user.username}`,
+    message: `Email: ${email}${accountType === "business" ? ` · Business: ${businessName}` : ""} · Account active, no approval needed`,
     readAt: null,
-    createdAt: new Date().toISOString()
+    createdAt: user.createdAt
   });
-  res.status(201).json(publicUser(user, token));
+  const verificationSent = await accountSecurity.sendSignupVerification(user, email);
+  if (["business", "promoter"].includes(accountType)) {
+    const token = createSession(user.username, accountType, user._id.toString());
+    return res.status(201).json({ ...publicUser(user, token), email, verificationSent });
+  }
+  const token = createSession(user.username, "member", user._id.toString());
+  res.status(201).json({ ...publicUser(user, token), email, verificationSent });
 }));
 app.post("/api/auth/login", asyncRoute(async (req, res) => {
   const { username, password } = req.body || {};
@@ -1247,6 +1258,19 @@ registerAccountModeRoutes(app, {
   userId: req => new ObjectId(req.session.userId),
   saveSession: req => sessions.set(req.get("authorization").replace(/^Bearer\s+/i, ""), req.session)
 });
+const accountSecurity = registerAccountSecurityRoutes(app, {
+  getDb: () => database, requireAccount: requireShortsAccount, asyncRoute, hashPassword, passwordMatches,
+  userId: req => new ObjectId(req.session.userId), publicWebsite,
+  updateSessions: async (id, username, revoke = false) => {
+    for (const [token, session] of sessionCache) {
+      if (session.userId !== id) continue;
+      if (revoke) sessionCache.delete(token);
+      else sessions.set(token, { ...session, username });
+    }
+    if (revoke) await database.collection("sessions").deleteMany({ userId: id });
+    else await database.collection("sessions").updateMany({ userId: id }, { $set: { username } });
+  }
+});
 app.delete("/api/account", requireShortsAccount, asyncRoute(accountDeletionHandler({
   getDb: () => database, passwordMatches,
   deleteVideoMedia: async video => {
@@ -1269,6 +1293,7 @@ app.get("/api/account", requireMember, asyncRoute(async (req, res) => {
   if (!user) return res.status(401).json({ error: "Member account not found" });
   req.session.role = accountRole(user, req.session.role);
   res.json({
+    id: user._id.toString(),
     username: user.username,
     displayName: user.displayName || user.username,
     bio: user.bio || "",
@@ -1628,12 +1653,18 @@ function publicCreatorProfile(creator) {
 async function creatorFollowerCount(creatorId) {
   return creatorFollowsCollection().countDocuments({ creatorId: creatorId.toString() });
 }
-app.get("/api/discover/creators", asyncRoute(async (_req, res) => {
+app.get("/api/discover/creators", asyncRoute(async (req, res) => {
+  const search = String(req.query.search || "").trim().slice(0, 60);
+  const pattern = search ? search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
   const creators = await usersCollection().find({
-    ...approvedCreatorQuery
+    ...approvedCreatorQuery,
+    ...(pattern ? { $and: [...(approvedCreatorQuery.$and || []), { $or: [
+      { username: { $regex: pattern, $options: "i" } },
+      { displayName: { $regex: pattern, $options: "i" } }
+    ] }] } : {})
   }, { projection: { username: 1, displayName: 1, bio: 1, profilePhotoImageId: 1 } })
     .sort({ displayName: 1, username: 1 })
-    .limit(200)
+    .limit(search ? 30 : 200)
     .toArray();
   res.json(creators.map(creator => publicCreatorProfile(creator)));
 }));
@@ -1822,10 +1853,23 @@ app.post("/api/notifications/:id/read", asyncRoute(async (req, res) => {
 }));
 app.get("/api/admin/members/pending", requireAdmin, asyncRoute(async (_req, res) => {
   const users = await usersCollection()
-    .find({ approvalStatus: "pending" }, { projection: { username: 1, createdAt: 1 } })
+    .find({ approvalStatus: "pending", creatorSubmittedAt: { $exists: true }, profilePhotoImageId: { $exists: true } }, { projection: { username: 1, email: 1, recoveryEmail: 1, createdAt: 1, profilePhotoImageId: 1, introVideoId: 1, creatorSubmittedAt: 1 } })
     .sort({ createdAt: 1 })
     .toArray();
-  res.json(users.map(user => ({ id: user._id.toString(), username: user.username, createdAt: user.createdAt })));
+  res.json(users.map(user => ({ id: user._id.toString(), username: user.username, email: user.recoveryEmail || user.email || "", createdAt: user.createdAt, submittedAt: user.creatorSubmittedAt,
+    profilePhotoUrl: `/creators/${user._id}/profile-photo`, introVideoUrl: user.introVideoId ? `/creators/${user._id}/intro-video` : "" })));
+}));
+app.get("/api/admin/users", requireAdmin, asyncRoute(async (_req, res) => {
+  const users = await usersCollection()
+    .find({}, { projection: { username: 1, email: 1, recoveryEmail: 1, accountType: 1, approvalStatus: 1, createdAt: 1 } })
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .toArray();
+  res.json(users.map(user => ({
+    id: user._id.toString(), username: user.username, email: user.recoveryEmail || user.email || "",
+    emailVerified: Boolean(user.recoveryEmail), accountType: user.accountType || "member",
+    approvalStatus: user.approvalStatus || null, createdAt: user.createdAt
+  })));
 }));
 app.patch("/api/admin/members/:id", requireAdmin, asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ error: "Member not found." });
@@ -1838,6 +1882,9 @@ app.patch("/api/admin/members/:id", requireAdmin, asyncRoute(async (req, res) =>
   if (!user) return res.status(404).json({ error: "Member not found." });
   if (user.approvalStatus !== "pending") {
     return res.status(409).json({ error: "This creator application has already been reviewed." });
+  }
+  if (decision === "approved" && (!user.profilePhotoImageId || !user.creatorSubmittedAt)) {
+    return res.status(400).json({ error: "A profile photo and a submitted creator application are required before approval." });
   }
   const updateResult = await usersCollection().updateOne({ _id: userId, approvalStatus: "pending" }, {
     $set: { approvalStatus: decision, reviewedAt: new Date().toISOString() }
@@ -1883,97 +1930,6 @@ app.post("/api/admin/logout", requireAdmin, (req, res) => {
   sessions.delete(token);
   res.status(204).end();
 });
-app.get("/api/admin/banner", requireAdmin, asyncRoute(async (_req, res) => {
-  const banner = await bannerCollection().findOne({ _id: defaultBanner._id });
-  res.json(publicBannerSettings(banner || defaultBanner));
-}));
-app.put("/api/admin/banner", requireAdmin, asyncRoute(async (req, res) => {
-  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
-  const description = typeof req.body?.description === "string" ? req.body.description.trim() : "";
-  const buttonLabel = typeof req.body?.buttonLabel === "string" ? req.body.buttonLabel.trim() : "";
-  const buttonUrl = typeof req.body?.buttonUrl === "string" ? req.body.buttonUrl.trim() : "";
-  const enabled = req.body?.enabled === true;
-
-  if (title.length > 120 || description.length > 500 || buttonLabel.length > 40) {
-    return res.status(400).json({ error: "Banner title, description, or button label is too long." });
-  }
-  if (buttonUrl) {
-    try {
-      if (!["http:", "https:"].includes(new URL(buttonUrl).protocol)) throw new Error();
-    } catch {
-      return res.status(400).json({ error: "Button URL must be a valid HTTP or HTTPS URL." });
-    }
-  }
-  if (enabled && !title) return res.status(400).json({ error: "Add a banner title before publishing it." });
-  if (Boolean(buttonLabel) !== Boolean(buttonUrl)) {
-    return res.status(400).json({ error: "Provide both a button label and button URL, or leave both empty." });
-  }
-
-  const settings = { enabled, title, description, buttonLabel, buttonUrl, updatedAt: new Date().toISOString() };
-  await bannerCollection().updateOne(
-    { _id: defaultBanner._id },
-    { $set: settings, $setOnInsert: { _id: defaultBanner._id, imageId: "" }, $unset: { imageUrl: "" } },
-    { upsert: true }
-  );
-  const banner = await bannerCollection().findOne({ _id: defaultBanner._id });
-  res.json(publicBannerSettings(banner));
-}));
-app.put("/api/admin/banner/image", requireAdmin, asyncRoute(async (req, res) => {
-  const contentType = String(req.get("Content-Type") || "").split(";")[0].toLowerCase();
-  const extension = supportedImageTypes.get(contentType);
-  if (!extension) return res.status(415).json({ error: "Choose a JPEG, PNG, WebP, or GIF image." });
-  const size = Number(req.get("Content-Length") || req.get("X-Upload-Size") || 0);
-  if (!Number.isSafeInteger(size) || size <= 0) return res.status(411).json({ error: "The image upload must include a valid file size." });
-  if (size > maxImageBytes) return res.status(413).json({ error: "Banner images are limited to 8 MB." });
-
-  const bucket = bannerImageBucket();
-  const upload = bucket.openUploadStream(`homepage-banner.${extension}`, {
-    metadata: { contentType }
-  });
-  let received = 0;
-  req.on("data", chunk => {
-    received += chunk.length;
-    if (received > maxImageBytes) req.destroy(Object.assign(new Error("Banner images are limited to 8 MB."), { statusCode: 413 }));
-  });
-  try {
-    await pipeline(req, upload);
-    if (received !== size) throw Object.assign(new Error("The uploaded image size did not match the selected file."), { statusCode: 400 });
-  } catch (error) {
-    await bucket.delete(upload.id).catch(() => {});
-    if (!res.headersSent) return res.status(error.statusCode || 400).json({ error: error.message });
-    return;
-  }
-
-  const previous = await bannerCollection().findOne({ _id: defaultBanner._id });
-  try {
-    await bannerCollection().updateOne(
-      { _id: defaultBanner._id },
-      {
-        $set: { imageId: upload.id.toHexString(), updatedAt: new Date().toISOString() },
-        $setOnInsert: {
-          _id: defaultBanner._id,
-          enabled: defaultBanner.enabled,
-          title: defaultBanner.title,
-          description: defaultBanner.description,
-          buttonLabel: defaultBanner.buttonLabel,
-          buttonUrl: defaultBanner.buttonUrl
-        },
-        $unset: { imageUrl: "" }
-      },
-      { upsert: true }
-    );
-  } catch (error) {
-    await bucket.delete(upload.id).catch(() => {});
-    throw error;
-  }
-  if (previous?.imageId && ObjectId.isValid(previous.imageId)) {
-    await bucket.delete(new ObjectId(previous.imageId)).catch(error => {
-      console.error("Failed to remove the replaced banner image:", error.message);
-    });
-  }
-  const banner = await bannerCollection().findOne({ _id: defaultBanner._id });
-  res.status(201).json(publicBannerSettings(banner));
-}));
 const uploadThumbnail = asyncRoute(async (req, res) => {
   const video = await videosCollection().findOne({ _id: req.params.id, deletedAt: { $exists: false } });
   if (!video || (req.session.role === "creator" && video.ownerId !== req.creatorId.toString())) {
@@ -2939,6 +2895,8 @@ async function start() {
     sessionCache.set(saved.token, { username: saved.username, role: saved.role, userId: saved.userId });
   }
   await usersCollection().createIndex({ usernameKey: 1 }, { unique: true });
+  await initializeCreatorApplications(database);
+  await initializeAccountSecurity(database);
   await initializeReferrals(database);
   await likesCollection().createIndex({ videoId: 1, userId: 1 }, { unique: true });
   await commentsCollection().createIndex({ videoId: 1, createdAt: -1 });
@@ -2978,11 +2936,7 @@ async function start() {
     }
   })));
   await videosCollection().createIndex({ published: 1, processingStatus: 1, createdAt: -1 });
-  await bannerCollection().updateOne(
-    { _id: defaultBanner._id },
-    { $setOnInsert: defaultBanner },
-    { upsert: true }
-  );
+  await initializeBanners(database);
 
   categories = (await categoryCollection.find().toArray()).map(({ _id, ...category }) => ({
     id: _id,

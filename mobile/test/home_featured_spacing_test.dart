@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 import 'package:zinda_play/api.dart';
 import 'package:zinda_play/screens/home_screen.dart';
 import 'package:zinda_play/screens/creator_screen.dart';
+import 'package:zinda_play/widgets/homepage_promotion_banner.dart';
 import 'package:zinda_play/widgets/video_card.dart';
 import 'package:zinda_play/widgets/whatsapp_help_button.dart';
 
@@ -73,14 +74,17 @@ void main() {
               );
             }
             final Object body = switch (request.url.path) {
-              '/api/banner' => {
-                'enabled': true,
-                'imageUrl': 'https://example.test/banner.png',
-                'title': 'Featured promotion',
-                'description': 'Watch and discover.',
-                'buttonLabel': 'Watch Now',
-                'buttonUrl': 'https://example.test/watch',
-              },
+              '/api/banners' => [
+                {
+                  'id': 'banner-one',
+                  'enabled': true,
+                  'imageUrl': 'https://example.test/banner.png',
+                  'title': 'Featured promotion',
+                  'description': 'Watch and discover.',
+                  'buttonLabel': 'Watch Now',
+                  'buttonUrl': 'https://example.test/watch',
+                },
+              ],
               '/api/videos' => videos,
               '/api/discover/popular-creators' =>
                 hasDescription
@@ -119,6 +123,8 @@ void main() {
             );
             expect(find.byType(WhatsAppHelpButton), findsOneWidget);
             expect(find.text('Ask me'), findsOneWidget);
+            expect(find.text('Search content creators'), findsOneWidget);
+            expect(find.byType(HomepagePromotionCarousel), findsOneWidget);
             expect(find.text('Trending now'), findsOneWidget);
             final trending = tester.widgetList<VideoCard>(find.byType(VideoCard)).toList();
             expect(trending.map((card) => card.video['id']), ['first', 'second']);

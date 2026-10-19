@@ -3,6 +3,10 @@
     {
       "source": "/share/video/:id",
       "destination": "https://zinda-play.onrender.com/api/share/video/:id"
+    },
+    {
+      "source": "/share/creator/:id",
+      "destination": "https://zinda-play.onrender.com/api/share/creator/:id"
     }
   ]
 }
