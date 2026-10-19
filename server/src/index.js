@@ -11,6 +11,7 @@ import { open as openGeoReader } from "maxmind";
 import { initializeMemberships, membershipSettings, registerMembershipRoutes } from "./memberships.js";
 import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency } from "./ad-delivery.js";
 import { accountRole, approvedCreatorQuery, registerAccountModeRoutes } from "./account-modes.js";
+import { ensureReferralCode, initializeReferrals, referralOwner } from "./referrals.js";
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
@@ -1153,7 +1154,7 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
   const password = req.body?.password;
   const requestedAccountType = req.body?.accountType;
   const accountType = ["business", "promoter"].includes(requestedAccountType) ? requestedAccountType : "member";
-  const referrerPromoterId = typeof req.body?.referrerPromoterId === "string" ? req.body.referrerPromoterId : "";
+  const invitationCode = typeof req.body?.referrerPromoterId === "string" ? req.body.referrerPromoterId.trim() : "";
   const businessName = typeof req.body?.businessName === "string" ? req.body.businessName.trim() : "";
   const businessAbout = typeof req.body?.businessAbout === "string" ? req.body.businessAbout.trim() : "";
   if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
@@ -1166,16 +1167,16 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
     return res.status(400).json({ error: "Business name is required (up to 100 characters); business description must be 1,000 characters or fewer." });
   }
   let referrerCreatorId = "";
-  if (referrerPromoterId) {
-    if (accountType !== "member" || !ObjectId.isValid(referrerPromoterId)) {
+  let referrerPromoterId = "";
+  if (invitationCode) {
+    if (accountType !== "member") {
       return res.status(400).json({ error: "Referral links can only be used when creating a viewer account." });
     }
-    const referrer = await usersCollection().findOne({ _id: new ObjectId(referrerPromoterId) }, { projection: { accountType: 1, approvalStatus: 1 } });
-    const isPromoter = referrer?.accountType === "promoter";
-    const isCreator = referrer && !["promoter", "business"].includes(referrer.accountType) && (referrer.approvalStatus === "approved" || referrer.approvalStatus === undefined);
-    if (!isPromoter && !isCreator) return res.status(400).json({ error: "This referral link is invalid." });
+    const referrer = await referralOwner(usersCollection(), invitationCode);
+    if (!referrer) return res.status(400).json({ error: "Enter a valid 6-digit invitation ID." });
     // Creator referrals are tracked separately so they never trigger promoter rewards.
-    if (isCreator) referrerCreatorId = referrerPromoterId;
+    if (referrer.type === "creator") referrerCreatorId = referrer.id;
+    else referrerPromoterId = referrer.id;
   }
   if (process.env.ADMIN_USERNAME && username.toLowerCase() === process.env.ADMIN_USERNAME.trim().toLowerCase()) {
     return res.status(409).json({ error: "That username is reserved." });
@@ -2317,14 +2318,15 @@ const requireProfilePhoto = asyncRoute(async (req, res, next) => {
   next();
 });
 app.get("/api/creator/referrals", requireCreator, asyncRoute(async (req, res) => {
-  const referralCode = req.creatorId.toString();
+  const creatorId = req.creatorId.toString();
+  const referralCode = await ensureReferralCode(usersCollection(), req.creatorId);
   const referred = await usersCollection().find(
-    { referrerCreatorId: referralCode },
+    { referrerCreatorId: creatorId },
     { projection: { username: 1, createdAt: 1 } }
   ).sort({ createdAt: -1 }).limit(100).toArray();
   res.json({
     referralCode,
-    total: await usersCollection().countDocuments({ referrerCreatorId: referralCode }),
+    total: await usersCollection().countDocuments({ referrerCreatorId: creatorId }),
     referred: referred.map(user => ({ id: user._id.toString(), username: user.username, joinedAt: user.createdAt }))
   });
 }));
@@ -2607,7 +2609,7 @@ app.get("/api/promoter/wallet", requirePromoter, asyncRoute(async (req, res) => 
   const paidRupees = withdrawals.filter(item => item.status === "paid").reduce((total, item) => total + item.amountRupees, 0);
   const reservedRupees = withdrawals.filter(item => item.status === "pending").reduce((total, item) => total + item.amountRupees, 0);
   res.json({
-    referralCode: promoterId,
+    referralCode: await ensureReferralCode(usersCollection(), new ObjectId(promoterId)),
     referredViews,
     referralViewsUntilReward: 1000 - referredViews % 1000,
     referralRewardMilestones: totals.get("referral_view")?.milestones || 0,
@@ -2937,6 +2939,7 @@ async function start() {
     sessionCache.set(saved.token, { username: saved.username, role: saved.role, userId: saved.userId });
   }
   await usersCollection().createIndex({ usernameKey: 1 }, { unique: true });
+  await initializeReferrals(database);
   await likesCollection().createIndex({ videoId: 1, userId: 1 }, { unique: true });
   await commentsCollection().createIndex({ videoId: 1, createdAt: -1 });
   await creatorFollowsCollection().createIndex({ creatorId: 1, followerId: 1 }, { unique: true });

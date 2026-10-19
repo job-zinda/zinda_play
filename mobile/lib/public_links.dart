@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 const publicWebsite = 'https://zindaplay.com';
+const whatsAppHelpUrl = 'https://wa.me/919847561998?text=Zindaplay';
 
 String videoShareUrl(String id) =>
     '$publicWebsite/share/video/${Uri.encodeComponent(id)}';

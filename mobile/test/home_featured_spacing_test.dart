@@ -10,6 +10,8 @@ import 'package:http/testing.dart';
 import 'package:zinda_play/api.dart';
 import 'package:zinda_play/screens/home_screen.dart';
 import 'package:zinda_play/screens/creator_screen.dart';
+import 'package:zinda_play/widgets/video_card.dart';
+import 'package:zinda_play/widgets/whatsapp_help_button.dart';
 
 void main() {
   setUpAll(() async {
@@ -31,7 +33,7 @@ void main() {
   for (final width in [320.0, 390.0, 430.0]) {
     for (final hasDescription in [false, true]) {
       testWidgets(
-        'banner and popular creator navigation at $width, creators: $hasDescription',
+        'feed layout and popular creator navigation at $width, creators: $hasDescription',
         (tester) async {
           tester.view.physicalSize = Size(width, 1800);
           tester.view.devicePixelRatio = 1;
@@ -103,33 +105,41 @@ void main() {
           await http.runWithClient(() async {
             await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
             await tester.pumpAndSettle();
-            final promotion = tester.getRect(find.byType(Card).first);
-            expect(promotion.height, closeTo((width - 28) / 3, 0.01));
-            expect(find.text('FEATURED'), findsNothing);
-            expect(find.text('Featured promotion'), findsNothing);
-            expect(find.text('Watch Now'), findsNothing);
-            expect(find.text('Play Now'), findsNothing);
-            final heading = find
-                .ancestor(
-                  of: find.text('Trending now'),
-                  matching: find.byType(Row),
-                )
-                .first;
+            expect(find.text('Zinda Play'), findsWidgets);
+            expect(
+              find.text('Popular Creators'),
+              hasDescription ? findsOneWidget : findsNothing,
+            );
+            expect(find.text('Trending'), findsOneWidget);
+            expect(find.text('All'), findsOneWidget);
+            expect(find.text('First featured video'), findsNWidgets(2));
+            expect(
+              find.text('Another featured video with a much longer title'),
+              findsNWidgets(2),
+            );
+            expect(find.byType(WhatsAppHelpButton), findsOneWidget);
+            expect(find.text('Ask me'), findsOneWidget);
+            expect(find.text('Trending now'), findsOneWidget);
+            final trending = tester.widgetList<VideoCard>(find.byType(VideoCard)).toList();
+            expect(trending.map((card) => card.video['id']), ['first', 'second']);
+            expect(
+              tester.getTopLeft(find.text('Trending now')).dy,
+              lessThan(tester.getTopLeft(find.text('All')).dy),
+            );
             if (hasDescription) {
-              expect(find.text('Popular creators'), findsOneWidget);
               final creatorsHeading = find
                   .ancestor(
-                    of: find.text('Popular creators'),
+                    of: find.text('Popular Creators'),
                     matching: find.byType(Row),
                   )
                   .first;
               expect(
-                tester.getTopLeft(creatorsHeading).dy - promotion.bottom,
-                closeTo(12, 0.01),
+                tester.getTopLeft(creatorsHeading).dy,
+                lessThan(tester.getTopLeft(find.text('Trending now')).dy),
               );
               expect(
-                tester.getTopLeft(find.text('Creator One')).dy,
-                lessThan(tester.getTopLeft(heading).dy),
+                tester.getBottomLeft(find.text('Creator One')).dy,
+                lessThan(tester.getTopLeft(find.text('Trending now')).dy),
               );
               for (final entry in [
                 ('Creator One', 'creator-one'),
@@ -149,13 +159,8 @@ void main() {
                 await tester.pumpAndSettle();
               }
             } else {
-              expect(find.text('Popular creators'), findsNothing);
-              expect(
-                tester.getTopLeft(heading).dy - promotion.bottom,
-                closeTo(0, 0.01),
-              );
+              expect(find.text('Creator One'), findsNothing);
             }
-            expect(find.text('First featured video'), findsWidgets);
             expect(tester.takeException(), isNull);
             await tester.pumpWidget(const SizedBox.shrink());
           }, () => client);

@@ -1,7 +1,7 @@
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { referralUrl, shareLink, videoShareUrl } from "./public-links.js";
+import { isReferralCode, referralUrl, shareLink, videoShareUrl, whatsAppHelpUrl } from "./public-links.js";
 
 const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
 afterEach(() => {
@@ -14,8 +14,22 @@ const navigatorWith = value => Object.defineProperty(globalThis, "navigator", { 
 test("all share and invitation links use the public domain, with encoded IDs", () => {
   assert.equal(videoShareUrl("video-id"), "https://zindaplay.com/share/video/video-id");
   assert.equal(videoShareUrl("id/?"), "https://zindaplay.com/share/video/id%2F%3F");
-  assert.equal(referralUrl("0123456789abcdef01234567"), "https://zindaplay.com/?ref=0123456789abcdef01234567");
+  assert.equal(referralUrl("123456"), "https://zindaplay.com/?ref=123456");
   assert.throws(() => referralUrl(undefined), /not available/);
+});
+
+test("invitation input accepts exactly six digits and rejects old long IDs", () => {
+  for (const code of ["123456", "999999", "100000"]) assert.equal(isReferralCode(code), true);
+  for (const code of ["0123456789abcdef01234567", "12345", "1234567", "abcdef", "", null, 123456]) {
+    assert.equal(isReferralCode(code), false);
+  }
+});
+
+test("Ask me uses the WhatsApp number and prefilled Zindaplay message", () => {
+  const url = new URL(whatsAppHelpUrl);
+  assert.equal(url.origin, "https://wa.me");
+  assert.equal(url.pathname, "/919847561998");
+  assert.equal(url.searchParams.get("text"), "Zindaplay");
 });
 
 test("native share receives a title and a non-empty canonical URL", async () => {

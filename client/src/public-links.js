@@ -1,4 +1,9 @@
 const website = "https://zindaplay.com";
+export const whatsAppHelpUrl = "https://wa.me/919847561998?text=Zindaplay";
+
+export function isReferralCode(code) {
+  return typeof code === "string" && /^[1-9]\d{5}$/.test(code);
+}
 
 export function videoShareUrl(id) {
   return `${website}/share/video/${encodeURIComponent(id)}`;

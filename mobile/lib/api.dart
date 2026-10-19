@@ -4,9 +4,11 @@ import 'dart:io';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-// Android emulator reaches the host PC at 10.0.2.2. For production build with:
-// flutter build apk --dart-define=API_URL=https://your-api-domain
-const apiOrigin = String.fromEnvironment('API_URL', defaultValue: 'http://10.0.2.2:4000');
+// Override API_URL for local development or a different deployment.
+const apiOrigin = String.fromEnvironment(
+  'API_URL',
+  defaultValue: 'https://zinda-play.onrender.com',
+);
 const apiBase = '$apiOrigin/api';
 
 class ApiException implements Exception {

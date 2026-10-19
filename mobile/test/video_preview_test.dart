@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:zinda_play/navigation.dart';
 import 'package:zinda_play/screens/creator_screen.dart';
+import 'package:zinda_play/screens/home_screen.dart';
 import 'package:zinda_play/widgets/muted_video_preview.dart';
 import 'package:zinda_play/widgets/video_card.dart';
 
@@ -117,12 +118,14 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
         expect(players.playing, isEmpty);
         navigator.currentState!.pop();
         await tester.pumpAndSettle();
         expect(players.playing, isNotEmpty);
         scroll.jumpTo(1000);
         await tester.pumpAndSettle();
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
         expect(players.playing, isEmpty);
         expect(players.streams, isEmpty);
         await tester.pumpWidget(const SizedBox.shrink());
@@ -150,6 +153,55 @@ void main() {
     expect(find.byType(MutedVideoPreview), findsNothing);
     expect(find.byType(Image), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('home feed previews videos without thumbnails and keeps uploaded images still', (tester) async {
+    tester.view.physicalSize = const Size(430, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final original = VideoPlayerPlatform.instance;
+    final players = _Players();
+    VideoPlayerPlatform.instance = players;
+    addTearDown(() => VideoPlayerPlatform.instance = original);
+    final client = MockClient((request) async {
+      final Object? body = switch (request.url.path) {
+        '/api/videos' => [
+          {
+            'id': 'preview',
+            'title': 'Creator video without thumbnail',
+            'streamUrl': 'https://example.test/video.mp4',
+            'creatorProfile': {'id': 'creator', 'displayName': 'Creator'},
+          },
+          {
+            'id': 'still',
+            'title': 'Creator video with thumbnail',
+            'thumbnailUrl': 'https://example.test/thumb.jpg',
+            'streamUrl': 'https://example.test/still.mp4',
+          },
+        ],
+        '/api/banner' => null,
+        _ => [],
+      };
+      return http.Response(jsonEncode(body), 200);
+    });
+    await http.runWithClient(() async {
+      await tester.pumpWidget(MaterialApp(
+        navigatorObservers: [appRouteObserver],
+        home: const HomeScreen(),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(MutedVideoPreview), findsOneWidget);
+      expect(players.playing, hasLength(1));
+      expect(players.volumes.values, everyElement(0));
+      expect(players.loops.values, everyElement(true));
+      expect(find.text('Creator video with thumbnail'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      expect(players.playing, isEmpty);
+    }, () => client);
   });
 
   testWidgets('creator profile separates Videos and Simply with 24px icons', (

@@ -3,6 +3,22 @@ import 'package:http/http.dart' as http;
 import 'package:zinda_play/api.dart';
 
 void main() {
+  test(
+    'ordinary builds use the deployed backend unless explicitly overridden',
+    () {
+      const override = String.fromEnvironment('API_URL');
+      expect(
+        apiOrigin,
+        override.isEmpty ? 'https://zinda-play.onrender.com' : override,
+      );
+      expect(apiBase, '$apiOrigin/api');
+      expect(
+        assetUrl('/videos/thumbnail/example'),
+        '$apiBase/videos/thumbnail/example',
+      );
+    },
+  );
+
   test('successful JSON and empty responses retain their existing shapes', () {
     expect(
       decodeApiResponse(http.Response('{"items":[],"nextCursor":null}', 200)),

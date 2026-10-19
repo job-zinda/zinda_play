@@ -14,13 +14,17 @@ void main() {
       'https://zindaplay.com/share/video/short-id',
     );
     expect(videoShareUrl('id/?'), 'https://zindaplay.com/share/video/id%2F%3F');
-    expect(
-      referralUrl('0123456789abcdef01234567'),
-      'https://zindaplay.com/?ref=0123456789abcdef01234567',
-    );
+    expect(referralUrl('123456'), 'https://zindaplay.com/?ref=123456');
     expect(Uri.parse(referralUrl('code&video=other')).queryParameters, {
       'ref': 'code&video=other',
     });
+  });
+
+  test('Ask me opens the requested WhatsApp number and message', () {
+    final url = Uri.parse(whatsAppHelpUrl);
+    expect(url.origin, 'https://wa.me');
+    expect(url.path, '/919847561998');
+    expect(url.queryParameters, {'text': 'Zindaplay'});
   });
 
   testWidgets('copy invitation copies the whole link and confirms success', (

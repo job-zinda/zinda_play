@@ -43,6 +43,21 @@ Deploy the API and web pages, then install the rebuilt mobile APK. Test deletion
 
 ## Public domain, shares and invitations
 
+Invitation IDs on both apps are unique, persistent six-digit numbers. Deploy the
+updated API before the web/mobile clients: startup migrates existing personal
+accounts, and new accounts receive a code on their first invitation-dashboard
+request. Old long account-ID invitations are no longer accepted. Signup resolves
+the code to the original creator/promoter account ID; existing referral history,
+reward ownership and payout records are unchanged. A unique MongoDB index and
+atomic assignment prevent duplicate codes during concurrent requests.
+Both clients accept manual six-digit entry or share `/?ref=123456` links.
+
+Both home pages provide a WhatsApp **Ask me** button linking to
+`https://wa.me/919847561998?text=Zindaplay`. Mobile places its most-viewed Trending
+carousel directly below Popular Creators, above the category filters and main
+feed. No-thumbnail videos in the mobile feed use the same visibility-aware muted
+preview as the existing web cards; uploaded thumbnail images remain still.
+
 Video shares from web and mobile use `https://zindaplay.com/share/video/<id>`. Deploy `client/vercel.json` with the Vercel web project: it forwards only these preview links to the Render API. The API returns the existing Open Graph preview and redirects to `https://zindaplay.com/?video=<id>` for regular videos or `?short=<id>` for Simply. Older `/api/share/video/<id>` links still work and now redirect to the canonical domain too.
 
 Set `PUBLIC_WEB_URL=https://zindaplay.com` on the API (also the default). This is separate from `CLIENT_ORIGIN`, which controls additional CORS origins; a stale preview/local origin must not determine public share destinations. Both the apex and `www` website origins are allowed. Creator/promoter dashboards offer share and copy invitation links using `https://zindaplay.com/?ref=<code>`; visiting the link opens viewer registration and retains the referral for submission. Mobile still offers a code for manual entry. Invitation links open the website, not an Android App Link; attribution is not automatically transferred to an APK installation.

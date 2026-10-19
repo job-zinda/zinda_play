@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api.dart';
 
@@ -63,7 +64,17 @@ class _AuthScreenState extends State<AuthScreen> {
               child: Text('Creator accounts are reviewed by the admin before you can upload videos.', style: TextStyle(fontSize: 12, color: Colors.white60)),
             ),
           if (_type == 'business') TextField(controller: _business, decoration: const InputDecoration(labelText: 'Business name')),
-          if (_type == 'member' || _type == 'creator') TextField(controller: _ref, decoration: const InputDecoration(labelText: 'Referral code (optional)')),
+          if (_type == 'member' || _type == 'creator')
+            TextField(
+              controller: _ref,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Invitation ID (optional)',
+                hintText: '6-digit number',
+              ),
+            ),
         ],
         if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         const SizedBox(height: 20),
