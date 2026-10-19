@@ -73,6 +73,9 @@ void main() {
               {
                 'id': adId,
                 'type': 'video',
+                'title': 'Full watch offer',
+                'targetUrl': 'https://example.com/business',
+                'productUrl': 'https://example.com/product',
                 'creatorVideoId': 'simply',
                 'mediaUrl': 'https://example.b-cdn.net/video/playlist.m3u8',
                 'frequency': 1,
@@ -111,6 +114,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(player.playing, isTrue);
           expect(calls, contains('POST /api/ads/$adId/view-start'));
+          expect(find.text('Visit advertiser'), findsNothing);
           final steps = skip ? 4 : 12;
           for (int step = 1; step <= steps; step++) {
             player.position = Duration(milliseconds: step * 250);
@@ -121,6 +125,10 @@ void main() {
             await tester.tap(find.text('Skip ad ›'));
           } else {
             player.events.add(VideoEvent(eventType: VideoEventType.completed));
+            await tester.pumpAndSettle();
+            expect(find.text('Visit advertiser'), findsOneWidget);
+            expect(find.text('View product'), findsOneWidget);
+            await tester.tap(find.text('Skip ad ›'));
           }
           await tester.pumpAndSettle();
           expect(find.text('Main video'), findsOneWidget);

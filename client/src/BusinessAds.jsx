@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./membership.css";
 
-const blank = { title: "", description: "", targetUrl: "", targetCity: "", targetCategories: [], targetViews: 1000 };
+const blank = { title: "", description: "", targetUrl: "", productUrl: "", targetCity: "", targetCategories: [], targetViews: 1000 };
 const imageTypes = ["image/jpeg", "image/png", "image/webp"];
 async function request(api, token, path, options = {}) {
   const response = await fetch(`${api}${path}`, { ...options, headers: { Authorization: `Bearer ${token}`, ...options.headers } });
@@ -77,7 +77,7 @@ export function BusinessAds({ api, token, categories }) {
     finally { setBusy(false); }
   }
   const edit = item => { setCurrent(item); setForm({ ...blank, ...item }); setVideo(null); setProof(null); setError(""); setMessage(""); };
-  const unsaved = Boolean(current && (video || ["title", "description", "targetUrl", "targetCity", "targetCategories", "targetViews"].some(key => JSON.stringify(form[key]) !== JSON.stringify(current[key]))));
+  const unsaved = Boolean(current && (video || ["title", "description", "targetUrl", "productUrl", "targetCity", "targetCategories", "targetViews"].some(key => JSON.stringify(form[key]) !== JSON.stringify(current[key] ?? (key === "productUrl" ? "" : undefined)))));
   async function saveDraft(event) {
     event.preventDefault();
     await act(async () => {
@@ -108,7 +108,7 @@ export function BusinessAds({ api, token, categories }) {
     });
   }
   return <section className="notification-section membership-panel">
-    <h2>Business video ads</h2><p>Upload + destination URL + city/interests → QR payment → admin review → admin publishes your approved ad.</p>
+    <h2>Business video ads</h2><p>Upload + business and product URLs + city/interests → QR payment → admin review → admin publishes your approved ad.</p>
     {error && <p role="alert" className="membership-error">{error}</p>}{message && <p role="status">{message}</p>}
     <button className="secondary-btn" disabled={busy} onClick={() => act(load)}>Refresh ads & analytics</button>
     {!settings ? <p>Loading ad settings...</p> : <><p>Current price: ₹{settings.cpmRupees} per 1000 impressions. Existing drafts keep their quoted price.</p>
@@ -117,7 +117,8 @@ export function BusinessAds({ api, token, categories }) {
           <legend>{current ? "Edit / continue ad draft" : "New ad"}</legend>
           <label>Ad title<input required maxLength={120} value={form.title} onChange={event => setForm({ ...form, title: event.target.value })}/></label>
           <label>Description<textarea maxLength={2000} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })}/></label>
-          <label>Destination URL<input required type="url" maxLength={2000} value={form.targetUrl} onChange={event => setForm({ ...form, targetUrl: event.target.value })} placeholder="https://your-business.example/offer"/></label>
+          <label>Business URL<input required type="url" maxLength={2000} value={form.targetUrl || ""} onChange={event => setForm({ ...form, targetUrl: event.target.value })} placeholder="https://your-business.example"/></label>
+          <label>Product URL (optional)<input type="url" maxLength={2000} value={form.productUrl || ""} onChange={event => setForm({ ...form, productUrl: event.target.value })} placeholder="https://your-business.example/products/item"/></label>
           <label>City (optional; blank = all locations)<input maxLength={100} value={form.targetCity} onChange={event => setForm({ ...form, targetCity: event.target.value })}/></label>
           <fieldset><legend>Interests (none selected = all interests)</legend>{categories.map(category => <label key={category.id}><input type="checkbox" checked={form.targetCategories.includes(category.id)} onChange={event => setForm({ ...form, targetCategories: event.target.checked ? [...form.targetCategories, category.id] : form.targetCategories.filter(id => id !== category.id) })}/>{category.name}</label>)}</fieldset>
           <label>Purchased impressions<input required type="number" min={1000} max={1000000} step={1000} disabled={Boolean(current)} value={form.targetViews} onChange={event => setForm({ ...form, targetViews: Number(event.target.value) })}/></label>
@@ -181,12 +182,12 @@ export function AdminBusinessAdReview({ api, token, onUpdated, categories }) {
       });
     }}/></label>
     <button className="secondary-btn" disabled={busy} onClick={() => act(load)}>Refresh paid submissions</button>
-    <p>Preview the video and check the destination, city and interests. Verify the money received in your bank/UPI app, not just the screenshot. Approval adds a paused ad below; publish it separately.</p>
+    <p>Preview the video and check both URLs, city and interests. Verify the money received in your bank/UPI app, not just the screenshot. Approval adds a paused ad below; publish it separately.</p>
     {preview && <PrivateAdMedia api={api} token={token} path={preview.path} video={preview.video} onClose={() => setPreview(null)}/>}
     {!queue.length && <p>No business ads awaiting review.</p>}
     {queue.map(item => <article className="membership-review" key={item.id}>
       <strong>{item.businessName} - {item.title}</strong><p>{item.status} · ₹{item.amountRupees} for {item.targetViews} impressions</p>
-      <p>{item.description}</p><p><a href={item.targetUrl} target="_blank" rel="noopener noreferrer">Destination: {item.targetUrl}</a></p><p>City: {item.targetCity || "All locations"} · Interests: {item.targetCategories.map(id => categories.find(category => category.id === id)?.name || id).join(", ") || "All interests"}</p>
+      <p>{item.description}</p><p><a href={item.targetUrl} target="_blank" rel="noopener noreferrer">Business: {item.targetUrl}</a>{item.productUrl && <> · <a href={item.productUrl} target="_blank" rel="noopener noreferrer">Product: {item.productUrl}</a></>}</p><p>City: {item.targetCity || "All locations"} · Interests: {item.targetCategories.map(id => categories.find(category => category.id === id)?.name || id).join(", ") || "All interests"}</p>
       {item.hasVideo && <button className="secondary-btn" disabled={busy} onClick={() => setPreview({ path: `/admin/business-ads/${item.id}/video`, video: true })}>Review video</button>}
       {item.hasProof && <button className="secondary-btn" disabled={busy} onClick={() => setPreview({ path: `/admin/business-ads/${item.id}/proof`, video: false })}>Review payment screenshot</button>}
       <label><input type="checkbox" disabled={item.paymentVerified || busy} checked={item.paymentVerified || verified[item.id] || false} onChange={event => setVerified({ ...verified, [item.id]: event.target.checked })}/> I verified ₹{item.amountRupees} was received (retained for resubmission if rejected)</label>

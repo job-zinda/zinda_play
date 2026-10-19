@@ -21,6 +21,7 @@ export function normalizeBusinessAd(body, categories) {
   const title = typeof body?.title === "string" ? body.title.trim() : "";
   const description = typeof body?.description === "string" ? body.description.trim() : "";
   const targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
+  const productUrl = typeof body?.productUrl === "string" ? body.productUrl.trim() : "";
   const targetCity = typeof body?.targetCity === "string" ? body.targetCity.trim().replace(/\s+/g, " ") : "";
   if (!title || title.length > 120 || description.length > 2000) return { error: "Enter a title (up to 120 characters) and description up to 2000 characters." };
   try {
@@ -29,7 +30,15 @@ export function normalizeBusinessAd(body, categories) {
   } catch {
     return { error: "Enter a valid HTTP or HTTPS destination URL without credentials." };
   }
-  if (targetUrl.length > 2000 || targetCity.length > 100) return { error: "Destination URL must be at most 2000 characters and city at most 100 characters." };
+  if (productUrl) {
+    try {
+      const url = new URL(productUrl);
+      if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) throw new Error("Invalid URL");
+    } catch {
+      return { error: "Enter a valid HTTP or HTTPS product URL without credentials." };
+    }
+  }
+  if (targetUrl.length > 2000 || productUrl.length > 2000 || targetCity.length > 100) return { error: "Business and product URLs must be at most 2000 characters and city at most 100 characters." };
   if (!Array.isArray(body.targetCategories) || body.targetCategories.some(id => typeof id !== "string" || !categories.some(category => category.id === id))) {
     return { error: "Choose valid interest categories." };
   }
@@ -37,13 +46,13 @@ export function normalizeBusinessAd(body, categories) {
   if (!Number.isSafeInteger(targetViews) || targetViews < 1000 || targetViews > 1000000 || targetViews % 1000 !== 0) {
     return { error: "Choose 1000 to 1000000 impressions in multiples of 1000." };
   }
-  return { fields: { title, description, targetUrl, targetCity, targetCategories: [...new Set(body.targetCategories)], targetViews } };
+  return { fields: { title, description, targetUrl, productUrl, targetCity, targetCategories: [...new Set(body.targetCategories)], targetViews } };
 }
 
 export function businessAdSummary(submission, ad) {
   return {
     id: submission._id.toString(), businessName: submission.businessName,
-    title: submission.title, description: submission.description, targetUrl: submission.targetUrl,
+    title: submission.title, description: submission.description, targetUrl: submission.targetUrl, productUrl: submission.productUrl || "",
     targetCity: submission.targetCity, targetCategories: submission.targetCategories,
     targetViews: submission.targetViews, amountRupees: submission.amountRupees, cpmRupees: submission.cpmRupees,
     status: submission.status, paymentVerified: submission.paymentVerified === true,
@@ -301,8 +310,8 @@ export function registerBusinessAdRoutes(app, { getDb, requireBusiness, requireA
         { _id: submission.adId },
         { $setOnInsert: {
           businessSubmissionId: id.toString(), businessId: submission.businessId, businessName: submission.businessName,
-          title: submission.title, type: "video", placement: "", mediaUrl: `/business-ad-media/${id}`,
-          targetUrl: submission.targetUrl, targetCity: submission.targetCity, targetCategories: submission.targetCategories,
+          title: submission.title, description: submission.description, type: "video", placement: "", mediaUrl: `/business-ad-media/${id}`,
+          targetUrl: submission.targetUrl, productUrl: submission.productUrl || "", targetCity: submission.targetCity, targetCategories: submission.targetCategories,
           targetViews: submission.targetViews, frequency: 1, skippable: true, skipAfterSeconds: 20,
           active: false, impressions: 0, clicks: 0, createdAt: reviewedAt
         } }, { upsert: true }

@@ -416,10 +416,12 @@ const adPlacements = ["top", "middle", "bottom"];
 const publicAd = ad => ({
   id: ad._id.toString(),
   title: ad.title,
+  description: ad.description || "",
   type: ad.type,
   placement: ad.placement || "",
   mediaUrl: ad.mediaUrl,
   targetUrl: ad.targetUrl || "",
+  productUrl: ad.productUrl || "",
   skippable: ad.type === "video" ? ad.skippable !== false : true,
   skipAfterSeconds: ad.skipAfterSeconds || 20,
   frequency: ad.frequency || 1,

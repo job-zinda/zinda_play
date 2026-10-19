@@ -20,6 +20,7 @@ class _BusinessAdsScreenState extends State<BusinessAdsScreen> {
   final _title = TextEditingController();
   final _description = TextEditingController();
   final _url = TextEditingController();
+  final _productUrl = TextEditingController();
   final _city = TextEditingController();
   final _views = TextEditingController(text: '1000');
   final _scroll = ScrollController();
@@ -44,7 +45,14 @@ class _BusinessAdsScreenState extends State<BusinessAdsScreen> {
 
   @override
   void dispose() {
-    for (final controller in [_title, _description, _url, _city, _views]) {
+    for (final controller in [
+      _title,
+      _description,
+      _url,
+      _productUrl,
+      _city,
+      _views,
+    ]) {
       controller.dispose();
     }
     _scroll.dispose();
@@ -96,6 +104,7 @@ class _BusinessAdsScreenState extends State<BusinessAdsScreen> {
       _title.text = '${item?['title'] ?? ''}';
       _description.text = '${item?['description'] ?? ''}';
       _url.text = '${item?['targetUrl'] ?? ''}';
+      _productUrl.text = '${item?['productUrl'] ?? ''}';
       _city.text = '${item?['targetCity'] ?? ''}';
       _views.text = '${item?['targetViews'] ?? 1000}';
       _interests = (item?['targetCategories'] as List? ?? [])
@@ -172,6 +181,7 @@ class _BusinessAdsScreenState extends State<BusinessAdsScreen> {
         'title': _title.text.trim(),
         'description': _description.text.trim(),
         'targetUrl': _url.text.trim(),
+        'productUrl': _productUrl.text.trim(),
         'targetCity': _city.text.trim(),
         'targetCategories': _interests.toList(),
         'targetViews': int.parse(_views.text),
@@ -294,7 +304,7 @@ class _BusinessAdsScreenState extends State<BusinessAdsScreen> {
                   ),
                 if (_busy) LinearProgressIndicator(value: _progress),
                 const Text(
-                  'Upload + URL + city/interests, pay by QR, submit for review. Admin approval adds an unpublished ad; admin publishes it separately.',
+                  'Upload + business and product URLs + city/interests, pay by QR, submit for review. Admin approval adds an unpublished ad; admin publishes it separately.',
                 ),
                 Text(
                   'Current price: INR ${settings['cpmRupees']} per 1000 impressions. Existing drafts keep their quoted price.',
@@ -330,7 +340,7 @@ class _BusinessAdsScreenState extends State<BusinessAdsScreen> {
                         enabled: !_busy,
                         keyboardType: TextInputType.url,
                         decoration: const InputDecoration(
-                          labelText: 'Destination URL',
+                          labelText: 'Business URL',
                         ),
                         validator: (value) {
                           final url = Uri.tryParse(value!.trim());
@@ -338,6 +348,26 @@ class _BusinessAdsScreenState extends State<BusinessAdsScreen> {
                                   !['http', 'https'].contains(url.scheme) ||
                                   url.host.isEmpty
                               ? 'Enter a valid http/https URL.'
+                              : null;
+                        },
+                      ),
+                      TextFormField(
+                        controller: _productUrl,
+                        enabled: !_busy,
+                        keyboardType: TextInputType.url,
+                        maxLength: 2000,
+                        decoration: const InputDecoration(
+                          labelText: 'Product URL (optional)',
+                        ),
+                        validator: (value) {
+                          final input = value!.trim();
+                          if (input.isEmpty) return null;
+                          final url = Uri.tryParse(input);
+                          return url == null ||
+                                  !['http', 'https'].contains(url.scheme) ||
+                                  url.host.isEmpty ||
+                                  url.userInfo.isNotEmpty
+                              ? 'Enter a valid http/https product URL.'
                               : null;
                         },
                       ),
@@ -525,6 +555,9 @@ class _BusinessAdsScreenState extends State<BusinessAdsScreen> {
                           Text(
                             '${item['targetCity'] == '' ? 'All locations' : item['targetCity']} / ${_names(item)}',
                           ),
+                          Text('Business URL: ${item['targetUrl']}'),
+                          if ('${item['productUrl'] ?? ''}'.isNotEmpty)
+                            Text('Product URL: ${item['productUrl']}'),
                           Text(
                             '${item['impressions']}/${item['targetViews']} impressions / ${item['clicks']} clicks',
                           ),

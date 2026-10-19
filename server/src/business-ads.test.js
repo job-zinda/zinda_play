@@ -9,6 +9,7 @@ import { businessAdSettings, businessAdSummary, initializeBusinessAds, normalize
 const categories = [{ id: "cat-learning", name: "Learning" }, { id: "cat-films", name: "Films" }];
 const fields = {
   title: "Business offer", description: "Our new offer", targetUrl: "https://example.com/offer",
+  productUrl: "https://example.com/offer/product",
   targetCity: "", targetCategories: ["cat-learning"], targetViews: 1000, cpmRupees: 500
 };
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1sAAAAASUVORK5CYII=", "base64");
@@ -72,6 +73,8 @@ async function fixture(t) {
 
 test("business ad input validates URL, interests, title and exact impression increments", () => {
   assert.equal(normalizeBusinessAd(fields, categories).error, undefined);
+  assert.ok(normalizeBusinessAd({ ...fields, productUrl: "javascript:alert(1)" }, categories).error);
+  assert.ok(normalizeBusinessAd({ ...fields, productUrl: "https://user:pass@example.com" }, categories).error);
   for (const patch of [
     { targetUrl: "javascript:alert(1)" }, { targetUrl: "https://user:password@example.com" },
     { targetUrl: "" }, { targetCategories: ["unknown"] }, { targetCategories: "cat-learning" },
@@ -118,7 +121,9 @@ test("draft -> upload -> payment -> review -> approved unpublished ad preserves 
   assert.equal(review.body.deliveryStatus, "unpublished");
   const ad = f.db.collection("ads").documents[0];
   assert.equal(ad.active, false);
+  assert.equal(ad.description, fields.description);
   assert.equal(ad.targetUrl, fields.targetUrl);
+  assert.equal(ad.productUrl, fields.productUrl);
   assert.deepEqual(ad.targetCategories, fields.targetCategories);
   assert.equal(ad.targetViews, fields.targetViews);
   assert.equal(ad.businessId, f.businessId.toString());

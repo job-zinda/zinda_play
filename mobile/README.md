@@ -106,10 +106,24 @@ Android App Links send `https://zindaplay.com/share/video/<id>` and
 `/share/creator/<id>` straight into the installed app (`lib/deep_links.dart`);
 without the app they open the website. Android verifies the link using
 `client/public/.well-known/assetlinks.json`, which lists the SHA-256 fingerprint
-of the key that signs the APK. Release APKs are currently signed with this PC's
-debug key, so build them on this PC. If you add a release keystore or publish
-through Google Play (Play App Signing), add that key's SHA-256 fingerprint to
+of the key that signs the APK. Release builds use the upload keystore configured
+in the private `android/key.properties`, never the debug key. When publishing
+through Google Play (Play App Signing), add the Play app-signing key's SHA-256 fingerprint to
 `assetlinks.json` and redeploy the website.
+
+## Play Store release
+
+Create ignored `android/key.properties` locally with `storeFile`, `storePassword`,
+`keyAlias` and `keyPassword`. `storeFile` is resolved relative to `android`;
+an absolute Windows path must use escaped backslashes in this properties file.
+Keep the keystore and passwords private and backed up; never commit them.
+Release builds fail if the signing file is missing or incomplete.
+Run `flutter build appbundle --release` from `mobile`. The bundle is written to
+`build/app/outputs/bundle/release/app-release.aab`. Increase the version code in
+`pubspec.yaml` above all previously uploaded versions before uploading. Android
+release builds compile and target API level 36.
+Google Play signs installed apps with its app-signing key, which may differ from
+this upload key.
 
 ## Getting Started
 

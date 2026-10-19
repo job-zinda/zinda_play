@@ -103,8 +103,8 @@ class AdsApi {
     }
   }
 
-  static Future<void> open(Map<String, dynamic> ad) async {
-    final url = '${ad['targetUrl'] ?? ''}';
+  static Future<void> open(Map<String, dynamic> ad, {String? url}) async {
+    url ??= '${ad['targetUrl'] ?? ''}';
     if (url.isEmpty) return;
     track('${ad['id']}', 'click');
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -204,6 +204,7 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
   int _lastPosition = 0;
   bool _visible = true;
   bool _completing = false;
+  bool _ended = false;
   String? _error;
 
   @override
@@ -316,7 +317,14 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
         debugPrint('Creator ad earning tracking failed: $error');
       }
     }
-    if (mounted) _finish();
+    if (mounted) {
+      if ('${_ad!['targetUrl'] ?? ''}'.isNotEmpty ||
+          '${_ad!['productUrl'] ?? ''}'.isNotEmpty) {
+        setState(() => _ended = true);
+      } else {
+        _finish();
+      }
+    }
   }
 
   void _finish() {
@@ -360,6 +368,117 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
     );
     final canSkip = skippable && elapsed >= skipAt;
     final remaining = max(0, (total - elapsed).ceil());
+    if (_ended) {
+      return ColoredBox(
+        color: const Color(0xFF100B19),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const Positioned(left: 8, top: 8, child: _AdLabel()),
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: Card(
+                    color: const Color(0xFF211A31),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      side: const BorderSide(color: Colors.white24),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'AD FINISHED',
+                            style: TextStyle(
+                              color: Color(0xFFD8B4FE),
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '${ad['title'] ?? 'Advertisement'}',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          if ('${ad['description'] ?? ''}'.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              '${ad['description']}',
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          if ('${ad['targetUrl'] ?? ''}'.isNotEmpty)
+                            SizedBox(
+                              width: double.infinity,
+                              child: GradientButton(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 22,
+                                  vertical: 16,
+                                ),
+                                onPressed: () => AdsApi.open(ad),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.storefront_outlined, size: 20),
+                                    SizedBox(width: 10),
+                                    Text(
+                                      'Visit advertiser',
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Icon(Icons.open_in_new, size: 17),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          if ('${ad['productUrl'] ?? ''}'.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () =>
+                                    AdsApi.open(ad, url: '${ad['productUrl']}'),
+                                icon: const Icon(Icons.shopping_bag_outlined),
+                                label: const Text(
+                                  'View product',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 10),
+                          TextButton.icon(
+                            onPressed: _finish,
+                            icon: const Icon(Icons.skip_next_rounded),
+                            label: const Text('Skip ad ›'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return ColoredBox(
       color: Colors.black,
       child: Stack(
@@ -396,25 +515,6 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
                 iconSize: 36,
                 onPressed: video.play,
                 icon: const Icon(Icons.play_arrow_rounded),
-              ),
-            ),
-          if ('${ad['targetUrl'] ?? ''}'.isNotEmpty)
-            Positioned(
-              left: 10,
-              bottom: 10,
-              child: GradientButton(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                onPressed: () {
-                  video.pause();
-                  AdsApi.open(ad);
-                },
-                child: const Text(
-                  'Visit advertiser',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                ),
               ),
             ),
           Positioned(

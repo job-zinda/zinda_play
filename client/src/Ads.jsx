@@ -172,8 +172,31 @@ export function PlayerGate({ api, token, children }) {
         console.error("Creator ad earning tracking failed:", error);
       }
     }
-    finish();
+    if (ad.targetUrl || ad.productUrl) setPhase("endcard");
+    else finish();
   };
+
+  if (phase === "endcard") {
+    const visit = (url, event = "click") => {
+      track(api, ad.id, event);
+      window.open(url, "_blank", "noopener,noreferrer");
+    };
+    return (
+      <div className="ad-preroll ad-end-screen">
+        <span className="ad-label">Ad</span>
+        <section className="ad-end-card" aria-label="Advertisement finished">
+          <span className="ad-end-kicker">Ad finished</span>
+          <h2>{ad.title}</h2>
+          {ad.description && <p>{ad.description}</p>}
+          <div className="ad-end-actions">
+            {ad.targetUrl && <button type="button" className="ad-visit" onClick={() => visit(ad.targetUrl)}>Visit advertiser <ExternalLink size={18}/></button>}
+            {ad.productUrl && <button type="button" className="ad-product" onClick={() => visit(ad.productUrl)}>View product <ExternalLink size={18}/></button>}
+            <button type="button" className="ad-skip ad-continue" onClick={finish}>Skip ad ›</button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="ad-preroll">
@@ -209,7 +232,6 @@ export function PlayerGate({ api, token, children }) {
       <span className="ad-label">Ad</span>
       {playError && <div className="ad-error" role="alert"><p>{playError}</p><button className="secondary-btn" onClick={finish}>Continue to video</button></div>}
       {paused && <button type="button" className="ad-play" aria-label="Play ad" onClick={() => videoRef.current?.play()}><Play size={30} fill="currentColor"/></button>}
-      {ad.targetUrl && <a className="ad-visit" href={ad.targetUrl} target="_blank" rel="noopener noreferrer sponsored" onClick={() => { track(api, ad.id, "click"); videoRef.current?.pause(); }}>Visit advertiser <ExternalLink size={13}/></a>}
       {ad.skippable
         ? <button type="button" className="ad-skip" disabled={!canSkip} onClick={finish}>{canSkip ? "Skip ad ›" : `Skip in ${Math.max(1, Math.ceil(skipAt - elapsed))}s`}</button>
         : <span className="ad-skip ad-must">You can watch your video in {remaining || ""}{remaining ? "s" : "…"}</span>}
