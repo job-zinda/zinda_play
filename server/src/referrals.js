@@ -45,9 +45,5 @@ export async function referralOwner(users, code) {
   if (!validCode(code)) return null;
   const user = await users.findOne({ referralCode: code, deletionStartedAt: { $exists: false } });
   if (!user || user.accountType === "business") return null;
-  if (user.accountType === "promoter") return { id: user._id.toString(), type: "promoter" };
-  if (user.approvalStatus === "approved" || user.approvalStatus === undefined) {
-    return { id: user._id.toString(), type: "creator" };
-  }
-  return null;
+  return { id: user._id.toString(), type: "promoter" };
 }

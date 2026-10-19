@@ -76,7 +76,10 @@ void main() {
     expect(find.text('WhatsApp'), findsOneWidget);
     await tester.tap(find.text('Copy link'));
     await tester.pumpAndSettle();
-    expect(copied, 'https://zindaplay.com/share/video/video-1');
+    expect(
+      copied,
+      'https://zindaplay.com/share/video/video-1?preview=video-frame-v2',
+    );
     expect(find.text('Link copied.'), findsOneWidget);
   });
 
@@ -142,7 +145,9 @@ void main() {
     );
     expect(find.byType(PageView), findsOneWidget);
     expect(find.byType(AnimatedContainer), findsNWidgets(2));
-    final controller = tester.widget<PageView>(find.byType(PageView)).controller!;
+    final controller = tester
+        .widget<PageView>(find.byType(PageView))
+        .controller!;
     expect(controller.page, 0);
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
@@ -192,9 +197,7 @@ void main() {
       );
     });
     await http.runWithClient(() async {
-      await tester.pumpWidget(
-        const MaterialApp(home: CreatorSearchScreen()),
-      );
+      await tester.pumpWidget(const MaterialApp(home: CreatorSearchScreen()));
       await tester.enterText(find.byType(TextField), 'r');
       await tester.pump(const Duration(milliseconds: 400));
       expect(searches, isEmpty);

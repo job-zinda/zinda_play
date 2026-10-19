@@ -5,6 +5,7 @@ import '../api.dart';
 import '../public_links.dart';
 import 'studio_screen.dart';
 import 'account_screen.dart';
+import 'wallet_screen.dart';
 
 class PromoterScreen extends StatefulWidget {
   const PromoterScreen({super.key});
@@ -115,7 +116,7 @@ class _PromoterScreenState extends State<PromoterScreen> {
     final w = _w;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Promoter dashboard'),
+        title: const Text('Wallet & referrals'),
         actions: [
           IconButton(
             tooltip: 'Profile & account settings',
@@ -156,12 +157,27 @@ class _PromoterScreenState extends State<PromoterScreen> {
                     onPressed: _switching ? null : _switchToCreator,
                     icon: const Icon(Icons.swap_horiz),
                     label: Text(
-                      _switching ? 'Switching...' : 'Switch to creator / apply',
+                      _switching
+                          ? 'Opening...'
+                          : Api.instance.role == 'creator'
+                          ? 'Creator studio'
+                          : 'Apply for creator access',
                     ),
                   ),
                   const Text(
-                    'Creator access needs the normal admin approval, profile photo and trial/membership flow. Your promoter earnings and withdrawal history stay on this account.',
+                    'Member rewards need no approval. Creator access still requires a profile photo, admin approval and the normal trial/membership flow. Your rewards and withdrawal history stay on this account.',
                   ),
+                  if (Api.instance.role == 'creator')
+                    TextButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WalletScreen(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.account_balance_wallet_outlined),
+                      label: const Text('Creator earnings'),
+                    ),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),

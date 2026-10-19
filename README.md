@@ -33,13 +33,46 @@ Open the Vite URL printed by the client terminal (usually http://localhost:5173)
 
 ## Creator applications and account recovery
 
-New personal accounts start as viewers, not submitted creator applications.
+### Member signup, wallets and referrals
+
+Web and mobile signup offer **Member** and **Business / brand** only. A username,
+email and password create an active member immediately; no member approval or
+creator application is required. Email verification/recovery remains available
+and does not gate the member wallet. Creator applications are optional after
+login; creator and business publishing/payment approvals are unchanged.
+
+Every non-business member, including existing viewers, former promoters, pending
+or rejected creator applicants and approved creators, has **Wallet & referrals**.
+The existing reward rules apply: INR 20 per 1,000 eligible referred regular-video
+watches and INR 10 per 100 distinct regular videos watched; withdrawals require
+at least INR 100 and manual admin review. Simply watches do not qualify for these
+regular-video rewards. Mobile starts watch tracking after the pre-roll gate;
+offscreen players, covered routes and background time do not count.
+Creator video/ad earnings remain in the separate creator wallet.
+
+All active non-business invitation codes are accepted, regardless of creator
+approval. New referrals use the existing reward attribution field for every
+member, including creators; existing creator-only attribution stays unchanged.
+Creator referral lists include both old and new attribution. Business signup
+does not accept invitation IDs, and businesses cannot access member rewards.
+
+Deploy the API, web client and rebuilt mobile app together. Existing account
+IDs/types, invitation codes, balances, reward milestones, historical referral
+ownership and payout records are retained without destructive migration.
+Legacy promoter API/session identifiers remain supported internally; login
+returns Member or approved Creator rather than a separate Promoter role.
+New eligibility does not retroactively credit old watches or reassign referrals.
+Tests: `node --test src/account-modes.test.js src/referrals.test.js` in `server`;
+`flutter test test/auth_referral_test.dart test/account_settings_test.dart test/member_wallet_test.dart test/member_watch_tracker_test.dart`
+in `mobile`.
+
+New personal accounts start as members, not submitted creator applications.
 In Profile, add and save a **required profile photo**, optionally upload an
 introduction video (recommended for quicker approval), then select **Submit for
-approval**. Until admin approval, the user remains a viewer and cannot upload
+approval**. Until admin approval, the user remains a member and cannot upload
 regular videos or Simply. The admin review list includes the photo and optional
-intro. Promoters can prepare an application without losing rewards or their
-promoter mode. Rejected applicants may update their profile and resubmit.
+intro. Members can prepare an application without losing rewards or wallet
+access. Rejected applicants may update their profile and resubmit.
 
 Deploy the API and both clients together. On startup, legacy pending applications
 without an explicit submission timestamp return to draft and must be submitted
@@ -56,6 +89,31 @@ Configure `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` (a sender verified in Brevo),
 and optionally `BREVO_SENDER_NAME` on the backend. Set `PUBLIC_WEB_URL` to the
 deployed website so emailed verification/reset links open the correct app.
 No new package is required: the server uses Brevo's transactional email API.
+Email verification uses a six-digit OTP, valid for 10 minutes with at most five
+attempts per issued code. Verification requires both the code and its recipient
+email; only a hash of the account/email-bound code is stored. Resending replaces
+the current OTP, and successful verification consumes it once. Existing
+64-character verification links remain accepted during rollout. Password resets
+keep the existing long, single-use 30-minute reset links/codes.
+
+In Render, open the backend service -> **Environment**, set `BREVO_API_KEY` to
+the key from the same Brevo account as the verified sender, set
+`BREVO_SENDER_EMAIL` to that sender's exact email (check for typos), set
+`BREVO_SENDER_NAME=Zinda Play` and `PUBLIC_WEB_URL=https://zindaplay.com`, then
+save/redeploy. Set the same values in the ignored `server/.env` for local use
+and restart the local API. Never commit the API key or put it in Vite/Flutter
+client settings. A local environment change does not update Render.
+
+After deployment, create a member or use Profile -> Username & account recovery
+-> Send verification email, then enter the emailed OTP. Web/mobile open an OTP
+entry screen immediately after signup with the recipient prefilled, **Resend OTP**
+and **Verify later**. Signup and member wallet access remain immediate even if
+email delivery fails; the verification screen explicitly reports failures.
+Authenticated `POST /api/account/verification-otp` resends only to the signed-in
+account's pending address, without accepting a replacement address or password.
+It shares the existing five-per-address / 15-minute verification send limit.
+Skipped verification can be completed later in settings. Brevo accepting a send request
+does not guarantee inbox delivery; check Inbox/Spam and Brevo transactional logs.
 Each user must add and verify a recovery email using their current password.
 Existing accounts have no recovery email until they do so. An unverified
 replacement does not remove the previously verified address.

@@ -70,7 +70,6 @@ function App() {
   const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem("adminToken") || "");
   const [authRole, setAuthRole] = useState(() => sessionStorage.getItem("authRole") || (sessionStorage.getItem("adminToken") ? "admin" : ""));
   const [signedInUsername, setSignedInUsername] = useState(() => sessionStorage.getItem("signedInUsername") || "");
-  const [promoterAccount, setPromoterAccount] = useState(() => sessionStorage.getItem("promoterAccount") === "true" || sessionStorage.getItem("authRole") === "promoter");
   const [switchingMode, setSwitchingMode] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -103,6 +102,7 @@ function App() {
   const [profilePhotoPreview, setProfilePhotoPreview] = useState("");
   const [accountProfile, setAccountProfile] = useState({ displayName: "", bio: "", profilePhotoUrl: "" });
   const [registrationType, setRegistrationType] = useState("member");
+  const [signupVerification, setSignupVerification] = useState(null);
   const [businessProfile, setBusinessProfile] = useState({ businessName: "", businessAbout: "", logoUrl: "" });
   const [businessCreators, setBusinessCreators] = useState([]);
   const [businessInvitations, setBusinessInvitations] = useState([]);
@@ -266,9 +266,9 @@ function App() {
         if (!response.ok) throw new Error(data.error || "Unable to record this eligible watch.");
         if (data.counted) {
           setError(data.rewardRupees
-            ? `Eligible watch recorded. You earned ₹${data.rewardRupees} in promoter rewards.`
-            : "Eligible watch recorded toward promoter rewards.");
-          if (authRole === "promoter") await loadPromoterWallet();
+            ? `Eligible watch recorded. ₹${data.rewardRupees} credited in member rewards.`
+            : "Eligible watch recorded toward member rewards.");
+          if (isViewerRole) await loadPromoterWallet();
         }
       } catch (err) {
         setError(err.message);
@@ -480,7 +480,6 @@ function App() {
     sessionStorage.removeItem("authRole");
     sessionStorage.removeItem("signedInUsername");
     sessionStorage.removeItem("promoterAccount");
-    setPromoterAccount(false);
     setAdminToken("");
     setAuthRole("");
     setSignedInUsername("");
@@ -583,7 +582,6 @@ function App() {
       throw new Error(data.error || "Your session expired. Please sign in again.");
     }
     if (!response.ok) throw new Error(data.error || "Unable to load your profile.");
-    setPromoterAccount(data.promoterAccount === true);
     sessionStorage.setItem("promoterAccount", String(data.promoterAccount === true));
     setAccountProfile({
       ...data,
@@ -736,7 +734,7 @@ function App() {
       if (!response.ok) throw new Error(data.error || "Unable to submit your creator application.");
       setAuthRole(data.role); sessionStorage.setItem("authRole", data.role);
       await loadAccountProfile();
-      setError("Application submitted. You can keep watching as a viewer until approval.");
+      setError("Application submitted. Your member wallet and referrals remain available while creator approval is pending.");
     } catch (err) { setError(err.message); }
     finally { setProfileSaving(false); }
   }
@@ -1219,7 +1217,6 @@ function App() {
       sessionStorage.setItem("authRole", data.role);
       sessionStorage.setItem("promoterAccount", "true");
       setAuthRole(data.role);
-      setPromoterAccount(true);
       setProfileDrawerOpen(false);
       setSelected(null);
       setMembershipPaying(false);
@@ -1228,13 +1225,13 @@ function App() {
       if (data.role === "creator") {
         await loadCreator();
         setPage("creator");
-      } else if (data.role === "promoter") {
+      } else if (mode === "promoter") {
         await loadPromoterWallet();
         setPage("promoter");
       } else {
         await loadAccountProfile();
         setPage("profile");
-        setError("Complete your creator application in your profile. Your promoter account and rewards are preserved.");
+        setError("Complete your creator application in your profile. Your member wallet and rewards are preserved.");
       }
     } catch (err) { setError(err.message); }
     finally { setSwitchingMode(false); }
@@ -1401,8 +1398,8 @@ function App() {
           password,
           ...(registering ? {
             email: signupEmail.trim(),
-            accountType: registrationType === "creator" ? "member" : registrationType,
-            ...(["member", "creator"].includes(registrationType) && referrerPromoterId ? { referrerPromoterId } : {}),
+            accountType: registrationType,
+            ...(registrationType === "member" && referrerPromoterId ? { referrerPromoterId } : {}),
             ...(registrationType === "business" ? {
               businessName: businessProfile.businessName,
               businessAbout: businessProfile.businessAbout
@@ -1418,11 +1415,10 @@ function App() {
       setAdminToken(data.token);
       setAuthRole(data.role);
       setSignedInUsername(data.username);
-      setPromoterAccount(data.promoterAccount === true);
       sessionStorage.setItem("promoterAccount", String(data.promoterAccount === true));
       setPassword("");
       setRegistering(false);
-      if (referrerPromoterId && (!registering || ["member", "creator"].includes(registrationType))) {
+      if (referrerPromoterId && (!registering || registrationType === "member")) {
         localStorage.removeItem("referrerPromoterId");
         setReferrerPromoterId("");
       }
@@ -1448,10 +1444,7 @@ function App() {
       } else if (data.role === "business") {
         await loadBusiness(data.token);
         setPage("business");
-      } else if (data.role === "promoter") {
-        await loadPromoterWallet(data.token);
-        setPage("promoter");
-      } else if (registering && registrationType === "member") {
+      } else if (["member", "promoter"].includes(data.role)) {
         setPage("home");
       } else {
         await loadAccountProfile(data.token);
@@ -1460,6 +1453,10 @@ function App() {
       if (data.role === "creator") await loadCreatorInvitations(data.token);
       await loadNotifications(data.token, data.role);
       if (profilePhotoError) setError(profilePhotoError);
+      if (registering && data.role !== "admin") {
+        setSignupVerification({ email: data.email || signupEmail.trim(), verificationSent: data.verificationSent === true });
+        setPage("verify-email");
+      }
     } catch (err) {
       setError(err.message || "Unable to sign in");
     } finally {
@@ -1683,8 +1680,8 @@ function App() {
           <button className={page === "discover" ? "active" : ""} onClick={openDiscover}><Building2 size={18}/> Creators & brands</button>
           {isViewerRole && <button className={page === "profile" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openProfile();}}><UserRound size={18}/> Edit profile</button>}
           {authRole === "creator" && <><button className={page === "creator" || page === "add" || page === "creator-analytics" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openCreatorDashboard();}}><LayoutDashboard size={18}/> Creator studio</button><button className={page === "invitations" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openBrandInvitations();}}><Bell size={18}/> Brand invitations</button><button className={page === "admin-chat" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openAdminChat();}}><MessageCircle size={18}/> Chat with admin</button><button className={page === "wallet" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openWallet();}}><WalletCards size={18}/> Wallet</button></>}
-          {authRole === "promoter" && <button className={page === "promoter" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openPromoterDashboard();}}><WalletCards size={18}/> Promoter dashboard</button>}
-          {promoterAccount && <button disabled={switchingMode} onClick={() => switchAccountMode(authRole === "promoter" ? "creator" : "promoter")}><RefreshCw size={18}/>{switchingMode ? "Switching..." : authRole === "promoter" ? "Switch to creator / apply" : "Switch to promoter"}</button>}
+          {isViewerRole && <button className={page === "promoter" ? "active" : ""} onClick={()=>{setProfileDrawerOpen(false);openPromoterDashboard();}}><WalletCards size={18}/> Wallet & referrals</button>}
+          {["member", "promoter"].includes(authRole) && <button disabled={switchingMode} onClick={() => switchAccountMode("creator")}><RefreshCw size={18}/>{switchingMode ? "Opening..." : "Apply for creator access"}</button>}
           <a className="secondary-btn" href="/privacy.html">Privacy Policy</a>
           {authRole !== "admin" && <button onClick={()=>{setProfileDrawerOpen(false);setSelected(null);setPage("delete-account");}}><Trash2 size={18}/> Delete account</button>}
           {authRole
@@ -1708,7 +1705,8 @@ function App() {
       {page === "creator" && authRole === "creator" && videos.some(video=>video.approvalStatus === "pending") && <section className="admin-panel review-status-panel">
         <div className="membership-status"><Clock3 size={20}/><div><strong>Waiting for approval</strong><span>{videos.filter(video=>video.approvalStatus === "pending").map(video=>video.title).join(", ")} — your submission is private until an admin reviews it. Video encoding status is shown separately in Creator studio.</span></div></div>
       </section>}
-      {page === "recovery" ? <Recovery api={API} onPasswordReset={clearAdminSession} onBack={()=>{setRegistering(false);setPage("admin");}}/>
+      {page === "verify-email" && signupVerification && adminToken ? <Recovery key={signupVerification.email} api={API} token={adminToken} initialPurpose="verify" initialEmail={signupVerification.email} signupVerification verificationSent={signupVerification.verificationSent} onBack={()=>{setSignupVerification(null);setPage(authRole === "business" ? "business" : "home");}}/>
+      : page === "recovery" ? <Recovery api={API} onPasswordReset={clearAdminSession} onBack={()=>{setRegistering(false);setPage("admin");}}/>
       : page === "shorts" ? <Shorts api={API} token={adminToken} role={authRole} onSignIn={openAdmin} onShare={shareVideo} onCreator={openCreatorFromCard} initialId={initialShortId} suspended={profileDrawerOpen || membershipPaying}/>
       : selected ? <section className="watch-page">
         <button className="back-link" onClick={closeVideo}>← Back to Explore</button>
@@ -1779,11 +1777,11 @@ function App() {
         </form>
         {authRole !== "creator" && <section className="notification-section">
           <h2>Become a creator</h2>
-          <p>You remain a viewer until an administrator approves your application.</p>
+          <p>Your member wallet and referrals remain available while creator approval is pending.</p>
           <p><strong>1. Add a profile photo (required).</strong> Save your profile photo above before submitting.</p>
           <p><strong>2. Introduction video (optional).</strong> Recommended to help the team review and approve your application more quickly.</p>
           <IntroManager api={API} token={adminToken} url={accountProfile.introVideoUrl} onChange={introVideoUrl=>setAccountProfile(current=>({...current,introVideoUrl}))}/>
-          {accountProfile.approvalStatus === "pending" ? <p role="status">Your creator application is awaiting approval. You can continue watching as a viewer.</p>
+          {accountProfile.approvalStatus === "pending" ? <p role="status">Your creator application is awaiting approval. You can continue watching and earning as a member.</p>
             : <><p>{accountProfile.approvalStatus === "rejected" ? "Your last application was declined. Update your profile before applying again." : "Your application has not been submitted."}</p>
               <button className="primary-btn" disabled={profileSaving || !accountProfile.profilePhotoUrl || Boolean(profileEditPhoto)} onClick={submitCreatorApplication}>Submit for approval</button></>}
         </section>}
@@ -1844,11 +1842,11 @@ function App() {
         <div className="section-heading"><div><span className="eyebrow"><Bell size={14}/> COLLABORATIONS</span><h1>Brand invitations</h1><p className="muted">Review video invitations from businesses and respond to their brief.</p></div><button className="secondary-btn" onClick={()=>loadCreatorInvitations()}>Refresh</button></div>
         {creatorInvitations.length ? <div className="brand-invitation-list">{creatorInvitations.map(invitation=><article className="brand-invitation-card" key={invitation.id}><div><span className="eyebrow">INVITATION FROM</span><h2>{invitation.businessName}</h2><p>{invitation.message}</p><time>Received {new Date(invitation.createdAt).toLocaleString()}</time></div><div className="brand-invitation-actions">{invitation.status==="pending" ? <><button className="primary-btn" onClick={()=>respondToInvitation(invitation,"accepted")}><Check size={16}/> I'm interested</button><button className="secondary-btn" onClick={()=>respondToInvitation(invitation,"declined")}>Not interested</button></> : <span className={`status ${invitation.status==="accepted"?"published":""}`}>{invitation.status}</span>}</div></article>)}</div> : <div className="empty-state"><Bell size={30}/><h3>No brand invitations yet</h3><p>Invitations from businesses will appear here.</p></div>}
       </section>
-      : page === "promoter" && adminToken && authRole === "promoter" ? <section className="admin-panel promoter-panel">
-        <div className="section-heading"><div><span className="eyebrow"><WalletCards size={14}/> PROMOTER REWARDS</span><h1>Promoter dashboard</h1><p className="muted">Share your referral link and earn from eligible views. Rewards are reviewed and paid manually by an administrator.</p></div><button className="secondary-btn" onClick={openPromoterDashboard}>Refresh</button></div>
+      : page === "promoter" && adminToken && isViewerRole ? <section className="admin-panel promoter-panel">
+        <div className="section-heading"><div><span className="eyebrow"><WalletCards size={14}/> MEMBER REWARDS</span><h1>Wallet & referrals</h1><p className="muted">Share your referral link and earn from eligible views. Rewards are reviewed and paid manually by an administrator.</p></div><button className="secondary-btn" onClick={openPromoterDashboard}>Refresh</button></div>
         <div className="promoter-referral-card"><div><span className="eyebrow">YOUR INVITATION ID</span>{promoterWallet && <strong>{promoterWallet.referralCode}</strong>}<code>{promoterWallet ? referralUrl(promoterWallet.referralCode) : "Loading referral link…"}</code><p>People can enter your six-digit ID at signup or create an account through this link before their eligible video watches can count for your referral rewards.</p></div><button className="primary-btn" disabled={!promoterWallet} onClick={()=>shareReferralLink()}><Share2 size={16}/> Share invitation</button><button className="secondary-btn" disabled={!promoterWallet} onClick={()=>copyReferralLink()}>Copy link</button></div>
         <div className="promoter-wallet-stats"><article><span>Available</span><strong>₹{Number(promoterWallet?.availableRupees||0).toLocaleString("en-IN")}</strong></article><article><span>Total earned</span><strong>₹{Number(promoterWallet?.earnedRupees||0).toLocaleString("en-IN")}</strong></article><article><span>Pending payout</span><strong>₹{Number(promoterWallet?.pendingRupees||0).toLocaleString("en-IN")}</strong></article><article><span>Already paid</span><strong>₹{Number(promoterWallet?.paidRupees||0).toLocaleString("en-IN")}</strong></article></div>
-        <section className="notification-section promoter-progress-list"><h2>How you earn</h2><article><div><strong>Referral views</strong><span>{Number(promoterWallet?.referredViews||0).toLocaleString("en-IN")} eligible referred views · {Number(promoterWallet?.referralRewardMilestones||0)} rewards earned</span></div><div className="promoter-progress-track"><span style={{width:`${Number(promoterWallet?.referredViews||0)%1000/10}%`}}/></div><small>{Number(promoterWallet?.referralViewsUntilReward??1000).toLocaleString("en-IN")} more eligible views for the next ₹20</small></article><article><div><strong>Videos watched</strong><span>{Number(promoterWallet?.distinctVideosWatched||0).toLocaleString("en-IN")} distinct published videos · {Number(promoterWallet?.watchRewardMilestones||0)} rewards earned</span></div><div className="promoter-progress-track"><span style={{width:`${Number(promoterWallet?.distinctVideosWatched||0)%100}%`}}/></div><small>{Number(promoterWallet?.videosUntilWatchReward??100).toLocaleString("en-IN")} more distinct videos for the next ₹10</small></article><p className="wallet-note">Eligible watches require a signed-in account and a visible video page for at least 30 seconds (or the full duration if it is shorter). Each viewer counts once per video; promoters earn ₹20 per 1,000 eligible referred views and ₹10 per 100 distinct videos they watch.</p></section>
+        <section className="notification-section promoter-progress-list"><h2>How you earn</h2><article><div><strong>Referral views</strong><span>{Number(promoterWallet?.referredViews||0).toLocaleString("en-IN")} eligible referred views · {Number(promoterWallet?.referralRewardMilestones||0)} rewards earned</span></div><div className="promoter-progress-track"><span style={{width:`${Number(promoterWallet?.referredViews||0)%1000/10}%`}}/></div><small>{Number(promoterWallet?.referralViewsUntilReward??1000).toLocaleString("en-IN")} more eligible views for the next ₹20</small></article><article><div><strong>Videos watched</strong><span>{Number(promoterWallet?.distinctVideosWatched||0).toLocaleString("en-IN")} distinct published videos · {Number(promoterWallet?.watchRewardMilestones||0)} rewards earned</span></div><div className="promoter-progress-track"><span style={{width:`${Number(promoterWallet?.distinctVideosWatched||0)%100}%`}}/></div><small>{Number(promoterWallet?.videosUntilWatchReward??100).toLocaleString("en-IN")} more distinct videos for the next ₹10</small></article><p className="wallet-note">Eligible watches require a signed-in account and a visible video page for at least 30 seconds (or the full duration if it is shorter). Each member counts once per video; members earn ₹20 per 1,000 eligible referred views and ₹10 per 100 distinct videos they watch.</p></section>
         <section className="notification-section"><h2>Request a payout</h2><p className="muted">Request payout to your UPI ID or UPI-linked 10-digit mobile number when at least ₹100 is available. An admin will manually review and pay approved requests.</p><form className="business-invite-form" onSubmit={requestPromoterWithdrawal}><label>UPI ID or UPI-linked mobile number<input required maxLength={100} value={promoterPayoutHandle} onChange={event=>setPromoterPayoutHandle(event.target.value)} placeholder="name@bank or 9876543210"/></label><button className="primary-btn" type="submit" disabled={Number(promoterWallet?.availableRupees||0)<100 || promoterWallet?.withdrawals?.some(item=>item.status==="pending")}>Request available balance</button></form></section>
         <section className="notification-section"><h2>Withdrawal history</h2>{promoterWallet?.withdrawals?.length ? <div className="wallet-video-analytics">{promoterWallet.withdrawals.map(withdrawal=><article className="wallet-video-row" key={withdrawal.id}><div className="wallet-video-heading"><strong>₹{Number(withdrawal.amountRupees).toLocaleString("en-IN")} · {withdrawal.payoutHandle}</strong><span className={`status ${withdrawal.status==="paid"?"published":""}`}>{withdrawal.status}</span></div><div className="wallet-video-metrics"><span>Requested {new Date(withdrawal.createdAt).toLocaleString()}</span>{withdrawal.rejectionReason&&<span>Reason: {withdrawal.rejectionReason}</span>}</div></article>)}</div>:<p className="muted">No payout requests yet.</p>}</section>
       </section>
@@ -1862,8 +1860,8 @@ function App() {
         <section className="notification-section"><h2>Per-video earnings analytics</h2>{wallet?.videos.length ? <div className="wallet-video-analytics">{wallet.videos.map(video=><article className="wallet-video-row" key={video.id}><div className="wallet-video-heading"><strong>{video.deleted ? "Deleted · " : ""}{video.videoType === "short" ? "Simply · " : ""}{video.title}</strong><span>₹{Number(video.totalEstimatedEarningsRupees ?? video.estimatedEarningsRupees).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})} earned</span></div><div className="wallet-video-metrics"><span>{Number(video.eligibleViews).toLocaleString("en-IN")} unique earning views</span><span>{Number(video.totalViews).toLocaleString("en-IN")} total plays</span>{video.adEligibleViews > 0 && <span>{video.adEligibleViews} full ad watches · ₹{Number(video.adEstimatedEarningsRupees).toFixed(2)} ad earnings</span>}</div></article>)}</div> : <p className="muted">Upload and publish a video to start earning view-based estimates.</p>}</section>
       </section>
       : page === "notifications" && adminToken && ["admin", "member", "creator", "business", "promoter"].includes(authRole) ? <section className="admin-panel notification-panel">
-        <div className="section-heading"><div><span className="eyebrow"><Bell size={14}/> ACCOUNT UPDATES</span><h1>Notifications</h1><p className="muted">{authRole === "admin" ? "Review creator applications, promoter payouts, and account updates." : authRole === "business" ? "Creator invitation responses and business account updates." : authRole === "promoter" ? "Referral and promoter reward updates." : "Membership approvals and updates for your creator account."}</p></div><button className="secondary-btn" onClick={()=>loadNotifications()}>Refresh</button></div>
-        {authRole === "member" && <div className="membership-status"><Clock3 size={20}/><div><strong>Viewer account</strong><span>Continue watching as a viewer. Manage your creator application in your profile.</span><button className="secondary-btn" onClick={openProfile}>Creator application</button></div></div>}
+        <div className="section-heading"><div><span className="eyebrow"><Bell size={14}/> ACCOUNT UPDATES</span><h1>Notifications</h1><p className="muted">{authRole === "admin" ? "Review creator applications, member payouts, and account updates." : authRole === "business" ? "Creator invitation responses and business account updates." : "Referral rewards, withdrawals and creator account updates."}</p></div><button className="secondary-btn" onClick={()=>loadNotifications()}>Refresh</button></div>
+        {authRole === "member" && <div className="membership-status"><Clock3 size={20}/><div><strong>Member account</strong><span>Your account is active with wallet and referral access. Creator applications are optional.</span><button className="secondary-btn" onClick={openPromoterDashboard}>Wallet & referrals</button><button className="secondary-btn" onClick={openProfile}>Creator application</button></div></div>}
         {authRole === "creator" && <div className="membership-status approved"><Check size={20}/><div><strong>Creator membership approved</strong><span>You can upload videos and see their view analytics in Creator studio.</span></div></div>}
         {authRole === "admin" && <section className="notification-section"><h2>Creator applications {pendingMembers.length > 0 && <span className="notification-count">{pendingMembers.length}</span>}</h2>
           {pendingMembers.length ? <div className="member-application-list">{pendingMembers.map(member=><article className="member-application" key={member.id}>
@@ -1873,7 +1871,7 @@ function App() {
         </section>}
         {authRole === "admin" && <section className="notification-section"><h2>Creator withdrawals {pendingCreatorPayouts > 0 && <span className="notification-count">{pendingCreatorPayouts}</span>}</h2><p className="muted">{pendingCreatorPayouts ? `${pendingCreatorPayouts} creator withdrawal request${pendingCreatorPayouts === 1 ? "" : "s"} waiting.` : "No creator withdrawal requests waiting."} Mark requests paid or reject them with a reason, and send amounts to creators.</p><button className="primary-btn" onClick={()=>setPage("payouts")}><WalletCards size={16}/> Open creator payouts</button></section>}
         {authRole === "admin" && <section className="notification-section"><h2>Promoter withdrawals {pendingPromoterWithdrawals.length > 0 && <span className="notification-count">{pendingPromoterWithdrawals.length}</span>}</h2>{pendingPromoterWithdrawals.length ? <div className="member-application-list">{pendingPromoterWithdrawals.map(withdrawal=><article className="member-application promoter-withdrawal-item" key={withdrawal.id}><div><strong>{withdrawal.username} · ₹{Number(withdrawal.amountRupees).toLocaleString("en-IN")}</strong><span>Pay to UPI: <strong>{withdrawal.payoutHandle}</strong></span><span>Requested {new Date(withdrawal.createdAt).toLocaleString()}</span><textarea maxLength={500} value={withdrawalRejectionReasons[withdrawal.id]||""} onChange={event=>setWithdrawalRejectionReasons(current=>({...current,[withdrawal.id]:event.target.value}))} placeholder="Reason required to reject"/></div><div className="member-review-actions"><button className="primary-btn" onClick={()=>reviewPromoterWithdrawal(withdrawal,"paid")}><Check size={16}/> Mark paid</button><button className="secondary-btn" disabled={!withdrawalRejectionReasons[withdrawal.id]?.trim()} onClick={()=>reviewPromoterWithdrawal(withdrawal,"rejected")}>Reject</button></div></article>)}</div> : <p className="muted">No promoter withdrawals awaiting review.</p>}</section>}
-        {authRole === "admin" && <section className="notification-section"><h2>Joined users <span className="notification-count">{joinedUsers.length}</span></h2>{joinedUsers.length ? <div className="joined-users-table"><table><thead><tr><th>Username</th><th>Email</th><th>Type</th><th>Joined</th></tr></thead><tbody>{joinedUsers.map(user=><tr key={user.id}><td>{user.username}</td><td>{user.email ? <><a href={`mailto:${user.email}`}>{user.email}</a> <small>{user.emailVerified ? "verified" : "unverified"}</small></> : <span className="muted">Not provided</span>}</td><td>{user.accountType === "member" ? (user.approvalStatus === "approved" ? "creator" : "viewer") : user.accountType}</td><td>{user.createdAt ? new Date(user.createdAt).toLocaleString() : "—"}</td></tr>)}</tbody></table></div> : <p className="muted">No users have joined yet.</p>}</section>}
+        {authRole === "admin" && <section className="notification-section"><h2>Joined users <span className="notification-count">{joinedUsers.length}</span></h2>{joinedUsers.length ? <div className="joined-users-table"><table><thead><tr><th>Username</th><th>Email</th><th>Type</th><th>Joined</th></tr></thead><tbody>{joinedUsers.map(user=><tr key={user.id}><td>{user.username}</td><td>{user.email ? <><a href={`mailto:${user.email}`}>{user.email}</a> <small>{user.emailVerified ? "verified" : "unverified"}</small></> : <span className="muted">Not provided</span>}</td><td>{user.accountType === "business" ? "business" : user.approvalStatus === "approved" ? "creator" : "member"}</td><td>{user.createdAt ? new Date(user.createdAt).toLocaleString() : "—"}</td></tr>)}</tbody></table></div> : <p className="muted">No users have joined yet.</p>}</section>}
         <section className="notification-section"><h2>Recent updates</h2>{notifications.length ? <div className="notification-list">{notifications.map(notification=><article className={`notification-item ${notification.readAt ? "" : "unread"}`} key={notification.id}><div><strong>{notification.title}</strong><p>{notification.message}</p><time>{new Date(notification.createdAt).toLocaleString()}</time></div>{!notification.readAt && <button className="secondary-btn" onClick={()=>markNotificationRead(notification)}>Mark read</button>}{authRole === "creator" && notification.type === "brand_invitation" && creatorInvitations.find(item=>item.id===notification.invitationId && item.status==="pending") && <div className="member-review-actions"><button className="primary-btn" onClick={()=>respondToInvitation(creatorInvitations.find(item=>item.id===notification.invitationId),"accepted")}><Check size={16}/> I'm interested</button><button className="secondary-btn" onClick={()=>respondToInvitation(creatorInvitations.find(item=>item.id===notification.invitationId),"declined")}>Not interested</button></div>}{authRole === "creator" && notification.type === "admin_message" && <button className="secondary-btn" onClick={()=>openAdminChat()}><MessageCircle size={16}/> Reply</button>}{authRole === "admin" && notification.type === "creator_chat" && <button className="secondary-btn" onClick={()=>openAdminChat({creatorId:notification.creatorId,creatorName:notification.title.replace("Message from creator ","")})}><MessageCircle size={16}/> Open chat</button>}</article>)}</div> : <p className="muted">No notifications yet.</p>}</section>
       </section>
       : page === "creator" && adminToken && authRole === "creator" ? <section className="admin-panel">{!accountProfile.profilePhotoUrl && <div className="membership-banner expired"><div><strong>Profile photo required</strong><span>Creators must have a profile photo before uploading videos.</span></div><button className="primary-btn" onClick={openProfile}><Pencil size={16}/> Add profile photo</button></div>}{membership && <div className={`membership-banner ${membership.status}`}><div><strong>{membership.status === "trial" ? `Free trial · ${membership.daysLeft} ${membership.daysLeft === 1 ? "day" : "days"} left` : membership.status === "active" ? `Membership active · ${membership.daysLeft} ${membership.daysLeft === 1 ? "day" : "days"} left` : "Free trial ended"}</strong><span>{membership.status === "expired" ? `Subscribe for ₹${membership.priceRupees} per ${membership.periodDays} days to keep uploading videos.` : membership.status === "trial" ? `After the trial, membership is ₹${membership.priceRupees} per ${membership.periodDays} days.` : `Renews by payment for ₹${membership.priceRupees} per ${membership.periodDays} days.`}</span></div>{membership.status !== "active" && <button className="primary-btn" disabled={membershipPaying} onClick={subscribeMembership}><WalletCards size={16}/> {membershipPaying ? "Opening…" : `Subscribe · ₹${membership.priceRupees}`}</button>}</div>}<div className="section-heading"><div><span className="eyebrow">CREATOR STUDIO</span><h1>Your video library</h1><p className="muted">Upload your videos and follow their publishing and view performance.</p></div><div className="admin-actions"><button className="secondary-btn" onClick={()=>setPage("creator-analytics")}><BarChart3 size={16}/> Analytics</button><button className="primary-btn" disabled={membership?.status==="expired" || !accountProfile.profilePhotoUrl} title={!accountProfile.profilePhotoUrl?"Add a profile photo first":membership?.status==="expired"?"Subscribe to keep uploading":undefined} onClick={()=>{setForm(blank);setEditingId(null);setThumbnailFile(null);setUploadFile(null);setPage("add");}}><Plus size={17}/> Upload video</button></div></div>
@@ -1948,14 +1946,13 @@ function App() {
       </section>
       : (page === "admin" || page === "add" || page === "banner" || page === "payouts" || page === "categories" || page === "analytics" || page === "notifications" || page === "creator" || page === "creator-analytics" || page === "profile" || page === "my-creator-profile" || page === "business" || page === "invitations" || page === "promoter") ? <section className="admin-panel login-panel"><div className="login-card">
         <span className="eyebrow"><LayoutDashboard size={14}/> ZINDA PLAY ACCOUNT</span>
-        <h1>{registering ? registrationType === "business" ? "Create a business account" : registrationType === "promoter" ? "Become a promoter" : registrationType === "creator" ? "Become a creator" : "Create your account" : "Welcome back"}</h1>
-        <p className="muted">{registering ? referrerPromoterId ? "Create your viewer account to link it to the person who invited you." : "Create an account to get started." : "Sign in to your account or use the admin credentials to open the dashboard."}</p>
+        <h1>{registering ? registrationType === "business" ? "Create a business account" : "Join as a member" : "Welcome back"}</h1>
+        <p className="muted">{registering ? referrerPromoterId ? "Create your member account to link it to the person who invited you." : "Create an account to get started." : "Sign in to your account or use the admin credentials to open the dashboard."}</p>
         <form className="login-form" onSubmit={login}>
-          {registering && <label>Account type<select value={registrationType} disabled={loginLoading || Boolean(referrerPromoterId)} onChange={event=>setRegistrationType(event.target.value)}><option value="member">Viewer</option><option value="creator">Creator</option><option value="promoter">Promoter</option><option value="business">Business / brand</option></select></label>}
-          {registering && ["member", "creator"].includes(registrationType) && <label>Invitation ID (optional)<input inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} placeholder="6-digit number" value={referrerPromoterId} disabled={loginLoading} onChange={event=>setReferrerPromoterId(event.target.value.replace(/\D/g, "").slice(0, 6))}/></label>}
-          {registering && registrationType !== "creator" && <p className="publish-help">Your account is ready immediately — no admin approval needed.</p>}
-          {registering && registrationType === "creator" && <p className="publish-help">Only creators need admin approval. You can watch as a viewer right away; then add a required profile photo and submit for approval in your profile. An introduction video is optional and recommended for quicker approval.</p>}
-          {registering && referrerPromoterId && <p className="publish-help">Referral rewards require a new viewer account. Creator features require separate admin approval.</p>}
+          {registering && <label>Account type<select value={registrationType} disabled={loginLoading} onChange={event=>setRegistrationType(event.target.value)}><option value="member">Member</option><option value="business">Business / brand</option></select></label>}
+          {registering && registrationType === "member" && <label>Invitation ID (optional)<input inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} placeholder="6-digit number" value={referrerPromoterId} disabled={loginLoading} onChange={event=>setReferrerPromoterId(event.target.value.replace(/\D/g, "").slice(0, 6))}/></label>}
+          {registering && registrationType === "member" && <p className="publish-help">Join immediately as a member, with wallet and referral rewards. No approval needed. You can apply for creator access from your profile later.</p>}
+          {registering && registrationType === "business" && <p className="publish-help">Business accounts do not participate in member wallet or referral rewards.</p>}
           <label>Username<input autoComplete="username" minLength={3} maxLength={32} required value={username} onChange={e=>setUsername(e.target.value)} /></label>
           {registering && <label>Email<input type="email" autoComplete="email" maxLength={254} required value={signupEmail} disabled={loginLoading} onChange={e=>setSignupEmail(e.target.value)} placeholder="you@example.com"/><span className="field-help">Used to recover your password or username. We will send a verification code.</span></label>}
           <label>Password<input type="password" autoComplete={registering ? "new-password" : "current-password"} minLength={registering ? 8 : undefined} maxLength={128} required value={password} onChange={e=>setPassword(e.target.value)} /></label>

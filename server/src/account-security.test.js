@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
 import express from "express";
+import { createHash } from "node:crypto";
 import { ObjectId } from "mongodb";
 import { memoryDatabase } from "../test-support/memory-database.js";
 import { registerAccountSecurityRoutes, sendAccountEmail } from "./account-security.js";
@@ -46,13 +47,16 @@ async function fixture(t) {
   await once(server, "listening");
   t.after(() => new Promise(resolve => server.close(resolve)));
   async function request(path, body, { signedIn = false, method = "POST", role = "member" } = {}) {
+    if (body?.purpose === "verify" && /^\d{6}$/.test(body.token) && !Object.hasOwn(body, "email")) {
+      body = { ...body, email: emails.findLast(email => email[1].includes("OTP"))?.[0] };
+    }
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, {
       method, headers: { "Content-Type": "application/json", ...(signedIn ? { Authorization: "Bearer test", "x-role": role } : {}) },
       ...(method !== "GET" ? { body: JSON.stringify(body || {}) } : {})
     });
     return { status: response.status, body: await response.json() };
   }
-  const code = () => emails.at(-1)[2].match(/#token=([a-f0-9]{64})/)[1];
+  const code = () => emails.at(-1)[2].match(/#token=([a-f0-9]{64})|\n(\d{6})\n/).slice(1).find(Boolean);
   async function verify(email = "person@example.test") {
     const sent = await request("/account/recovery-email", { email, password: "current-password" }, { signedIn: true });
     assert.equal(sent.status, 200);
@@ -86,6 +90,86 @@ test("recovery email requires authentication, password, and single-use verificat
   assert.equal(f.user.pendingRecoveryEmail, undefined);
   assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: f.code() })).status, 400);
   assert.ok(!JSON.stringify(f.db.collection("accountTokens").documents).includes(f.code()));
+});
+
+test("verification OTP is six digits, bound to the recipient and stored only as a hash", async t => {
+  const f = await fixture(t);
+  await f.request("/account/recovery-email", { email: "person@example.test", password: "current-password" }, { signedIn: true });
+  const code = f.code();
+  assert.match(code, /^[1-9]\d{5}$/);
+  const record = f.db.collection("accountTokens").documents[0];
+  assert.equal(typeof record.codeHash, "string");
+  assert.ok(!JSON.stringify(record).includes(code));
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: code, email: "" })).status, 400);
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: code, email: "other@example.test" })).status, 400);
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: code, email: " PERSON@EXAMPLE.TEST " })).status, 200);
+  assert.equal(f.user.recoveryEmail, "person@example.test");
+});
+
+test("signup OTP resend uses only the signed-in account's pending email and respects limits", async t => {
+  const f = await fixture(t);
+  f.user.pendingRecoveryEmail = "signup@example.test";
+  assert.equal((await f.request("/account/verification-otp")).status, 401);
+  for (let i = 0; i < 5; i++) {
+    const sent = await f.request("/account/verification-otp", { email: "attacker@example.test" }, { signedIn: true });
+    assert.equal(sent.status, 200);
+    assert.equal(f.emails.at(-1)[0], "signup@example.test");
+    assert.match(f.code(), /^\d{6}$/);
+  }
+  assert.equal((await f.request("/account/verification-otp", {}, { signedIn: true })).status, 429);
+  f.advance(15 * 60 * 1000);
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: f.code() })).status, 400);
+  assert.equal((await f.request("/account/verification-otp", {}, { signedIn: true })).status, 200);
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: f.code() })).status, 200);
+  assert.equal((await f.request("/account/verification-otp", {}, { signedIn: true })).status, 409);
+});
+
+test("resend delivery failure is visible and leaves no working OTP", async t => {
+  const f = await fixture(t);
+  f.user.pendingRecoveryEmail = "signup@example.test";
+  f.failDelivery();
+  assert.equal((await f.request("/account/verification-otp", {}, { signedIn: true })).status, 502);
+  assert.equal(f.db.collection("accountTokens").documents.length, 0);
+});
+
+test("five wrong OTPs lock verification and resending replaces the challenge", async t => {
+  const f = await fixture(t);
+  const send = () => f.request("/account/recovery-email", { email: "person@example.test", password: "current-password" }, { signedIn: true });
+  await send();
+  const code = f.code();
+  const wrong = code === "123456" ? "654321" : "123456";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: wrong })).status, 400);
+  }
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: code })).status, 400);
+  await send();
+  assert.equal(f.db.collection("accountTokens").documents.filter(row => row.purpose === "verify").length, 1);
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: f.code() })).status, 200);
+});
+
+test("OTP expires after ten minutes and cannot be consumed concurrently twice", async t => {
+  const f = await fixture(t);
+  await f.request("/account/recovery-email", { email: "person@example.test", password: "current-password" }, { signedIn: true });
+  const code = f.code();
+  f.advance(10 * 60 * 1000);
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token: code })).status, 400);
+  await f.request("/account/recovery-email", { email: "person@example.test", password: "current-password" }, { signedIn: true });
+  const fresh = f.code();
+  const results = await Promise.all([1, 2].map(() => f.request("/auth/account-action", { purpose: "verify", token: fresh })));
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 400]);
+});
+
+test("previously emailed long verification links remain valid during deployment", async t => {
+  const f = await fixture(t);
+  const token = "a".repeat(64);
+  f.user.pendingRecoveryEmail = "person@example.test";
+  await f.db.collection("accountTokens").insertOne({
+    _id: createHash("sha256").update(token).digest("hex"),
+    userId: f.user._id, purpose: "verify", email: "person@example.test",
+    passwordHash: f.user.passwordHash, expiresAt: new Date("2026-10-19T10:30:00Z")
+  });
+  assert.equal((await f.request("/auth/account-action", { purpose: "verify", token })).status, 200);
+  assert.equal(f.user.recoveryEmail, "person@example.test");
 });
 
 test("forgot username only sends verified accounts and never returns usernames publicly", async t => {

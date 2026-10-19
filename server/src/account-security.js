@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 
 const digest = value => createHash("sha256").update(value).digest("hex");
 export const normalizeEmail = value => typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -11,7 +11,7 @@ const securityProfile = user => ({
 
 export async function sendAccountEmail(to, subject, textContent, { env = process.env, fetcher = fetch } = {}) {
   if (!env.BREVO_API_KEY || !env.BREVO_SENDER_EMAIL) {
-    throw Object.assign(new Error("Email recovery is not configured. Contact support."), { statusCode: 503 });
+    throw Object.assign(new Error("Email verification and recovery are not configured. Contact support."), { statusCode: 503 });
   }
   const response = await fetcher("https://api.brevo.com/v3/smtp/email", {
     method: "POST", signal: AbortSignal.timeout(15000),
@@ -63,18 +63,28 @@ export function registerAccountSecurityRoutes(app, {
     return false;
   }
   async function issue(user, purpose, email) {
-    const token = randomBytes(32).toString("hex");
+    const verification = purpose === "verify";
+    const token = verification ? String(randomInt(100000, 1000000)) : randomBytes(32).toString("hex");
     const record = {
-      _id: digest(token), userId: user._id, purpose, email, passwordHash: user.passwordHash,
-      expiresAt: new Date(now() + 30 * 60 * 1000)
+      _id: verification ? digest(`verify:${email}`) : digest(token),
+      userId: user._id, purpose, email, passwordHash: user.passwordHash,
+      ...(verification ? { codeHash: digest(`${user._id}:${email}:${token}`), attempts: 0 } : {}),
+      expiresAt: new Date(now() + (verification ? 10 : 30) * 60 * 1000)
     };
-    await tokens().insertOne(record);
+    if (verification) {
+      const { _id, ...fields } = record;
+      await tokens().updateOne({ _id }, { $set: fields }, { upsert: true });
+    } else {
+      await tokens().insertOne(record);
+    }
     const link = `${publicWebsite}/?account-action=${purpose}#token=${token}`;
     try {
-      await sendEmail(email, purpose === "verify" ? "Verify your Zinda Play recovery email" : "Reset your Zinda Play password",
-        `${purpose === "verify" ? "Verify your recovery email" : "Reset your password"} using this link:\n${link}\n\nOr paste this code into the Zinda Play app:\n${token}\n\nExpires in 30 minutes. If you did not request this, ignore this email.`);
+      await sendEmail(email, verification ? "Your Zinda Play email verification OTP" : "Reset your Zinda Play password",
+        verification
+          ? `Your Zinda Play email verification OTP is:\n${token}\n\nEnter this six-digit code with your email address in Zinda Play. Expires in 10 minutes. Only the latest OTP works. Do not share this code. If you did not request this, ignore this email.`
+          : `Reset your password using this link:\n${link}\n\nOr paste this code into the Zinda Play app:\n${token}\n\nExpires in 30 minutes. If you did not request this, ignore this email.`);
     } catch (error) {
-      await tokens().deleteOne({ _id: record._id });
+      await tokens().deleteOne({ _id: record._id, ...(verification ? { codeHash: record.codeHash } : {}) });
       throw error;
     }
   }
@@ -114,7 +124,16 @@ export function registerAccountSecurityRoutes(app, {
     }
     await users().updateOne({ _id: user._id }, { $set: { pendingRecoveryEmail: email } });
     await issue(user, "verify", email);
-    res.json({ message: "Verification email sent. Open the link or paste its code below to verify your email." });
+    res.json({ message: "Verification OTP sent. Enter the six-digit code from your email within 10 minutes." });
+  }));
+  app.post("/api/account/verification-otp", requireAccount, route(async (req, res) => {
+    const user = await users().findOne({ _id: userId(req), deletionStartedAt: { $exists: false } });
+    if (!user) return res.status(404).json({ error: "Account not found." });
+    const email = normalizeEmail(user.pendingRecoveryEmail);
+    if (!validEmail(email)) return res.status(409).json({ error: "No email is awaiting verification. Manage your recovery email in profile settings." });
+    if (await limited(req, res, "verify", email)) return;
+    await issue(user, "verify", email);
+    res.json({ message: "Verification OTP sent. Enter the six-digit code from your email within 10 minutes." });
   }));
   app.post("/api/auth/recovery", route(async (req, res) => {
     const email = normalizeEmail(req.body?.email);
@@ -131,20 +150,32 @@ export function registerAccountSecurityRoutes(app, {
   app.post("/api/auth/account-action", route(async (req, res) => {
     if (await limited(req, res, "token")) return;
     const { token, purpose, password } = req.body || {};
-    if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token) || !["verify", "reset"].includes(purpose)) {
+    const otp = purpose === "verify" && typeof token === "string" && /^\d{6}$/.test(token);
+    const email = normalizeEmail(req.body?.email);
+    if (otp && !validEmail(email)) return res.status(400).json({ error: "Enter the email address that received this OTP." });
+    if (typeof token !== "string" || (!otp && !/^[a-f0-9]{64}$/.test(token)) || !["verify", "reset"].includes(purpose)) {
       return res.status(400).json({ error: "Enter the complete code from your email." });
     }
     if (purpose === "reset" && (typeof password !== "string" || password.length < 8 || password.length > 128)) {
       return res.status(400).json({ error: "Password must be between 8 and 128 characters." });
     }
-    const record = await tokens().findOne({ _id: digest(token), purpose, expiresAt: { $gt: new Date(now()) } });
+    const record = otp
+      ? await tokens().findOneAndUpdate(
+        { _id: digest(`verify:${email}`), purpose, attempts: { $lt: 5 }, expiresAt: { $gt: new Date(now()) } },
+        { $inc: { attempts: 1 } }, { returnDocument: "after" }
+      )
+      : await tokens().findOne({ _id: digest(token), purpose, expiresAt: { $gt: new Date(now()) } });
     if (!record) return res.status(400).json({ error: "This code is invalid, expired, or already used. Request a new email." });
+    if (otp && !timingSafeEqual(
+      Buffer.from(record.codeHash, "hex"),
+      Buffer.from(digest(`${record.userId}:${email}:${token}`), "hex")
+    )) return res.status(400).json({ error: "Incorrect OTP. After five attempts, request a new verification email." });
     const user = await users().findOne({ _id: record.userId, deletionStartedAt: { $exists: false }, passwordHash: record.passwordHash });
     if (!user || (purpose === "verify" && user.pendingRecoveryEmail !== record.email) ||
         (purpose === "reset" && user.recoveryEmail !== record.email)) {
       return res.status(400).json({ error: "This code no longer matches your account. Request a new email." });
     }
-    const claimed = await tokens().deleteOne({ _id: record._id });
+    const claimed = await tokens().deleteOne({ _id: record._id, ...(otp ? { codeHash: record.codeHash } : {}) });
     if (!claimed.deletedCount) return res.status(400).json({ error: "This code has already been used." });
     if (purpose === "verify") {
       try {

@@ -58,13 +58,37 @@ Run the home layout, promotion, sharing and creator-search tests with:
 
 ## Profile settings, creator applications and recovery
 
+Signup offers Member and Business only. Members join immediately with username,
+email and password, without approval. Existing viewers and promoters are treated
+as members without changing account IDs, balances, referrals or withdrawals.
+Earn and Profile -> Wallet & referrals open the member reward wallet for every
+non-business member, including approved creators and pending/rejected applicants.
+Creators also retain a separate Creator earnings wallet. Businesses have no
+member rewards or invitation signup input. Creator applications remain optional
+from Profile & account settings and still need the existing photo/admin approval.
+Deploy the matching API and web app alongside the rebuilt mobile app.
+
+Regular-video member rewards use the existing watch-start/watch-complete flow
+after the pre-roll gate. Only visible foreground watch time on the current route
+counts; Simply and feed previews do not generate member watch rewards.
+Test with `flutter test test/auth_referral_test.dart test/member_wallet_test.dart test/member_watch_tracker_test.dart test/account_settings_test.dart`.
+
 Open **Profile & account settings** from Profile or the creator, promoter or
 business dashboard. Every personal role can change its username with the current
 password and set a verified recovery email. Signup requires an email; the backend
 saves it, emails a verification code, and notifies the admin (who also sees a
 **Joined users** list with emails on the web). At sign-in, **Forgot password?**
 and **Forgot username?** send instructions through Brevo; paste the emailed code to reset a
-password or verify an address. Codes expire after 30 minutes. Recovery requires
+password or verify an address. Email verification uses a six-digit OTP sent by
+Brevo: signup opens an OTP screen immediately, with the recipient prefilled,
+**Resend OTP**, and **Verify later**. Membership and wallet access do not require
+verification. Delivery failures stay visible and can be retried; resend uses only
+the signed-in account's pending address. You can also enter the code in Profile &
+account settings, or choose Verify recovery
+email and supply the recipient email plus OTP. Verification OTPs expire after
+10 minutes and allow five attempts; resending replaces the previous code.
+Password-reset links/codes still expire after 30 minutes, and older long
+verification links remain supported during rollout. Recovery requires
 a verified email; verify the signup email (or add one) in Profile & account settings.
 
 Creator applicants stay viewers until approval. Add a required profile photo,

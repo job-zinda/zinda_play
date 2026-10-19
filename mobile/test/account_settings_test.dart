@@ -29,6 +29,41 @@ void main() {
   });
 
   testWidgets(
+    'verification recovery submits the six-digit OTP with its recipient email',
+    (tester) async {
+      Map<String, dynamic>? body;
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/auth/account-action');
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({'message': 'Recovery email verified.'}),
+          200,
+        );
+      });
+      await http.runWithClient(() async {
+        await tester.pumpWidget(
+          const MaterialApp(home: RecoveryScreen(initialPurpose: 'verify')),
+        );
+        await tester.enterText(
+          field('Email receiving the OTP'),
+          'person@example.test',
+        );
+        await tester.enterText(field('Paste code from email'), '123456');
+        await tester.tap(find.widgetWithText(FilledButton, 'Confirm'));
+        await tester.pumpAndSettle();
+        expect(body, {
+          'purpose': 'verify',
+          'token': '123456',
+          'password': '',
+          'email': 'person@example.test',
+        });
+        expect(find.text('Recovery email verified.'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }, () => client);
+    },
+  );
+
+  testWidgets(
     'viewer sees required photo, optional intro, and disabled explicit submission',
     (tester) async {
       var submitted = false;
@@ -94,7 +129,7 @@ void main() {
   );
 
   testWidgets(
-    'creator signup opens profile preparation as a viewer without auto-submitting',
+    'member signup opens OTP entry immediately and allows verification later',
     (tester) async {
       final paths = <String>[];
       final client = MockClient((request) async {
@@ -104,6 +139,7 @@ void main() {
             'token': 'test',
             'username': 'new-creator',
             'role': 'member',
+            'verificationSent': true,
           },
           '/api/account/security' => {
             'username': 'new-creator',
@@ -121,11 +157,29 @@ void main() {
         return http.Response(jsonEncode(body), 200);
       });
       await http.runWithClient(() async {
-        await tester.pumpWidget(const MaterialApp(home: AuthScreen()));
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(builder: (_) => const AuthScreen()),
+                  ),
+                  child: const Text('Open signup'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Open signup'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('New here? Create an account'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Creator'));
-        await tester.pumpAndSettle();
+        expect(find.text('Viewer'), findsNothing);
+        expect(find.text('Promoter'), findsNothing);
+        expect(find.text('Creator'), findsNothing);
+        expect(find.text('Member'), findsOneWidget);
         await tester.enterText(field('Username'), 'new-creator');
         await tester.enterText(field('Email'), 'creator@example.test');
         await tester.enterText(field('Password'), 'new-password');
@@ -133,9 +187,23 @@ void main() {
         await tester.ensureVisible(submit);
         await tester.tap(submit);
         await tester.pumpAndSettle();
-        expect(find.byType(AccountScreen), findsOneWidget);
+        expect(find.byType(AuthScreen), findsNothing);
+        expect(find.byType(AccountScreen), findsNothing);
         expect(Api.instance.role, 'member');
         expect(paths, isNot(contains('/api/account/creator-application')));
+        expect(paths, ['/api/auth/register']);
+        expect(find.text('Verify your email'), findsOneWidget);
+        expect(
+          tester
+              .widget<TextField>(field('Email receiving the OTP'))
+              .controller!
+              .text,
+          'creator@example.test',
+        );
+        await tester.tap(find.text('Verify later'));
+        await tester.pumpAndSettle();
+        expect(find.text('Open signup'), findsOneWidget);
+        expect(Api.instance.role, 'member');
         await tester.pumpWidget(const SizedBox.shrink());
       }, () => client);
     },
@@ -238,13 +306,17 @@ void main() {
         await tester.ensureVisible(field('Paste verification code from email'));
         await tester.enterText(
           field('Paste verification code from email'),
-          'email-token',
+          '123456',
         );
         final verify = find.widgetWithText(FilledButton, 'Verify email');
         await tester.ensureVisible(verify);
         await tester.tap(verify);
         await tester.pumpAndSettle();
-        expect(verifyBody, {'purpose': 'verify', 'token': 'email-token'});
+        expect(verifyBody, {
+          'purpose': 'verify',
+          'token': '123456',
+          'email': 'person@example.test',
+        });
         expect(
           find.text('Verified recovery email: person@example.test'),
           findsOneWidget,

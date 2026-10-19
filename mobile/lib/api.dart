@@ -25,16 +25,26 @@ dynamic decodeApiResponse(http.Response response) {
       body = jsonDecode(response.body);
     } on FormatException {
       if (response.statusCode == 404) {
-        throw ApiException('This feature is not available on the server yet. Deploy the latest Zinda Play backend, then retry.');
+        throw ApiException(
+          'This feature is not available on the server yet. Deploy the latest Zinda Play backend, then retry.',
+        );
       }
       if (response.statusCode >= 400) {
-        throw ApiException('The server returned an error (${response.statusCode}). Please try again later.');
+        throw ApiException(
+          'The server returned an error (${response.statusCode}). Please try again later.',
+        );
       }
-      throw ApiException('The server returned an invalid response. Check the API address and server deployment.');
+      throw ApiException(
+        'The server returned an invalid response. Check the API address and server deployment.',
+      );
     }
   }
   if (response.statusCode >= 400) {
-    throw ApiException(body is Map && body['error'] != null ? '${body['error']}' : 'Request failed (${response.statusCode}).');
+    throw ApiException(
+      body is Map && body['error'] != null
+          ? '${body['error']}'
+          : 'Request failed (${response.statusCode}).',
+    );
   }
   return body;
 }
@@ -66,7 +76,9 @@ class Api {
     token = await _storage.read(key: 'token');
     username = await _storage.read(key: 'username');
     role = await _storage.read(key: 'role');
-    promoterAccount = await _storage.read(key: 'promoterAccount') == 'true' || role == 'promoter';
+    promoterAccount =
+        await _storage.read(key: 'promoterAccount') == 'true' ||
+        role == 'promoter';
   }
 
   Future<void> _save(Map<String, dynamic> data) async {
@@ -81,7 +93,9 @@ class Api {
   }
 
   Future<Map<String, dynamic>> switchMode(String mode) async {
-    final data = Map<String, dynamic>.from(await post('/account/mode', {'mode': mode}) as Map);
+    final data = Map<String, dynamic>.from(
+      await post('/account/mode', {'mode': mode}) as Map,
+    );
     role = data['role'] as String;
     promoterAccount = data['promoterAccount'] == true;
     await _storage.write(key: 'role', value: role);
@@ -99,11 +113,14 @@ class Api {
   }
 
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      };
+    'Content-Type': 'application/json',
+    if (token != null) 'Authorization': 'Bearer $token',
+  };
 
-  Future<dynamic> _send(Future<http.Response> Function() call, {Duration timeout = const Duration(seconds: 20)}) async {
+  Future<dynamic> _send(
+    Future<http.Response> Function() call, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final http.Response res;
     try {
       res = await call().timeout(timeout);
@@ -113,18 +130,41 @@ class Api {
     return decodeApiResponse(res);
   }
 
-  Future<dynamic> get(String path) => _send(() => http.get(Uri.parse('$apiBase$path'), headers: _headers));
-  Future<dynamic> post(String path, [Object? body]) =>
-      _send(() => http.post(Uri.parse('$apiBase$path'), headers: _headers, body: jsonEncode(body ?? {})));
-  Future<dynamic> delete(String path) => _send(() => http.delete(Uri.parse('$apiBase$path'), headers: _headers));
-  Future<dynamic> patch(String path, Object body) =>
-      _send(() => http.patch(Uri.parse('$apiBase$path'), headers: _headers, body: jsonEncode(body)));
-  Future<dynamic> put(String path, Object body) =>
-      _send(() => http.put(Uri.parse('$apiBase$path'), headers: _headers, body: jsonEncode(body)));
+  Future<dynamic> get(String path) =>
+      _send(() => http.get(Uri.parse('$apiBase$path'), headers: _headers));
+  Future<dynamic> post(String path, [Object? body]) => _send(
+    () => http.post(
+      Uri.parse('$apiBase$path'),
+      headers: _headers,
+      body: jsonEncode(body ?? {}),
+    ),
+  );
+  Future<dynamic> delete(String path) =>
+      _send(() => http.delete(Uri.parse('$apiBase$path'), headers: _headers));
+  Future<dynamic> patch(String path, Object body) => _send(
+    () => http.patch(
+      Uri.parse('$apiBase$path'),
+      headers: _headers,
+      body: jsonEncode(body),
+    ),
+  );
+  Future<dynamic> put(String path, Object body) => _send(
+    () => http.put(
+      Uri.parse('$apiBase$path'),
+      headers: _headers,
+      body: jsonEncode(body),
+    ),
+  );
 
   // Streams a file as the raw request body, as the web app does.
-  Future<dynamic> uploadFile(String method, String path, File file, String contentType,
-      {Map<String, String> headers = const {}, void Function(double)? onProgress}) async {
+  Future<dynamic> uploadFile(
+    String method,
+    String path,
+    File file,
+    String contentType, {
+    Map<String, String> headers = const {},
+    void Function(double)? onProgress,
+  }) async {
     final size = await file.length();
     final request = http.StreamedRequest(method, Uri.parse('$apiBase$path'))
       ..contentLength = size
@@ -135,11 +175,16 @@ class Api {
         ...headers,
       });
     var sent = 0;
-    file.openRead().listen((chunk) {
-      sent += chunk.length;
-      onProgress?.call(sent / size);
-      request.sink.add(chunk);
-    }, onDone: request.sink.close, onError: request.sink.addError, cancelOnError: true);
+    file.openRead().listen(
+      (chunk) {
+        sent += chunk.length;
+        onProgress?.call(sent / size);
+        request.sink.add(chunk);
+      },
+      onDone: request.sink.close,
+      onError: request.sink.addError,
+      cancelOnError: true,
+    );
     final http.Response res;
     try {
       res = await http.Response.fromStream(await request.send());
@@ -150,26 +195,39 @@ class Api {
   }
 
   Future<void> login(String username, String password) async {
-    final data = await post('/auth/login', {'username': username, 'password': password});
+    final data = await post('/auth/login', {
+      'username': username,
+      'password': password,
+    });
     await _save(Map<String, dynamic>.from(data));
   }
 
-  Future<void> register(String username, String password, {String? email, String? referrer, String accountType = 'member', String? businessName}) async {
-    // Creator applicants start as viewers and submit their completed profile separately.
-    if (accountType == 'creator') accountType = 'member';
+  Future<bool> register(
+    String username,
+    String password, {
+    String? email,
+    String? referrer,
+    String accountType = 'member',
+    String? businessName,
+  }) async {
+    if (accountType == 'creator' || accountType == 'promoter') {
+      accountType = 'member';
+    }
     final data = await post('/auth/register', {
       'username': username,
       'password': password,
       'email': ?email,
       if (accountType != 'member') 'accountType': accountType,
       if (accountType == 'business') 'businessName': businessName ?? '',
-      if (accountType == 'member' && referrer != null && referrer.isNotEmpty) 'referrerPromoterId': referrer,
+      if (accountType == 'member' && referrer != null && referrer.isNotEmpty)
+        'referrerPromoterId': referrer,
     });
     if (data is Map && data['token'] != null) {
       await _save(Map<String, dynamic>.from(data));
     } else {
       await login(username, password);
     }
+    return data is Map && data['verificationSent'] == true;
   }
 
   Future<void> logout() async {
@@ -184,11 +242,14 @@ class Api {
   }
 
   Future<void> deleteAccount(String password, String confirmation) async {
-    await _send(() => http.delete(
-      Uri.parse('$apiBase/account'),
-      headers: _headers,
-      body: jsonEncode({'password': password, 'confirmation': confirmation}),
-    ), timeout: const Duration(minutes: 5));
+    await _send(
+      () => http.delete(
+        Uri.parse('$apiBase/account'),
+        headers: _headers,
+        body: jsonEncode({'password': password, 'confirmation': confirmation}),
+      ),
+      timeout: const Duration(minutes: 5),
+    );
     token = null;
     username = null;
     role = null;

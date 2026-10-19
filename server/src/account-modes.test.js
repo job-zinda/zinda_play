@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
 import express from "express";
-import { accountRole, approvedCreatorQuery, initializeCreatorApplications, registerAccountModeRoutes } from "./account-modes.js";
+import { accountRole, approvedCreatorQuery, initializeCreatorApplications, memberRewardsEligible, memberRewardsGuard, registerAccountModeRoutes } from "./account-modes.js";
 import { memoryDatabase } from "../test-support/memory-database.js";
 
 test("promoter creator access is opt-in and never bypasses approval", () => {
-  assert.equal(accountRole({ accountType: "promoter" }, "creator"), "promoter");
+  assert.equal(accountRole({ accountType: "promoter" }, "creator"), "member");
   const promoter = { accountType: "promoter", creatorRequested: true, approvalStatus: "pending" };
   assert.equal(accountRole(promoter, "creator"), "member");
-  assert.equal(accountRole(promoter, "promoter"), "promoter");
+  assert.equal(accountRole(promoter, "promoter"), "member");
   assert.equal(accountRole({ ...promoter, approvalStatus: "approved" }, "member"), "creator");
   assert.equal(accountRole({ ...promoter, approvalStatus: "rejected" }, "creator"), "member");
   assert.equal(accountRole({ accountType: "business" }, "creator"), "business");
@@ -68,12 +68,12 @@ test("switching only opens a draft; photo and explicit submission are required, 
   assert.ok(f.user.creatorSubmittedAt);
   assert.equal(f.user.introVideoId, undefined);
   assert.equal((await f.apply()).status, 409);
-  assert.equal((await f.switchMode("promoter")).body.role, "promoter");
+  assert.equal((await f.switchMode("promoter")).body.role, "member");
   assert.equal((await f.switchMode("creator")).body.role, "member");
   assert.equal(f.notifications.length, 1);
   f.user.approvalStatus = "approved";
   assert.equal((await f.switchMode("creator")).body.role, "creator");
-  assert.equal((await f.switchMode("promoter")).body.role, "promoter");
+  assert.equal((await f.switchMode("promoter")).body.role, "member");
   assert.equal(f.user.accountType, "promoter");
   assert.equal(f.user.promoterRewards, 150);
   assert.deepEqual(f.user.withdrawalHistory, ["paid-1"]);
@@ -119,9 +119,60 @@ test("legacy pending accounts become drafts without changing approved creators",
   assert.equal((await users.findOne({ _id: "approved" })).approvalStatus, "approved");
 });
 
-test("normal and business accounts cannot obtain promoter mode", async t => {
-  for (const type of ["member", "business"]) {
-    const f = await fixture(t, type);
-    assert.equal((await f.switchMode("promoter")).status, 403);
+test("members can open the creator application without losing wallet access; businesses cannot", async t => {
+  const member = await fixture(t, "member");
+  assert.equal((await member.switchMode("creator")).body.role, "member");
+  assert.equal(member.user.approvalStatus, "draft");
+  assert.equal(member.notifications.length, 0);
+  assert.equal((await member.switchMode("promoter")).status, 200);
+  assert.equal(member.user.promoterRewards, 150);
+  const business = await fixture(t, "business");
+  assert.equal((await business.switchMode("promoter")).status, 403);
+  assert.equal((await business.switchMode("creator")).status, 403);
+});
+
+test("all active non-business members qualify for watch rewards regardless of creator approval", () => {
+  for (const accountType of ["member", "promoter"]) {
+    for (const approvalStatus of [undefined, "draft", "pending", "approved", "rejected"]) {
+      assert.equal(memberRewardsEligible({ accountType, approvalStatus }), true);
+      assert.equal(memberRewardsEligible({ accountType, approvalStatus, deletionStartedAt: "now" }), false);
+    }
+  }
+  assert.equal(memberRewardsEligible({ accountType: "business" }), false);
+  assert.equal(memberRewardsEligible(null), false);
+});
+
+test("wallet and payout guard accepts existing member/creator/promoter sessions but rejects other accounts", async () => {
+  const users = memoryDatabase().collection("users");
+  const guard = memberRewardsGuard({
+    sessionFor: req => req.auth,
+    users: () => users,
+    userId: id => id
+  });
+  await users.insertOne({ _id: "member", accountType: "member", approvalStatus: "draft", promoterRewards: 150 });
+  await users.insertOne({ _id: "promoter", accountType: "promoter" });
+  await users.insertOne({ _id: "business", accountType: "business" });
+  await users.insertOne({ _id: "deleted", accountType: "member", deletionStartedAt: "now" });
+  for (const role of ["member", "creator", "promoter"]) {
+    for (const userId of ["member", "promoter"]) {
+      const req = { auth: { role, userId } };
+      let allowed = false;
+      await guard(req, { status: () => assert.fail("Existing personal accounts must keep wallet access") }, () => { allowed = true; });
+      assert.equal(allowed, true);
+      assert.equal(req.promoterId, userId);
+    }
+  }
+  for (const [auth, expected] of [
+    [undefined, 401],
+    [{ role: "admin", userId: "member" }, 401],
+    [{ role: "business", userId: "business" }, 401],
+    [{ role: "member", userId: "business" }, 403],
+    [{ role: "member", userId: "deleted" }, 403],
+    [{ role: "member", userId: "missing" }, 403]
+  ]) {
+    let status;
+    const res = { status(code) { status = code; return this; }, json(body) { assert.ok(body.error); } };
+    await guard({ auth }, res, () => assert.fail("Unauthorized wallet access"));
+    assert.equal(status, expected);
   }
 });

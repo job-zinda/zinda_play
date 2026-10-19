@@ -88,14 +88,16 @@ test("six-digit invitations resolve to internal creator/promoter IDs, never lega
   const promoter = { accountType: "promoter", creatorRequested: true, approvalStatus: "approved", referralCode: "654321" };
   await users.insertOne(creator);
   await users.insertOne(promoter);
-  assert.deepEqual(await referralOwner(users, "123456"), { id: creator._id.toString(), type: "creator" });
+  assert.deepEqual(await referralOwner(users, "123456"), { id: creator._id.toString(), type: "promoter" });
   assert.deepEqual(await referralOwner(users, "654321"), { id: promoter._id.toString(), type: "promoter" });
   for (const code of [creator._id.toString(), "", "12345", "1234567", "abcdef", "000000", 123456]) {
     assert.equal(await referralOwner(users, code), null);
   }
+  for (const approvalStatus of ["draft", "pending", "rejected", "approved"]) {
+    await users.updateOne({ _id: creator._id }, { $set: { approvalStatus } });
+    assert.deepEqual(await referralOwner(users, "123456"), { id: creator._id.toString(), type: "promoter" });
+  }
   for (const fields of [
-    { accountType: "member", approvalStatus: "pending" },
-    { accountType: "member", approvalStatus: "rejected" },
     { accountType: "business" },
     { accountType: "promoter", deletionStartedAt: "now" }
   ]) {

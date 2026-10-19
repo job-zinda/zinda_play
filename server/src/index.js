@@ -10,7 +10,7 @@ import { GridFSBucket, MongoClient, ObjectId } from "mongodb";
 import { open as openGeoReader } from "maxmind";
 import { initializeMemberships, membershipSettings, registerMembershipRoutes } from "./memberships.js";
 import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency } from "./ad-delivery.js";
-import { accountRole, approvedCreatorQuery, initializeCreatorApplications, registerAccountModeRoutes } from "./account-modes.js";
+import { accountRole, approvedCreatorQuery, initializeCreatorApplications, memberRewardsEligible, memberRewardsGuard, registerAccountModeRoutes } from "./account-modes.js";
 import { initializeBanners, registerBannerRoutes } from "./banners.js";
 import { initializeAccountSecurity, normalizeEmail, registerAccountSecurityRoutes, validEmail } from "./account-security.js";
 import { ensureReferralCode, initializeReferrals, referralOwner } from "./referrals.js";
@@ -167,19 +167,11 @@ const requireBusiness = asyncRoute(async (req, res, next) => {
   req.business = user;
   next();
 });
-const requirePromoter = asyncRoute(async (req, res, next) => {
-  const token = req.get("authorization")?.replace(/^Bearer\s+/i, "");
-  const session = token && sessions.get(token);
-  if (!session?.userId || session.role !== "promoter") {
-    return res.status(401).json({ error: "Promoter authentication required." });
-  }
-  const user = await usersCollection().findOne({ _id: new ObjectId(session.userId), accountType: "promoter" });
-  if (!user) return res.status(401).json({ error: "Promoter account not found." });
-  req.session = session;
-  req.promoter = user;
-  req.promoterId = user._id.toString();
-  next();
-});
+const requirePromoter = asyncRoute(memberRewardsGuard({
+  sessionFor: req => sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, "")),
+  users: usersCollection,
+  userId: id => new ObjectId(id)
+}));
 const requireCreator = asyncRoute(async (req, res, next) => {
   const token = req.get("authorization")?.replace(/^Bearer\s+/i, "");
   const session = token && sessions.get(token);
@@ -209,14 +201,12 @@ function publicUser(user, token) {
   if (user.accountType === "business") {
     return { token, username: user.username, role: "business" };
   }
-  if (user.accountType === "promoter") {
-    return { token, username: user.username, role: "promoter", promoterAccount: true, approvalStatus: user.creatorRequested ? user.approvalStatus : null };
-  }
-  const approvalStatus = user.approvalStatus || "approved";
+  const approvalStatus = user.approvalStatus || (user.accountType === "promoter" ? "draft" : "approved");
   return {
     token,
     username: user.username,
-    role: approvalStatus === "approved" ? "creator" : "member",
+    role: accountRole(user),
+    promoterAccount: true,
     approvalStatus
   };
 }
@@ -915,7 +905,7 @@ app.post("/api/videos/:id/watch-start", requireMember, asyncRoute(async (req, re
     return res.status(404).json({ error: "Video not found." });
   }
   const userId = req.session.userId;
-  if (!userId || !ObjectId.isValid(userId)) return res.status(401).json({ error: "Sign in to qualify for promoter rewards." });
+  if (!userId || !ObjectId.isValid(userId)) return res.status(401).json({ error: "Sign in to qualify for member rewards." });
   const requiredWatchSeconds = Math.max(1, Math.min(30, Math.ceil(Number(video.durationSeconds) || 30)));
   const watchId = randomUUID();
   const startedAt = new Date();
@@ -970,7 +960,7 @@ app.post("/api/videos/:id/watch-complete", requireMember, asyncRoute(async (req,
   );
   if (!viewer) return res.status(401).json({ error: "Viewer account not found." });
   const referredByPromoterId = ObjectId.isValid(viewer.referrerPromoterId) ? viewer.referrerPromoterId : null;
-  const watchingPromoterId = viewer.accountType === "promoter" ? req.session.userId : null;
+  const watchingPromoterId = memberRewardsEligible(viewer) ? req.session.userId : null;
   let newWatch = false;
   try {
     await promoterVideoWatchesCollection().insertOne({
@@ -1147,7 +1137,7 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
   const username = typeof req.body?.username === "string" ? req.body.username.trim() : "";
   const password = req.body?.password;
   const requestedAccountType = req.body?.accountType;
-  const accountType = ["business", "promoter"].includes(requestedAccountType) ? requestedAccountType : "member";
+  const accountType = requestedAccountType === "business" ? "business" : "member";
   const invitationCode = typeof req.body?.referrerPromoterId === "string" ? req.body.referrerPromoterId.trim() : "";
   const businessName = typeof req.body?.businessName === "string" ? req.body.businessName.trim() : "";
   const businessAbout = typeof req.body?.businessAbout === "string" ? req.body.businessAbout.trim() : "";
@@ -1164,17 +1154,14 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
   if (accountType === "business" && (!businessName || businessName.length > 100 || businessAbout.length > 1000)) {
     return res.status(400).json({ error: "Business name is required (up to 100 characters); business description must be 1,000 characters or fewer." });
   }
-  let referrerCreatorId = "";
   let referrerPromoterId = "";
   if (invitationCode) {
     if (accountType !== "member") {
-      return res.status(400).json({ error: "Referral links can only be used when creating a viewer account." });
+      return res.status(400).json({ error: "Referral links can only be used when creating a member account." });
     }
     const referrer = await referralOwner(usersCollection(), invitationCode);
     if (!referrer) return res.status(400).json({ error: "Enter a valid 6-digit invitation ID." });
-    // Creator referrals are tracked separately so they never trigger promoter rewards.
-    if (referrer.type === "creator") referrerCreatorId = referrer.id;
-    else referrerPromoterId = referrer.id;
+    referrerPromoterId = referrer.id;
   }
   if (process.env.ADMIN_USERNAME && username.toLowerCase() === process.env.ADMIN_USERNAME.trim().toLowerCase()) {
     return res.status(409).json({ error: "That username is reserved." });
@@ -1194,9 +1181,7 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
     accountType,
     ...(accountType === "business"
       ? { businessName, businessAbout }
-      : accountType === "promoter"
-        ? {}
-        : { approvalStatus: "draft", ...(referrerPromoterId && !referrerCreatorId ? { referrerPromoterId } : {}), ...(referrerCreatorId ? { referrerCreatorId } : {}) }),
+      : { approvalStatus: "draft", ...(referrerPromoterId ? { referrerPromoterId } : {}) }),
     createdAt: new Date()
   };
   try {
@@ -1209,7 +1194,7 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
     }
     throw error;
   }
-  const accountLabel = accountType === "business" ? "business" : accountType === "promoter" ? "promoter" : "viewer";
+  const accountLabel = accountType === "business" ? "business" : "member";
   await notificationsCollection().insertOne({
     recipientId: "admin",
     type: "account_joined",
@@ -1223,7 +1208,7 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
     createdAt: user.createdAt
   });
   const verificationSent = await accountSecurity.sendSignupVerification(user, email);
-  if (["business", "promoter"].includes(accountType)) {
+  if (accountType === "business") {
     const token = createSession(user.username, accountType, user._id.toString());
     return res.status(201).json({ ...publicUser(user, token), email, verificationSent });
   }
@@ -1247,10 +1232,7 @@ app.post("/api/auth/login", asyncRoute(async (req, res) => {
   if (user.accountType === "business") {
     return res.json(publicUser(user, createSession(user.username, "business", user._id.toString())));
   }
-  if (user.accountType === "promoter") {
-    return res.json(publicUser(user, createSession(user.username, "promoter", user._id.toString())));
-  }
-  const role = user.approvalStatus === "approved" || user.approvalStatus === undefined ? "creator" : "member";
+  const role = accountRole(user);
   const token = createSession(user.username, role, user._id.toString());
   res.json(publicUser(user, token));
 }));
@@ -1301,8 +1283,8 @@ app.get("/api/account", requireMember, asyncRoute(async (req, res) => {
     profilePhotoUrl: user.profilePhotoImageId ? `/creators/${user._id}/profile-photo` : "",
     introVideoUrl: user.introVideoId ? `/creators/${user._id}/intro-video` : "",
     role: req.session.role,
-    promoterAccount: user.accountType === "promoter",
-    approvalStatus: user.approvalStatus || "approved"
+    promoterAccount: true,
+    approvalStatus: user.approvalStatus || (user.accountType === "promoter" ? "draft" : "approved")
   });
 }));
 app.patch("/api/account", requireMember, asyncRoute(async (req, res) => {
@@ -2277,13 +2259,14 @@ const requireProfilePhoto = asyncRoute(async (req, res, next) => {
 app.get("/api/creator/referrals", requireCreator, asyncRoute(async (req, res) => {
   const creatorId = req.creatorId.toString();
   const referralCode = await ensureReferralCode(usersCollection(), req.creatorId);
+  const referralQuery = { $or: [{ referrerCreatorId: creatorId }, { referrerPromoterId: creatorId }] };
   const referred = await usersCollection().find(
-    { referrerCreatorId: creatorId },
+    referralQuery,
     { projection: { username: 1, createdAt: 1 } }
   ).sort({ createdAt: -1 }).limit(100).toArray();
   res.json({
     referralCode,
-    total: await usersCollection().countDocuments({ referrerCreatorId: creatorId }),
+    total: await usersCollection().countDocuments(referralQuery),
     referred: referred.map(user => ({ id: user._id.toString(), username: user.username, joinedAt: user.createdAt }))
   });
 }));
@@ -2630,7 +2613,7 @@ app.post("/api/promoter/withdrawals", requirePromoter, asyncRoute(async (req, re
       type: "promoter_withdrawal_review",
       withdrawalId: result.insertedId.toString(),
       promoterId: req.promoterId,
-      title: "Promoter withdrawal needs review",
+      title: "Member withdrawal needs review",
       message: `${req.session.username} requested a ₹${availableRupees} payout.`,
       readAt: null,
       createdAt
@@ -2648,7 +2631,7 @@ app.get("/api/admin/promoter-withdrawals", requireAdmin, asyncRoute(async (_req,
   res.json(withdrawals.map(({ _id, promoterId, ...withdrawal }) => ({
     id: _id.toString(),
     promoterId,
-    username: usernames.get(promoterId) || withdrawal.username || "Promoter",
+    username: usernames.get(promoterId) || withdrawal.username || "Member",
     ...withdrawal
   })));
 }));

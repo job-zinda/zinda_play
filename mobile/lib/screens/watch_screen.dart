@@ -7,6 +7,7 @@ import '../api.dart';
 import 'auth_screen.dart';
 import 'shorts_screen.dart';
 import '../widgets/share_sheet.dart';
+import '../widgets/member_watch_tracker.dart';
 
 class WatchScreen extends StatefulWidget {
   final Map<String, dynamic> video;
@@ -124,7 +125,16 @@ class _WatchScreenState extends State<WatchScreen> {
             aspectRatio: 16 / 9,
             child: _web == null
                 ? const Center(child: Text('Video is not available yet.'))
-                : PlayerGate(builder: (_) => WebViewWidget(controller: _web!)),
+                : PlayerGate(
+                    builder: (_) => MemberWatchTracker(
+                      key: ValueKey(Api.instance.token),
+                      videoId: _id,
+                      onError: (message) {
+                        if (mounted) setState(() => _error = message);
+                      },
+                      child: WebViewWidget(controller: _web!),
+                    ),
+                  ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),

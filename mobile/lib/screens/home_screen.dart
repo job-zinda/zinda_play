@@ -198,13 +198,10 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await Api.instance.refreshAccountRole();
       if (!mounted) return;
-      if (Api.instance.role == 'creator') {
-        return await _push(const WalletScreen());
-      }
-      if (Api.instance.role == 'promoter') {
+      if (['member', 'creator', 'promoter'].contains(Api.instance.role)) {
         return await _push(const PromoterScreen());
       }
-      _toast('Earnings are available to approved creators and promoters.');
+      _toast('Member rewards are not available to business or admin accounts.');
     } catch (error) {
       if (mounted) _toast('$error');
     }
@@ -264,13 +261,23 @@ class _HomeScreenState extends State<HomeScreen> {
               ListTile(
                 leading: const Icon(Icons.manage_accounts_outlined),
                 title: const Text('Profile & account settings'),
-                subtitle: const Text('Username, recovery email & creator application'),
+                subtitle: const Text(
+                  'Username, recovery email & creator application',
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   _push(const AccountScreen());
                 },
               ),
               if (role == 'creator') ...[
+                ListTile(
+                  leading: const Icon(Icons.account_balance_wallet_outlined),
+                  title: const Text('Creator earnings'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _push(const WalletScreen());
+                  },
+                ),
                 ListTile(
                   leading: const Icon(Icons.video_library_outlined),
                   title: const Text('Creator studio'),
@@ -297,26 +304,22 @@ class _HomeScreenState extends State<HomeScreen> {
                     _push(const BusinessScreen());
                   },
                 ),
-              if (role == 'promoter')
+              if (['member', 'creator', 'promoter'].contains(role))
                 ListTile(
                   leading: const Icon(Icons.campaign_outlined),
-                  title: const Text('Promoter dashboard'),
+                  title: const Text('Wallet & referrals'),
                   onTap: () {
                     Navigator.pop(ctx);
                     _push(const PromoterScreen());
                   },
                 ),
-              if (Api.instance.promoterAccount)
+              if (['member', 'promoter'].contains(role))
                 ListTile(
                   leading: const Icon(Icons.swap_horiz),
-                  title: Text(
-                    role == 'promoter'
-                        ? 'Switch to creator / apply'
-                        : 'Switch to promoter',
-                  ),
+                  title: const Text('Apply for creator access'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    _switchMode(role == 'promoter' ? 'creator' : 'promoter');
+                    _switchMode('creator');
                   },
                 ),
               ListTile(
@@ -368,8 +371,6 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {});
       if (result['role'] == 'creator') {
         await _push(const StudioScreen());
-      } else if (result['role'] == 'promoter') {
-        await _push(const PromoterScreen());
       } else {
         await _push(const AccountScreen());
       }
@@ -723,10 +724,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Widget> _trending() {
-    final videos = _videos
-        .where((video) => video['isSponsored'] != true && _views(video) > 0)
-        .toList()
-      ..sort((a, b) => _views(b).compareTo(_views(a)));
+    final videos =
+        _videos
+            .where((video) => video['isSponsored'] != true && _views(video) > 0)
+            .toList()
+          ..sort((a, b) => _views(b).compareTo(_views(a)));
     final items = videos.take(10).toList();
     if (items.isEmpty) return const [];
     return [
