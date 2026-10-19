@@ -202,10 +202,9 @@ class Api {
     await _save(Map<String, dynamic>.from(data));
   }
 
-  Future<bool> register(
+  Future<void> register(
     String username,
     String password, {
-    String? email,
     String? referrer,
     String accountType = 'member',
     String? businessName,
@@ -216,7 +215,6 @@ class Api {
     final data = await post('/auth/register', {
       'username': username,
       'password': password,
-      'email': ?email,
       if (accountType != 'member') 'accountType': accountType,
       if (accountType == 'business') 'businessName': businessName ?? '',
       if (accountType == 'member' && referrer != null && referrer.isNotEmpty)
@@ -227,7 +225,6 @@ class Api {
     } else {
       await login(username, password);
     }
-    return data is Map && data['verificationSent'] == true;
   }
 
   Future<void> logout() async {

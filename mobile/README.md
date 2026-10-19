@@ -56,10 +56,10 @@ amount to a creator's wallet. Every step creates a notification. Tests:
 Run the home layout, promotion, sharing and creator-search tests with:
 `flutter test test/homepage_promotion_banner_test.dart test/home_featured_spacing_test.dart test/share_search_banner_test.dart`.
 
-## Profile settings, creator applications and recovery
+## Profile settings and creator applications
 
 Signup offers Member and Business only. Members join immediately with username,
-email and password, without approval. Existing viewers and promoters are treated
+and password, without an email field, OTP step or approval. Existing viewers and promoters are treated
 as members without changing account IDs, balances, referrals or withdrawals.
 Earn and Profile -> Wallet & referrals open the member reward wallet for every
 non-business member, including approved creators and pending/rejected applicants.
@@ -75,26 +75,17 @@ Test with `flutter test test/auth_referral_test.dart test/member_wallet_test.dar
 
 Open **Profile & account settings** from Profile or the creator, promoter or
 business dashboard. Every personal role can change its username with the current
-password and set a verified recovery email. Signup requires an email; the backend
-saves it, emails a verification code, and notifies the admin (who also sees a
-**Joined users** list with emails on the web). At sign-in, **Forgot password?**
-and **Forgot username?** send instructions through Brevo; paste the emailed code to reset a
-password or verify an address. Email verification uses a six-digit OTP sent by
-Brevo: signup opens an OTP screen immediately, with the recipient prefilled,
-**Resend OTP**, and **Verify later**. Membership and wallet access do not require
-verification. Delivery failures stay visible and can be retried; resend uses only
-the signed-in account's pending address. You can also enter the code in Profile &
-account settings, or choose Verify recovery
-email and supply the recipient email plus OTP. Verification OTPs expire after
-10 minutes and allow five attempts; resending replaces the previous code.
-Password-reset links/codes still expire after 30 minutes, and older long
-verification links remain supported during rollout. Recovery requires
-a verified email; verify the signup email (or add one) in Profile & account settings.
+password. Email verification and email recovery are removed, including signup
+email collection, recovery links and profile email controls. Sign in with your
+username/password; contact support if credentials are lost. Existing accounts,
+balances and referrals are preserved. Old email recovery API calls return HTTP
+410 and cannot reset passwords. WhatsApp OTP is not configured or available yet.
 
 Creator applicants stay viewers until approval. Add a required profile photo,
 optionally upload an introduction video (recommended for quicker approval), then
 tap **Submit for approval**. Switching modes alone does not submit an application.
-Deploy the matching backend and web app, including Brevo sender configuration.
+Deploy the matching backend and web app. Brevo credentials are no longer used
+and can be removed from the backend environment.
 Legacy pending applications without an explicit submission return to draft on
 backend startup; approved creators keep their access.
 

@@ -31,14 +31,14 @@ npm run dev
 ```
 Open the Vite URL printed by the client terminal (usually http://localhost:5173).
 
-## Creator applications and account recovery
+## Creator applications and account settings
 
 ### Member signup, wallets and referrals
 
-Web and mobile signup offer **Member** and **Business / brand** only. A username,
-email and password create an active member immediately; no member approval or
-creator application is required. Email verification/recovery remains available
-and does not gate the member wallet. Creator applications are optional after
+Web and mobile signup offer **Member** and **Business / brand** only. A username
+and password create an active member immediately; no member approval or
+creator application is required. Email verification and email recovery are removed;
+member wallet access is immediate. Creator applications are optional after
 login; creator and business publishing/payment approvals are unchanged.
 
 Every non-business member, including existing viewers, former promoters, pending
@@ -80,52 +80,27 @@ again; approved creators are unchanged. Simply creating an account or switching
 to creator mode no longer submits an application.
 
 Viewer, creator, promoter and business profiles include **Username & account
-recovery**. Username changes require the current password, remain case-insensitively
+settings**. Username changes require the current password, remain case-insensitively
 unique, and update sign-in names in all sessions without changing account IDs or
 financial ownership. Existing comments keep their historical displayed names.
 Admin credentials are environment-managed and are not personal profiles.
 
-Configure `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` (a sender verified in Brevo),
-and optionally `BREVO_SENDER_NAME` on the backend. Set `PUBLIC_WEB_URL` to the
-deployed website so emailed verification/reset links open the correct app.
-No new package is required: the server uses Brevo's transactional email API.
-Email verification uses a six-digit OTP, valid for 10 minutes with at most five
-attempts per issued code. Verification requires both the code and its recipient
-email; only a hash of the account/email-bound code is stored. Resending replaces
-the current OTP, and successful verification consumes it once. Existing
-64-character verification links remain accepted during rollout. Password resets
-keep the existing long, single-use 30-minute reset links/codes.
+Signup accepts username and password, with no email field or OTP step. New
+registrations do not store an email or send account emails. Existing accounts,
+sessions, balances, referrals and historical email fields are preserved.
+Sign in with username/password; contact support if those credentials are lost.
+WhatsApp OTP is not available until its provider is configured and integrated.
 
-In Render, open the backend service -> **Environment**, set `BREVO_API_KEY` to
-the key from the same Brevo account as the verified sender, set
-`BREVO_SENDER_EMAIL` to that sender's exact email (check for typos), set
-`BREVO_SENDER_NAME=Zinda Play` and `PUBLIC_WEB_URL=https://zindaplay.com`, then
-save/redeploy. Set the same values in the ignored `server/.env` for local use
-and restart the local API. Never commit the API key or put it in Vite/Flutter
-client settings. A local environment change does not update Render.
-
-After deployment, create a member or use Profile -> Username & account recovery
--> Send verification email, then enter the emailed OTP. Web/mobile open an OTP
-entry screen immediately after signup with the recipient prefilled, **Resend OTP**
-and **Verify later**. Signup and member wallet access remain immediate even if
-email delivery fails; the verification screen explicitly reports failures.
-Authenticated `POST /api/account/verification-otp` resends only to the signed-in
-account's pending address, without accepting a replacement address or password.
-It shares the existing five-per-address / 15-minute verification send limit.
-Skipped verification can be completed later in settings. Brevo accepting a send request
-does not guarantee inbox delivery; check Inbox/Spam and Brevo transactional logs.
-Each user must add and verify a recovery email using their current password.
-Existing accounts have no recovery email until they do so. An unverified
-replacement does not remove the previously verified address.
-
-**Forgot password or username?** is available at sign-in and in profile settings
-on both clients. Username recovery emails the current username; password recovery
-sends a single-use link and a copy/paste code (30-minute expiry). Website links
-open the recovery screen; Android users can paste the emailed code in the app.
-Resetting a password revokes all sessions. Tokens are stored hashed and requests
-are rate-limited in MongoDB. Accounts without a previously verified address need
-support assistance; email alone is not accepted as proof of ownership.
-Email provider failures are reported, not shown as successful sends.
+Email verification, resend and recovery controls have been removed from both
+clients. The former `/api/account/recovery-email`, `/api/account/verification-otp`,
+`/api/auth/recovery` and `/api/auth/account-action` endpoints return HTTP 410 with
+an explicit removal notice, including for previously issued verification/reset
+codes. Old website email links show an unavailable notice instead of a form.
+The backend no longer calls Brevo or reads its settings. Remove `BREVO_API_KEY`,
+`BREVO_SENDER_EMAIL` and `BREVO_SENDER_NAME` from local/Render environments;
+retain `PUBLIC_WEB_URL` for other public application links. Deploy the backend
+and web together and install the rebuilt APK; older APKs still display their old
+email forms and cannot complete email recovery.
 
 ## Privacy and account deletion
 

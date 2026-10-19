@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../intro_video.dart';
-import 'recovery_screen.dart';
 
 class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
@@ -17,8 +16,6 @@ class AccountScreen extends StatefulWidget {
 class _AccountScreenState extends State<AccountScreen> {
   final _username = TextEditingController();
   final _password = TextEditingController();
-  final _email = TextEditingController();
-  final _code = TextEditingController();
   Map<String, dynamic>? _profile, _security;
   bool _loading = true, _busy = false;
   String? _error, _message;
@@ -34,8 +31,6 @@ class _AccountScreenState extends State<AccountScreen> {
   void dispose() {
     _username.dispose();
     _password.dispose();
-    _email.dispose();
-    _code.dispose();
     super.dispose();
   }
 
@@ -51,8 +46,6 @@ class _AccountScreenState extends State<AccountScreen> {
             );
       if (!mounted) return;
       _username.text = '${security['username']}';
-      _email.text =
-          '${security['pendingEmail'] != '' ? security['pendingEmail'] : security['email']}';
       setState(() {
         _security = security;
         _profile = profile;
@@ -79,7 +72,6 @@ class _AccountScreenState extends State<AccountScreen> {
       if (!mounted) return;
       setState(() => _message = message);
       _password.clear();
-      _code.clear();
       await _load();
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
@@ -210,12 +202,12 @@ class _AccountScreenState extends State<AccountScreen> {
                   ],
                   const Divider(height: 32),
                   const Text(
-                    'Username & account recovery',
+                    'Username & account settings',
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   if (_security != null) ...[
                     const Text(
-                      'Verify a recovery email to reset a forgotten password or recover your username.',
+                      'Use your current password to change your username. Email verification and email recovery are unavailable.',
                     ),
                     TextField(
                       controller: _password,
@@ -250,69 +242,7 @@ class _AccountScreenState extends State<AccountScreen> {
                             }),
                       child: const Text('Change username'),
                     ),
-                    Text(
-                      _security!['email'] == ''
-                          ? 'No verified recovery email yet.'
-                          : 'Verified recovery email: ${_security!['email']}',
-                    ),
-                    TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Recovery email',
-                      ),
-                    ),
-                    OutlinedButton(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              final data = await Api.instance.post(
-                                '/account/recovery-email',
-                                {
-                                  'email': _email.text.trim(),
-                                  'password': _password.text,
-                                },
-                              ) as Map;
-                              return '${data['message']}';
-                            }),
-                      child: const Text('Send verification email'),
-                    ),
-                    if (_security!['pendingEmail'] != '') ...[
-                      TextField(
-                        controller: _code,
-                        autocorrect: false,
-                        decoration: const InputDecoration(
-                          labelText: 'Paste verification code from email',
-                        ),
-                      ),
-                      Text(
-                        'Enter the six-digit OTP sent to ${_security!['pendingEmail']}. Valid for 10 minutes; only the latest OTP works.',
-                      ),
-                      FilledButton(
-                        onPressed: _busy
-                            ? null
-                            : () => _run(() async {
-                                final data = await Api.instance.post(
-                                  '/auth/account-action',
-                                  {
-                                    'purpose': 'verify',
-                                    'token': _code.text.trim(),
-                                    'email': _security!['pendingEmail'],
-                                  },
-                                ) as Map;
-                                return '${data['message']}';
-                              }),
-                        child: const Text('Verify email'),
-                      ),
-                    ],
                   ],
-                  TextButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const RecoveryScreen()),
-                    ),
-                    child: const Text('Forgot password or username?'),
-                  ),
                 ],
               ),
             ),

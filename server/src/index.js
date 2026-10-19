@@ -12,7 +12,7 @@ import { initializeMemberships, membershipSettings, registerMembershipRoutes } f
 import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency } from "./ad-delivery.js";
 import { accountRole, approvedCreatorQuery, initializeCreatorApplications, memberRewardsEligible, memberRewardsGuard, registerAccountModeRoutes } from "./account-modes.js";
 import { initializeBanners, registerBannerRoutes } from "./banners.js";
-import { initializeAccountSecurity, normalizeEmail, registerAccountSecurityRoutes, validEmail } from "./account-security.js";
+import { initializeAccountSecurity, registerAccountSecurityRoutes } from "./account-security.js";
 import { ensureReferralCode, initializeReferrals, referralOwner } from "./referrals.js";
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
@@ -1141,12 +1141,8 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
   const invitationCode = typeof req.body?.referrerPromoterId === "string" ? req.body.referrerPromoterId.trim() : "";
   const businessName = typeof req.body?.businessName === "string" ? req.body.businessName.trim() : "";
   const businessAbout = typeof req.body?.businessAbout === "string" ? req.body.businessAbout.trim() : "";
-  const email = normalizeEmail(req.body?.email);
   if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
     return res.status(400).json({ error: "Username must be 3–32 characters and use only letters, numbers, dots, underscores, or hyphens." });
-  }
-  if (!validEmail(email)) {
-    return res.status(400).json({ error: "Enter a valid email address. It is used to recover your password." });
   }
   if (typeof password !== "string" || password.length < 8 || password.length > 128) {
     return res.status(400).json({ error: "Password must be between 8 and 128 characters." });
@@ -1166,16 +1162,10 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
   if (process.env.ADMIN_USERNAME && username.toLowerCase() === process.env.ADMIN_USERNAME.trim().toLowerCase()) {
     return res.status(409).json({ error: "That username is reserved." });
   }
-  const emailInUse = await usersCollection().findOne({ $or: [{ email }, { recoveryEmail: email }] }, { projection: { _id: 1 } });
-  if (emailInUse) {
-    return res.status(409).json({ error: "That email is already linked to an account. Use “Forgot password?” to recover it." });
-  }
   const { salt, hash } = await hashPassword(password);
   const user = {
     username,
     usernameKey: username.toLowerCase(),
-    email,
-    pendingRecoveryEmail: email,
     passwordSalt: salt,
     passwordHash: hash,
     accountType,
@@ -1188,9 +1178,7 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
     await usersCollection().insertOne(user);
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ error: error.keyPattern?.email
-        ? "That email is already linked to an account. Use “Forgot password?” to recover it."
-        : "That username is already taken." });
+      return res.status(409).json({ error: "That username is already taken." });
     }
     throw error;
   }
@@ -1200,20 +1188,18 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
     type: "account_joined",
     userId: user._id.toString(),
     username: user.username,
-    email,
     accountType: accountLabel,
     title: `New ${accountLabel} joined: ${user.username}`,
-    message: `Email: ${email}${accountType === "business" ? ` · Business: ${businessName}` : ""} · Account active, no approval needed`,
+    message: `${accountType === "business" ? `Business: ${businessName} · ` : ""}Account active, no approval needed`,
     readAt: null,
     createdAt: user.createdAt
   });
-  const verificationSent = await accountSecurity.sendSignupVerification(user, email);
   if (accountType === "business") {
     const token = createSession(user.username, accountType, user._id.toString());
-    return res.status(201).json({ ...publicUser(user, token), email, verificationSent });
+    return res.status(201).json(publicUser(user, token));
   }
   const token = createSession(user.username, "member", user._id.toString());
-  res.status(201).json({ ...publicUser(user, token), email, verificationSent });
+  res.status(201).json(publicUser(user, token));
 }));
 app.post("/api/auth/login", asyncRoute(async (req, res) => {
   const { username, password } = req.body || {};
@@ -1241,17 +1227,15 @@ registerAccountModeRoutes(app, {
   userId: req => new ObjectId(req.session.userId),
   saveSession: req => sessions.set(req.get("authorization").replace(/^Bearer\s+/i, ""), req.session)
 });
-const accountSecurity = registerAccountSecurityRoutes(app, {
-  getDb: () => database, requireAccount: requireShortsAccount, asyncRoute, hashPassword, passwordMatches,
-  userId: req => new ObjectId(req.session.userId), publicWebsite,
-  updateSessions: async (id, username, revoke = false) => {
+registerAccountSecurityRoutes(app, {
+  getDb: () => database, requireAccount: requireShortsAccount, asyncRoute, passwordMatches,
+  userId: req => new ObjectId(req.session.userId),
+  updateSessions: async (id, username) => {
     for (const [token, session] of sessionCache) {
       if (session.userId !== id) continue;
-      if (revoke) sessionCache.delete(token);
-      else sessions.set(token, { ...session, username });
+      sessions.set(token, { ...session, username });
     }
-    if (revoke) await database.collection("sessions").deleteMany({ userId: id });
-    else await database.collection("sessions").updateMany({ userId: id }, { $set: { username } });
+    await database.collection("sessions").updateMany({ userId: id }, { $set: { username } });
   }
 });
 app.delete("/api/account", requireShortsAccount, asyncRoute(accountDeletionHandler({

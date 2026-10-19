@@ -96,13 +96,11 @@ function App() {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [likeSubmitting, setLikeSubmitting] = useState(false);
   const [username, setUsername] = useState("");
-  const [signupEmail, setSignupEmail] = useState("");
   const [password, setPassword] = useState("");
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
   const [profilePhotoPreview, setProfilePhotoPreview] = useState("");
   const [accountProfile, setAccountProfile] = useState({ displayName: "", bio: "", profilePhotoUrl: "" });
   const [registrationType, setRegistrationType] = useState("member");
-  const [signupVerification, setSignupVerification] = useState(null);
   const [businessProfile, setBusinessProfile] = useState({ businessName: "", businessAbout: "", logoUrl: "" });
   const [businessCreators, setBusinessCreators] = useState([]);
   const [businessInvitations, setBusinessInvitations] = useState([]);
@@ -1397,7 +1395,6 @@ function App() {
           username,
           password,
           ...(registering ? {
-            email: signupEmail.trim(),
             accountType: registrationType,
             ...(registrationType === "member" && referrerPromoterId ? { referrerPromoterId } : {}),
             ...(registrationType === "business" ? {
@@ -1453,10 +1450,6 @@ function App() {
       if (data.role === "creator") await loadCreatorInvitations(data.token);
       await loadNotifications(data.token, data.role);
       if (profilePhotoError) setError(profilePhotoError);
-      if (registering && data.role !== "admin") {
-        setSignupVerification({ email: data.email || signupEmail.trim(), verificationSent: data.verificationSent === true });
-        setPage("verify-email");
-      }
     } catch (err) {
       setError(err.message || "Unable to sign in");
     } finally {
@@ -1705,8 +1698,7 @@ function App() {
       {page === "creator" && authRole === "creator" && videos.some(video=>video.approvalStatus === "pending") && <section className="admin-panel review-status-panel">
         <div className="membership-status"><Clock3 size={20}/><div><strong>Waiting for approval</strong><span>{videos.filter(video=>video.approvalStatus === "pending").map(video=>video.title).join(", ")} — your submission is private until an admin reviews it. Video encoding status is shown separately in Creator studio.</span></div></div>
       </section>}
-      {page === "verify-email" && signupVerification && adminToken ? <Recovery key={signupVerification.email} api={API} token={adminToken} initialPurpose="verify" initialEmail={signupVerification.email} signupVerification verificationSent={signupVerification.verificationSent} onBack={()=>{setSignupVerification(null);setPage(authRole === "business" ? "business" : "home");}}/>
-      : page === "recovery" ? <Recovery api={API} onPasswordReset={clearAdminSession} onBack={()=>{setRegistering(false);setPage("admin");}}/>
+      {page === "recovery" ? <Recovery onBack={()=>{setRegistering(false);setPage("admin");}}/>
       : page === "shorts" ? <Shorts api={API} token={adminToken} role={authRole} onSignIn={openAdmin} onShare={shareVideo} onCreator={openCreatorFromCard} initialId={initialShortId} suspended={profileDrawerOpen || membershipPaying}/>
       : selected ? <section className="watch-page">
         <button className="back-link" onClick={closeVideo}>← Back to Explore</button>
@@ -1954,14 +1946,11 @@ function App() {
           {registering && registrationType === "member" && <p className="publish-help">Join immediately as a member, with wallet and referral rewards. No approval needed. You can apply for creator access from your profile later.</p>}
           {registering && registrationType === "business" && <p className="publish-help">Business accounts do not participate in member wallet or referral rewards.</p>}
           <label>Username<input autoComplete="username" minLength={3} maxLength={32} required value={username} onChange={e=>setUsername(e.target.value)} /></label>
-          {registering && <label>Email<input type="email" autoComplete="email" maxLength={254} required value={signupEmail} disabled={loginLoading} onChange={e=>setSignupEmail(e.target.value)} placeholder="you@example.com"/><span className="field-help">Used to recover your password or username. We will send a verification code.</span></label>}
           <label>Password<input type="password" autoComplete={registering ? "new-password" : "current-password"} minLength={registering ? 8 : undefined} maxLength={128} required value={password} onChange={e=>setPassword(e.target.value)} /></label>
-          {!registering && <div className="forgot-links"><button type="button" onClick={()=>setPage("recovery")}>Forgot password?</button><button type="button" onClick={()=>setPage("recovery")}>Forgot username?</button></div>}
           {registering && registrationType==="business" && <><label>Business name<input required maxLength={100} value={businessProfile.businessName} onChange={event=>setBusinessProfile(current=>({...current,businessName:event.target.value}))}/></label><label>About your business<textarea maxLength={1000} rows={3} value={businessProfile.businessAbout} onChange={event=>setBusinessProfile(current=>({...current,businessAbout:event.target.value}))} placeholder="What does your business do?"/></label></>}
           {registering && <label className="profile-photo-field">{registrationType==="business"?"Business logo (optional)":"Profile photo (optional)"}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={loginLoading} onChange={e=>setProfilePhotoFile(e.target.files?.[0] || null)}/>{profilePhotoFile && profilePhotoPreview && <img className="profile-signup-preview" src={profilePhotoPreview} alt="Selected image preview"/>}<span>JPEG, PNG, WebP, or GIF, up to 8 MB.</span>{profilePhotoFile && <strong>{profilePhotoFile.name}</strong>}</label>}
           <button className="primary-btn" type="submit" disabled={loginLoading}>{loginLoading ? (registering ? "Creating account…" : "Signing in…") : (registering ? "Create account" : "Sign in")}</button>
         </form>
-        {!registering && <button className="auth-mode-toggle" type="button" onClick={()=>setPage("recovery")}>Can't sign in? Recover your password or username</button>}
         <button className="auth-mode-toggle" type="button" onClick={()=>{setRegistering(!registering);setProfilePhotoFile(null);setError("");}}> {registering ? "Already have an account? Sign in" : "New to Zinda Play? Create an account"}</button>
         {registering && <p className="auth-help">Username: 3–32 letters, numbers, dots, underscores, or hyphens. Password: at least 8 characters.</p>}
       </div></section>
