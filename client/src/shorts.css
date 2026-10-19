@@ -25,6 +25,9 @@
 .shorts-creator img{width:32px;height:32px;border-radius:50%;object-fit:cover}
 .shorts-creator strong{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .shorts-creator button{background:#8b5cf638;border:1px solid #b69cff;color:#eee4ff;border-radius:8px;padding:6px 9px}
+.shorts-creator .shorts-creator-link{display:inline-flex;flex:0 1 auto;align-items:center;gap:8px;max-width:100%;overflow:hidden;padding:0;border:0;background:none;color:inherit;cursor:pointer}
+.shorts-creator .shorts-creator-link strong{max-width:none;white-space:nowrap}
+.shorts-creator .shorts-creator-link:disabled{cursor:default;opacity:1}
 .shorts-feedback{color:#ffd19a}
 .shorts-controls{position:absolute;bottom:0;left:8px;right:8px;display:flex;align-items:center;gap:8px;min-height:54px}
 .shorts-controls input{min-width:0;flex:1;accent-color:#a78bfa}

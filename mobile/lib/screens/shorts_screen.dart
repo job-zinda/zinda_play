@@ -9,6 +9,7 @@ import '../shorts.dart';
 import '../widgets/short_comments.dart';
 import '../widgets/share_sheet.dart';
 import 'auth_screen.dart';
+import 'creator_screen.dart';
 
 class ShortsScreen extends StatefulWidget {
   final bool saved;
@@ -506,6 +507,20 @@ class _ShortPlayerState extends State<_ShortPlayer> {
     }
   }
 
+  Future<void> _openCreator() async {
+    final creator = _creator;
+    if (creator == null) return;
+    await _action(() async {
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => CreatorScreen(creator: creator),
+        ),
+      );
+      if (Api.instance.signedIn) await _interactions();
+    }, signIn: false);
+  }
+
   Future<void> _like() => _action(() async {
     final result = await Api.instance.post('/videos/$_id/like') as Map;
     if (mounted) {
@@ -732,31 +747,36 @@ class _ShortPlayerState extends State<_ShortPlayer> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 17,
-                    backgroundImage:
-                        (creator?['profilePhotoUrl'] ?? '').toString().isEmpty
-                        ? null
-                        : NetworkImage(
-                            assetUrl('${creator!['profilePhotoUrl']}'),
-                          ),
-                    child:
-                        (creator?['profilePhotoUrl'] ?? '').toString().isEmpty
-                        ? const Icon(Icons.person)
-                        : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '@${creator?['username'] ?? 'zindaplay'}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+              GestureDetector(
+                key: const ValueKey('short-creator'),
+                behavior: HitTestBehavior.opaque,
+                onTap: creator == null ? null : _openCreator,
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 17,
+                      backgroundImage:
+                          (creator?['profilePhotoUrl'] ?? '').toString().isEmpty
+                          ? null
+                          : NetworkImage(
+                              assetUrl('${creator!['profilePhotoUrl']}'),
+                            ),
+                      child:
+                          (creator?['profilePhotoUrl'] ?? '').toString().isEmpty
+                          ? const Icon(Icons.person)
+                          : null,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '@${creator?['username'] ?? 'zindaplay'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               if (creator != null && !_self)
                 TextButton(

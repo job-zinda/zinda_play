@@ -15,7 +15,7 @@ async function request(api, token, path, options = {}) {
   return data;
 }
 
-export default function Shorts({ api, token, role, onSignIn, onShare, initialId, suspended = false }) {
+export default function Shorts({ api, token, role, onSignIn, onShare, onCreator, initialId, suspended = false }) {
   const [saved, setSaved] = useState(false);
   return <section className="web-shorts" aria-label="Simply">
     <div className="shorts-heading">
@@ -25,11 +25,11 @@ export default function Shorts({ api, token, role, onSignIn, onShare, initialId,
         setSaved(value => !value);
       }}><Bookmark size={18}/>{saved ? "All Simply videos" : "Watch Later"}</button>
     </div>
-    <ShortFeed key={`${saved}:${initialId || ""}`} api={api} token={token} role={role} onSignIn={onSignIn} onShare={onShare} saved={saved} initialId={saved ? null : initialId} suspended={suspended}/>
+    <ShortFeed key={`${saved}:${initialId || ""}`} api={api} token={token} role={role} onSignIn={onSignIn} onShare={onShare} onCreator={onCreator} saved={saved} initialId={saved ? null : initialId} suspended={suspended}/>
   </section>;
 }
 
-function ShortFeed({ api, token, role, onSignIn, onShare, saved, initialId, suspended }) {
+function ShortFeed({ api, token, role, onSignIn, onShare, onCreator, saved, initialId, suspended }) {
   const [items, setItems] = useState([]);
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -155,7 +155,7 @@ function ShortFeed({ api, token, role, onSignIn, onShare, saved, initialId, susp
           if (element.clientHeight) setIndex(Math.round(element.scrollTop / element.clientHeight));
         }}>
         {items.map((video, i) => <ShortVideo key={video.id} video={video} api={api} token={token} role={role}
-          active={visible && !suspended && i === index} muted={muted} onMute={() => setMuted(value => !value)} onSignIn={onSignIn} onShare={onShare}/>)}
+          active={visible && !suspended && i === index} muted={muted} onMute={() => setMuted(value => !value)} onSignIn={onSignIn} onShare={onShare} onCreator={onCreator}/>)}
         <div key={`status-${items.length}`} className="shorts-status" role="status">
           {loading ? <><div className="shorts-skeleton"/><p>Loading Simply...</p></> : error ? <><p role="alert">{error}</p><button className="primary-btn" onClick={() => load()}>Retry</button></> :
             <><p>{more ? "More Simply videos are available." : items.length ? "You're all caught up." : saved ? "No saved Simply videos yet." : "No Simply videos yet. Upload one from the mobile app to get started."}</p>
@@ -170,7 +170,7 @@ function ShortFeed({ api, token, role, onSignIn, onShare, saved, initialId, susp
   </>;
 }
 
-function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, onShare }) {
+function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, onShare, onCreator }) {
   const element = useRef(null);
   const activeNow = useRef(active);
   activeNow.current = active;
@@ -341,8 +341,10 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, 
     </div>
     <div className="shorts-caption">
       <div className="shorts-creator">
-        {creator?.profilePhotoUrl ? <img src={asset(creator.profilePhotoUrl)} alt=""/> : <UserRound size={28}/>}
-        <strong>@{creator?.username || "zindaplay"}</strong>
+        <button type="button" className="shorts-creator-link" disabled={!creator || !onCreator} onClick={() => onCreator(creator)} aria-label={creator ? `View @${creator.username}'s profile` : undefined}>
+          {creator?.profilePhotoUrl ? <img src={asset(creator.profilePhotoUrl)} alt=""/> : <UserRound size={28}/>}
+          <strong>@{creator?.username || "zindaplay"}</strong>
+        </button>
         {creator && !state.isSelf && <button disabled={busy} aria-pressed={Boolean(state.following)} onClick={() => action(async () => {
           const data = await request(api, token, `/creators/${creator.id}/follow`, { method: state.following ? "DELETE" : "POST" });
           setState(current => ({ ...current, following: data.following }));

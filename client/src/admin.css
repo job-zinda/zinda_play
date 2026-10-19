@@ -6,6 +6,10 @@
 .creator-profile-details{display:grid;min-width:0;flex:1;gap:3px}
 .creator-profile small{color:var(--muted);font-size:9px;letter-spacing:1px}
 .creator-profile strong{font-size:13px}
+.creator-avatar-link,.creator-name-link{padding:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;text-align:left}
+.creator-avatar-link{flex:none;border-radius:50%}
+.creator-name-link{justify-self:start;font-size:13px;font-weight:700}
+.creator-name-link:hover,.creator-name-link:focus-visible{text-decoration:underline}
 .creator-follower-count{color:var(--muted);font-size:11px}
 .creator-follow-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:100px;padding:10px 14px;border:1px solid transparent;border-radius:10px;background:linear-gradient(120deg,#9a76ff,#7c4fe0);color:#fff;font-weight:700;white-space:nowrap}
 .creator-follow-btn.following{border-color:#ffffff1b;background:#ffffff08;color:#e7e4f2}
