@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../screens/auth_screen.dart';
+import '../widgets/video_engagement.dart';
+import '../theme.dart';
 
 class ShortComments extends StatefulWidget {
   final String id;
@@ -24,6 +26,14 @@ class _ShortCommentsState extends State<ShortComments> {
   bool _sending = false;
   String? _error;
 
+  Future<void> _signIn() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const AuthScreen()),
+    );
+    if (mounted) setState(() {});
+  }
+
   Future<void> _send() async {
     if (_sending) return;
     final text = _text.text.trim();
@@ -37,10 +47,7 @@ class _ShortCommentsState extends State<ShortComments> {
     });
     try {
       if (!Api.instance.signedIn) {
-        await Navigator.push(
-          context,
-          MaterialPageRoute<void>(builder: (_) => const AuthScreen()),
-        );
+        await _signIn();
         if (!mounted || !Api.instance.signedIn) return;
       }
       final result = await Api.instance.post('/videos/${widget.id}/comments', {
@@ -68,14 +75,35 @@ class _ShortCommentsState extends State<ShortComments> {
   @override
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-    child: SizedBox(
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(top: BorderSide(color: Color(0x994E3B82))),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF19162D), Color(0xFF0F101D)],
+        ),
+      ),
       height: MediaQuery.sizeOf(context).height * 0.65,
       child: Column(
         children: [
-          ListTile(title: Text('Comments ($_commentCount)')),
+          ListTile(
+            contentPadding: const EdgeInsets.only(left: 4),
+            title: Text(
+              'Comments ($_commentCount)',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            trailing: IconButton(
+              tooltip: 'Close comments',
+              onPressed: _sending ? null : () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded, color: kPurple),
+            ),
+          ),
           Expanded(
             child: _comments.isEmpty
-                ? const Center(child: Text('Be the first to comment.'))
+                ? const SingleChildScrollView(child: VideoCommentsEmptyState())
                 : ListView(
                     children: [
                       for (final comment in _comments)
@@ -95,35 +123,80 @@ class _ShortCommentsState extends State<ShortComments> {
                 style: const TextStyle(color: Colors.redAccent),
               ),
             ),
-          Row(
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: TextField(
-                    controller: _text,
-                    enabled: !_sending,
-                    maxLength: 500,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _send(),
-                    decoration: const InputDecoration(
-                      hintText: 'Add a comment',
+          if (Api.instance.signedIn)
+            Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TextField(
+                      controller: _text,
+                      enabled: !_sending,
+                      maxLength: 500,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _send(),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Share your thoughts...',
+                        counterText: '',
+                        filled: true,
+                        fillColor: const Color(0xFF211C32),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Tooltip(
-                  message: 'Post comment',
-                  child: FilledButton(
-                    onPressed: _sending ? null : _send,
-                    child: Text(_sending ? 'Sending...' : 'Send'),
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Tooltip(
+                    message: 'Post comment',
+                    child: FilledButton(
+                      onPressed: _sending ? null : _send,
+                      child: Text(_sending ? 'Sending...' : 'Send'),
+                    ),
                   ),
                 ),
+              ],
+            ),
+          if (!Api.instance.signedIn)
+            Container(
+              padding: const EdgeInsets.only(top: 14),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0x664E3B82))),
               ),
-            ],
-          ),
+              child: Row(
+                children: [
+                  const Icon(Icons.person_outline_rounded, color: kPurple),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Sign in to like, comment or follow creators.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFFB2ADCE)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GradientButton(
+                    onPressed: _signIn,
+                    radius: 13,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    child: const Text(
+                      'Sign In',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     ),

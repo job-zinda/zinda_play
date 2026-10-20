@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,99 @@ import 'package:zinda_play/api.dart';
 import 'package:zinda_play/screens/auth_screen.dart';
 
 void main() {
+  testWidgets(
+    'login keeps loading controls disabled and displays backend errors',
+    (tester) async {
+      final response = Completer<http.Response>();
+      final client = MockClient((request) => response.future);
+      await http.runWithClient(() async {
+        await tester.pumpWidget(const MaterialApp(home: AuthScreen()));
+        await tester.enterText(find.byType(TextField).at(0), 'viewer');
+        await tester.enterText(find.byType(TextField).at(1), 'password123');
+        await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+        await tester.pump();
+        expect(
+          tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+          isNull,
+        );
+        expect(find.text('Please wait…'), findsOneWidget);
+        expect(
+          tester
+              .widget<TextButton>(
+                find.widgetWithText(TextButton, 'New here? Create an account'),
+              )
+              .onPressed,
+          isNull,
+        );
+        response.complete(
+          http.Response(jsonEncode({'error': 'Incorrect password'}), 401),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Incorrect password'), findsOneWidget);
+        expect(
+          tester
+              .widget<TextField>(find.byType(TextField).at(1))
+              .controller!
+              .text,
+          'password123',
+        );
+        expect(
+          tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+          isNotNull,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+      }, () => client);
+    },
+  );
+
+  testWidgets(
+    'auth fits a small screen with keyboard and preserves password on visibility toggle',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(1.3)),
+            child: child!,
+          ),
+          home: const AuthScreen(referralCode: '123456'),
+        ),
+      );
+      await tester.enterText(find.byType(TextField).at(1), 'secret-password');
+      expect(
+        tester.widget<TextField>(find.byType(TextField).at(1)).obscureText,
+        isTrue,
+      );
+      await tester.tap(find.byTooltip('Show password'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField).at(1)).obscureText,
+        isFalse,
+      );
+      expect(
+        tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text,
+        'secret-password',
+      );
+      tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(
+        MediaQuery.viewInsetsOf(tester.element(find.byType(AuthScreen))).bottom,
+        280,
+      );
+      final submit = find.widgetWithText(FilledButton, 'Create account');
+      await tester.ensureVisible(submit);
+      await tester.pumpAndSettle();
+      expect(submit.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets(
     'business signup hides referrals and never submits a saved member invitation',
     (tester) async {

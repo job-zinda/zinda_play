@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bookmark, ChevronDown, ChevronUp, Flag, Heart, MessageCircle, Pause, Play, RefreshCw, Share2, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { Bookmark, Check, ChevronDown, ChevronUp, Flag, Heart, MessageCircle, Pause, Play, RefreshCw, Send, UserPlus, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import "./shorts.css";
 import { shareLink, videoShareUrl } from "./public-links.js";
 import { PlayerGate } from "./Ads.jsx";
+import { Action, CommentsEmptyState } from "./WatchEngagement.jsx";
 
 async function request(api, token, path, options = {}) {
   const response = await fetch(`${api}${path}`, {
@@ -314,7 +315,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, 
     } catch (failure) { counted.current = true; setError(`View tracking: ${failure.message}`); }
     finally { counting.current = false; }
   }
-  const button = (label, Icon, callback, pressed) => <button disabled={busy} aria-label={label} aria-pressed={pressed} onClick={callback}><Icon size={24}/><span>{label}</span></button>;
+  const button = (label, Icon, callback, pressed, tone, count) => <Action compact label={label} count={count} tone={tone} selected={pressed} busy={busy} onClick={callback} icon={<Icon size={21} fill={pressed ? "currentColor" : "none"}/>}/>;
   return <article className="shorts-item" aria-label={video.caption || video.title}>
     {active && <video ref={element} playsInline loop muted={muted} preload="auto" poster={video.thumbnailUrl ? asset(video.thumbnailUrl) : undefined}
       onClick={() => setPaused(value => !value)} onWaiting={() => setBuffering(true)} onPlaying={() => { setBuffering(false); setPlayError(""); }}
@@ -326,22 +327,23 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, 
       }}
       onTimeUpdate={timeUpdate} onSeeked={() => { lastPosition.current = element.current.currentTime; }}/>}
     <div className="shorts-gradient"/>
+    {active && paused && !modal && !playError && <button className="shorts-resume" aria-label="Resume video" onClick={() => setPaused(false)}><Play size={30} fill="currentColor"/></button>}
     {active && buffering && !playError && !paused && <div className="shorts-loading" role="status">Loading video...</div>}
     {active && playError && <div className="shorts-play-error" role="alert"><p>{playError}</p><button className="primary-btn" onClick={() => setRetry(value => value + 1)}>Retry playback</button></div>}
-    <div className="shorts-actions">
-      {button(`${state.likeCount} likes`, Heart, () => action(async () => {
+    <div className="shorts-actions" role="group" aria-label="Simply actions">
+      {button("Like", Heart, () => action(async () => {
         const data = await request(api, token, `/videos/${video.id}/like`, { method: "POST" });
         setState(current => ({ ...current, ...data }));
-      }), state.liked)}
-      {button(`${state.commentCount ?? state.comments.length} comments`, MessageCircle, () => { setError(""); setModal("comments"); })}
-      {button("Share", Share2, () => onShare ? onShare(video) : action(async () => {
+      }), state.liked, "like", state.likeCount)}
+      {button("Comments", MessageCircle, () => { setError(""); setModal("comments"); }, undefined, "comments", state.commentCount ?? state.comments.length)}
+      {button("Share", Send, () => onShare ? onShare(video) : action(async () => {
         const result = await shareLink(video.title, videoShareUrl(video.id));
         if (result === "copied") setError("Share link copied.");
       }, false))}
       {button(state.saved ? "Saved" : "Save", Bookmark, () => action(async () => {
         const data = await request(api, token, `${url}/saved`, { method: state.saved ? "DELETE" : "PUT", body: state.saved ? undefined : "{}" });
         setState(current => ({ ...current, saved: data.saved }));
-      }), Boolean(state.saved))}
+      }), Boolean(state.saved), "save")}
       {button("Report", Flag, () => action(async () => setModal("report")))}
     </div>
     <div className="shorts-caption">
@@ -353,7 +355,7 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, 
         {creator && !state.isSelf && <button disabled={busy} aria-pressed={Boolean(state.following)} onClick={() => action(async () => {
           const data = await request(api, token, `/creators/${creator.id}/follow`, { method: state.following ? "DELETE" : "POST" });
           setState(current => ({ ...current, following: data.following }));
-        })}>{state.following ? "Following" : "Follow"}</button>}
+        })}>{state.following ? <Check size={15}/> : <UserPlus size={15}/>} {state.following ? "Following" : "Follow"}</button>}
       </div>
       <p>{video.caption || video.description || video.title}</p>
       <p className="shorts-tags">{(video.hashtags || []).map(tag => `#${tag}`).join(" ")}</p>
@@ -379,14 +381,14 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, 
       }}>
       <div className="shorts-modal-heading"><h2>{modal === "comments" ? `Comments (${state.commentCount ?? state.comments.length})` : "Report Simply video"}</h2><button autoFocus disabled={busy} aria-label="Close dialog" onClick={() => setModal("")}><X/></button></div>
       {modal === "comments" ? <>
-        <div className="shorts-comments">{state.comments.length ? state.comments.map((item, i) => <div key={item.id || i}><strong>{item.username}</strong><p>{item.text}</p></div>) : <p>Be the first to comment.</p>}</div>
-        <form onSubmit={event => { event.preventDefault(); action(async () => {
+        <div className="shorts-comments">{state.comments.length ? state.comments.map((item, i) => <div key={item.id || i}><strong>{item.username}</strong><p>{item.text}</p></div>) : <CommentsEmptyState/>}</div>
+        {!token ? <div className="comments-signin"><UserRound size={22}/><span>Sign in to like, comment or follow creators.</span><button type="button" onClick={onSignIn}>Sign In</button></div> : <form onSubmit={event => { event.preventDefault(); action(async () => {
           const data = await request(api, token, `/videos/${video.id}/comments`, { method: "POST", body: JSON.stringify({ text: comment.trim() }) });
           setState(current => ({ ...current, commentCount: (current.commentCount ?? current.comments.length) + 1, comments: [data, ...current.comments] })); setComment("");
         }); }}>
           <label>Add a comment<textarea maxLength={500} value={comment} disabled={busy} onChange={event => setComment(event.target.value)}/></label>
           <button className="primary-btn" disabled={busy || !comment.trim()}>Post comment</button>
-        </form>
+        </form>}
       </> : <div className="shorts-report-reasons">{["spam", "harassment", "inappropriate", "copyright", "other"].map(reason => <button className="secondary-btn" key={reason} disabled={busy} onClick={() => action(async () => {
         await request(api, token, `${url}/report`, { method: "POST", body: JSON.stringify({ reason }) }); setModal(""); setError("Report submitted for admin review.");
       })}>{reason}</button>)}</div>}

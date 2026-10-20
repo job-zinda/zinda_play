@@ -470,10 +470,39 @@ void main() {
         reason: tooltip,
       );
     }
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Resume video').hitTestable(), findsOneWidget);
+    await tester.tap(find.byTooltip('Resume video'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Resume video'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+  });
+
+  testWidgets('guest Simply comments show the illustrated sign-in panel', (
+    tester,
+  ) async {
+    await mount(tester, _Feed(items));
+    await tester.tap(find.byTooltip('101 comments'));
+    await tester.pumpAndSettle();
+    expect(find.text('Comments (101)'), findsOneWidget);
+    expect(find.text('No comments yet'), findsOneWidget);
+    expect(find.text('Be the first to share your thoughts!'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.text('Sign In'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AuthScreen), findsOneWidget);
+    expect(
+      network.calls.where(
+        (call) => call.startsWith('POST') && call.endsWith('/comments'),
+      ),
+      isEmpty,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
   });
 
   testWidgets(

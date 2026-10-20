@@ -2,6 +2,25 @@
 
 A new Flutter project.
 
+## Simply engagement
+
+Simply keeps its vertical swipe feed on web and Android. Its compact translucent
+action rail uses the shared neon Like/Comments treatment, an animated heart,
+paper-plane sharing, and a highlighted saved bookmark. Follow/Following has an
+explicit selected state, and paused videos have a central resume control.
+Comments use the shared illustrated empty state and a guest sign-in prompt.
+Existing like, comment, follow, save, report, view and reward APIs are unchanged;
+Simply bookmarks still use the server-backed Watch Later list.
+
+## Authentication presentation
+
+Web and Android sign-in/signup use a dark purple theme, labeled icon fields,
+password visibility controls and Member/Business account cards. Member signup
+retains the optional six-digit invitation code; business fields and web profile
+image uploads are preserved. The Flutter form scrolls above the keyboard.
+These presentation changes do not add OTP authentication or change auth APIs,
+validation, account-type values or successful-login navigation.
+
 ## Backend connection and APK builds
 
 The mobile app defaults to the deployed HTTPS backend at

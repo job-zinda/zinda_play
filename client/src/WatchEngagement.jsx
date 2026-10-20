@@ -30,10 +30,10 @@ export function useSavedVideo(username, videoId) {
   return [saved, toggle];
 }
 
-function Action({ label, count, icon, tone, selected, busy, onClick }) {
+export function Action({ label, count, icon, tone, selected, busy, onClick, compact = false }) {
   return <button type="button" className={`engage-action ${tone ? `engage-${tone}` : ""} ${selected ? "selected" : ""}`} aria-pressed={selected === undefined ? undefined : selected} aria-label={`${label}${count === undefined ? "" : `, ${count}`}`} disabled={busy} onClick={onClick}>
     <span className="engage-icon">{busy ? <Loader2 className="engage-spin" size={18}/> : icon}</span>
-    <strong>{count === undefined ? "\u00a0" : Number(count).toLocaleString()}</strong>
+    {(!compact || count !== undefined) && <strong>{count === undefined ? "\u00a0" : Number(count).toLocaleString()}</strong>}
     <small>{label}</small>
   </button>;
 }
@@ -57,6 +57,14 @@ function EmptyIllustration() {
   </svg>;
 }
 
+export function CommentsEmptyState() {
+  return <div className="comments-empty">
+    <EmptyIllustration/>
+    <strong>No comments yet</strong>
+    <span>Be the first to share your thoughts!</span>
+  </div>;
+}
+
 export function CommentsPanel({ panelRef, inputRef, count, comments, canComment, signedIn, commentText, onCommentText, onSubmit, submitting, onRefresh, refreshing, onSignIn }) {
   return <section className="comments-panel" ref={panelRef} aria-labelledby="comments-heading">
     <div className="comments-panel-head">
@@ -66,11 +74,7 @@ export function CommentsPanel({ panelRef, inputRef, count, comments, canComment,
     {comments.length ? <div className="comment-list">{comments.map(comment => <article className="comment-item" key={comment.id}>
       <div className="comment-avatar">{String(comment.username || "?").slice(0, 1).toUpperCase()}</div>
       <div><strong>{comment.username}</strong>{comment.createdAt && <time>{new Date(comment.createdAt).toLocaleString()}</time>}<p>{comment.text}</p></div>
-    </article>)}</div> : <div className="comments-empty">
-      <EmptyIllustration/>
-      <strong>No comments yet</strong>
-      <span>Be the first to share your thoughts!</span>
-    </div>}
+    </article>)}</div> : <CommentsEmptyState/>}
     {canComment
       ? <form className="comments-compose" onSubmit={onSubmit}>
         <textarea ref={inputRef} required rows={1} maxLength={1000} value={commentText} onChange={event => onCommentText(event.target.value)} placeholder="Share your thoughts..." aria-label="Add a comment"/>

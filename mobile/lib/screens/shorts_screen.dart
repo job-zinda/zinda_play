@@ -9,6 +9,7 @@ import '../navigation.dart';
 import '../shorts.dart';
 import '../widgets/short_comments.dart';
 import '../widgets/share_sheet.dart';
+import '../widgets/video_engagement.dart';
 import 'auth_screen.dart';
 import 'creator_screen.dart';
 
@@ -626,25 +627,22 @@ class _ShortPlayerState extends State<_ShortPlayer> {
     String label,
     IconData icon,
     VoidCallback action, {
-    Color? color,
-  }) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Column(
-      children: [
-        IconButton(
-          tooltip: label,
-          onPressed: _busy ? null : action,
-          icon: Icon(icon, color: color ?? Colors.white),
-          style: IconButton.styleFrom(backgroundColor: Colors.black45),
-        ),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            shadows: [Shadow(blurRadius: 5)],
-          ),
-        ),
-      ],
+    String? caption,
+    int? count,
+    List<Color>? colors,
+    bool selected = false,
+    bool animate = false,
+  }) => Tooltip(
+    message: label,
+    child: VideoEngagementAction(
+      label: caption ?? label,
+      count: count,
+      icon: icon,
+      colors: colors,
+      selected: selected,
+      animate: animate,
+      compact: true,
+      onTap: _busy ? null : action,
     ),
   );
 
@@ -715,34 +713,95 @@ class _ShortPlayerState extends State<_ShortPlayer> {
             ),
           ),
         ),
+        if (_paused && !_loading && _playbackError == null)
+          Center(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Color(0xFFBC69FF), Color(0xFF7027F5)],
+                ),
+                boxShadow: [
+                  BoxShadow(color: Color(0x667027F5), blurRadius: 24),
+                ],
+              ),
+              child: IconButton(
+                tooltip: 'Resume video',
+                iconSize: 36,
+                padding: const EdgeInsets.all(16),
+                onPressed: () {
+                  setState(() => _paused = false);
+                  _sync();
+                },
+                icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
+              ),
+            ),
+          ),
         Positioned(
-          right: 4,
-          bottom: 100,
-          child: Column(
-            children: [
-              _button(
-                '$_likes likes',
-                _liked ? Icons.favorite : Icons.favorite_border,
-                _like,
-                color: _liked ? Colors.pinkAccent : null,
-              ),
-              _button(
-                '$_commentCount comments',
-                Icons.chat_bubble_outline,
-                _commentSheet,
-              ),
-              _button(
-                'Share',
-                Icons.share,
-                () => showVideoShareSheet(context, widget.video),
-              ),
-              _button(
-                _saved ? 'Saved' : 'Save',
-                _saved ? Icons.bookmark : Icons.bookmark_outline,
-                _save,
-              ),
-              _button('Report', Icons.flag_outlined, _report),
-            ],
+          right: 8,
+          bottom: 80,
+          width: 64,
+          child: VideoEngagementCard(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 3),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _button(
+                  '$_likes likes',
+                  _liked ? Icons.favorite : Icons.favorite_border,
+                  _like,
+                  caption: 'Like',
+                  count: _likes,
+                  colors: const [Color(0xFFFF4B9B), Color(0xFFFFA568)],
+                  selected: _liked,
+                  animate: true,
+                ),
+                const Divider(
+                  height: 1,
+                  indent: 12,
+                  endIndent: 12,
+                  color: Color(0x664E3B82),
+                ),
+                _button(
+                  '$_commentCount comments',
+                  Icons.chat_bubble_outline,
+                  _commentSheet,
+                  caption: 'Comments',
+                  count: _commentCount,
+                  colors: const [Color(0xFFBC69FF), Color(0xFF7027F5)],
+                ),
+                const Divider(
+                  height: 1,
+                  indent: 12,
+                  endIndent: 12,
+                  color: Color(0x664E3B82),
+                ),
+                _button(
+                  'Share',
+                  Icons.send_outlined,
+                  () => showVideoShareSheet(context, widget.video),
+                ),
+                const Divider(
+                  height: 1,
+                  indent: 12,
+                  endIndent: 12,
+                  color: Color(0x664E3B82),
+                ),
+                _button(
+                  _saved ? 'Saved' : 'Save',
+                  _saved ? Icons.bookmark : Icons.bookmark_outline,
+                  _save,
+                  selected: _saved,
+                ),
+                const Divider(
+                  height: 1,
+                  indent: 12,
+                  endIndent: 12,
+                  color: Color(0x664E3B82),
+                ),
+                _button('Report', Icons.flag_outlined, _report),
+              ],
+            ),
           ),
         ),
         Positioned(
@@ -785,11 +844,29 @@ class _ShortPlayerState extends State<_ShortPlayer> {
                 ),
               ),
               if (creator != null && !_self)
-                TextButton(
-                  onPressed: _busy ? null : _follow,
-                  child: Text(
-                    _following ? 'Following' : 'Follow',
-                    style: const TextStyle(color: Color(0xFFD6C8FF)),
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: _following
+                        ? null
+                        : const LinearGradient(
+                            colors: [Color(0xFFBC69FF), Color(0xFF7027F5)],
+                          ),
+                    color: _following ? const Color(0xFF251D3C) : null,
+                    border: Border.all(color: const Color(0x99AC6CFF)),
+                  ),
+                  child: TextButton.icon(
+                    onPressed: _busy ? null : _follow,
+                    icon: Icon(
+                      _following ? Icons.check_rounded : Icons.person_add_alt_1,
+                      size: 17,
+                      color: Colors.white,
+                    ),
+                    label: Text(
+                      _following ? 'Following' : 'Follow',
+                      style: const TextStyle(color: Color(0xFFD6C8FF)),
+                    ),
                   ),
                 ),
               Text(

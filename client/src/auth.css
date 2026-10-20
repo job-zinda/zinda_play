@@ -1,0 +1,42 @@
+.login-panel{background:radial-gradient(ellipse at 95% 10%,#6322b326,transparent 45%),#080810;border-color:#634a8733;border-radius:24px}
+.login-panel .login-card{max-width:500px;width:100%;margin:auto;color:#fff}
+.auth-intro{display:flex;align-items:center;gap:16px;margin-top:16px}
+.login-card .auth-intro h1{flex:1;min-width:0;font-size:clamp(28px,5vw,38px);line-height:1.2;letter-spacing:-1px;margin:0}
+.auth-intro h1 span{color:#cc8dff}
+.auth-play-art{display:grid;place-items:center;flex:0 0 64px;height:64px;border:1px solid #c978ff77;border-radius:22px;background:linear-gradient(140deg,#b844f5,#4e1696);color:#f2caff;box-shadow:0 0 30px #8b35f544;transform:rotate(-8deg)}
+.login-card>.muted{color:#b2adce;line-height:1.6}
+.login-card .login-form{display:grid;gap:16px;margin-top:24px}
+.login-form .auth-field{display:flex;align-items:center;gap:14px;min-width:0;padding:12px 16px;border:1px solid #51436e;border-radius:20px;background:linear-gradient(135deg,#181623,#101019);color:#c5bedc;transition:border-color .2s,box-shadow .2s}
+.auth-field>svg{flex:0 0 auto;color:#c18aff}
+.auth-field>span{flex:1;min-width:0;font-size:13px}
+.login-form .auth-field input{display:block;width:100%;min-width:0;margin:4px 0 0;padding:4px 0;border:0;border-radius:0;background:transparent;color:#fff;font-size:16px;outline:0;box-shadow:none}
+.auth-field:focus-within{border-color:#ba75ff;box-shadow:0 0 0 2px #ba75ff22,0 0 20px #7c3aed22}
+.auth-field input::placeholder{color:#9389ae;font-size:14px}
+.auth-field small{color:#c18aff;font-size:12px}
+.auth-password-toggle{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:#c5bedc;cursor:pointer}
+.auth-account-types{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;min-width:0;padding:0;border:0;margin:0}
+.auth-account-types legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.login-form .auth-type-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;padding:18px 14px;border:1px solid #51436e;border-radius:20px;background:linear-gradient(135deg,#171524,#101019);cursor:pointer;transition:background .2s,border-color .2s,box-shadow .2s}
+.auth-type-card.selected{border-color:#d58aff;box-shadow:0 0 0 1px #d58aff,0 0 20px #7c3aed33;background:linear-gradient(130deg,#59209d,#7426e4)}
+.auth-type-card>svg{color:#dab6ff;margin-bottom:8px}
+.auth-type-card strong{font-size:18px;color:#fff}
+.auth-type-card small{font-size:12px;color:#d1c5e9;line-height:1.4}
+.auth-type-card input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.auth-type-card:focus-within{outline:2px solid #e5c5ff;outline-offset:3px}
+.auth-type-check{position:absolute;right:14px;top:16px;display:grid;place-items:center;width:22px;height:22px;border:2px solid #9389ae;border-radius:50%}
+.selected .auth-type-check{border-color:#fff;background:#fff;color:#8536ec}
+.auth-benefits{display:flex;align-items:center;gap:12px;color:#b2adce}
+.auth-benefits>svg{flex:0 0 auto;color:#bd81ff}
+.auth-benefits p{font-size:13px;line-height:1.6;margin:0}
+.login-card .auth-submit{width:100%;min-height:56px;border:1px solid #e298ff77;border-radius:28px;background:linear-gradient(110deg,#c75cff,#852eff);color:#fff;font-size:17px;box-shadow:0 6px 28px #7c3aed55}
+.login-card .auth-submit:disabled{background:#373044;box-shadow:none;color:#c8bed7;cursor:wait}
+.login-card .auth-mode-toggle{width:100%;min-height:48px;line-height:1.6;color:#b2adce}
+.auth-mode-toggle strong{color:#c18aff}
+.auth-loading{animation:auth-spin 1s linear infinite}
+.login-card .profile-photo-field{padding:14px;border:1px dashed #51436e;border-radius:16px;min-width:0}
+.login-card .profile-photo-field input{max-width:100%;min-width:0;font-size:12px}
+.login-card .auth-help{color:#b2adce;line-height:1.6}
+.login-card button:focus-visible{outline:2px solid #dab6ff;outline-offset:3px}
+@keyframes auth-spin{to{transform:rotate(360deg)}}
+@media(max-width:480px){.login-panel{padding:20px 14px}.auth-play-art{flex-basis:52px;height:52px}.login-form .auth-field{padding:10px 12px;gap:10px}}
+@media(prefers-reduced-motion:reduce){.login-form .auth-field,.login-form .auth-type-card{transition:none}.auth-loading{animation:none}}

@@ -60,7 +60,7 @@ class VideoEngagementBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = [
-      _EngagementAction(
+      VideoEngagementAction(
         label: 'Like',
         count: loading ? null : likes,
         selected: liked,
@@ -70,19 +70,19 @@ class VideoEngagementBar extends StatelessWidget {
         colors: const [Color(0xFFFF4B9B), Color(0xFFFFA568)],
         animate: true,
       ),
-      _EngagementAction(
+      VideoEngagementAction(
         label: 'Comments',
         count: loading ? null : comments,
         icon: Icons.chat_bubble_outline_rounded,
         colors: const [Color(0xFFBC69FF), Color(0xFF7027F5)],
         onTap: onComments,
       ),
-      _EngagementAction(
+      VideoEngagementAction(
         label: 'Share',
         icon: Icons.send_outlined,
         onTap: onShare,
       ),
-      _EngagementAction(
+      VideoEngagementAction(
         label: saved ? 'Saved' : 'Save',
         icon: saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
         selected: saved,
@@ -113,7 +113,7 @@ class VideoEngagementBar extends StatelessWidget {
   }
 }
 
-class _EngagementAction extends StatelessWidget {
+class VideoEngagementAction extends StatelessWidget {
   final String label;
   final int? count;
   final IconData icon;
@@ -121,9 +121,11 @@ class _EngagementAction extends StatelessWidget {
   final bool selected;
   final bool busy;
   final bool animate;
+  final bool compact;
   final VoidCallback? onTap;
 
-  const _EngagementAction({
+  const VideoEngagementAction({
+    super.key,
     required this.label,
     required this.icon,
     this.count,
@@ -131,6 +133,7 @@ class _EngagementAction extends StatelessWidget {
     this.selected = false,
     this.busy = false,
     this.animate = false,
+    this.compact = false,
     this.onTap,
   });
 
@@ -200,16 +203,17 @@ class _EngagementAction extends StatelessWidget {
                 else
                   badge,
                 const SizedBox(height: 5),
-                Text(
-                  count == null ? '' : '$count',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                if (!compact || count != null)
+                  Text(
+                    count == null ? '' : '$count',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
                 Text(
                   label,
                   maxLines: 1,

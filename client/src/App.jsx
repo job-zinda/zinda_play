@@ -19,6 +19,8 @@ import HomeBanners from "./HomeBanners.jsx";
 import CreatorSearch from "./CreatorSearch.jsx";
 import { AdminRewards, RewardSummary } from "./Rewards.jsx";
 import { CommentsPanel, EngagementBar, useCommentsFocus, useSavedVideo } from "./WatchEngagement.jsx";
+import { ArrowRight, Gift, LockKeyhole, Store } from "lucide-react";
+import "./auth.css";
 
 const API = import.meta.env.DEV
   ? "/api"
@@ -144,6 +146,7 @@ function App() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
@@ -1967,20 +1970,19 @@ function App() {
       </section>
       : (page === "admin" || page === "add" || page === "payouts" || page === "categories" || page === "analytics" || page === "notifications" || page === "creator" || page === "creator-analytics" || page === "profile" || page === "my-creator-profile" || page === "business" || page === "invitations" || page === "promoter") ? <section className="admin-panel login-panel"><div className="login-card">
         <span className="eyebrow"><LayoutDashboard size={14}/> ZINDA PLAY ACCOUNT</span>
-        <h1>{registering ? registrationType === "business" ? "Create a business account" : "Join as a member" : "Welcome back"}</h1>
+        <div className="auth-intro"><h1>{registering ? <>Join <span>Zinda Play</span></> : <>Welcome <span>back</span></>}</h1><span className="auth-play-art" aria-hidden="true"><Play size={36} fill="currentColor"/></span></div>
         <p className="muted">{registering ? referrerPromoterId ? "Create your member account to link it to the person who invited you." : "Create an account to get started." : "Sign in to your account or use the admin credentials to open the dashboard."}</p>
         <form className="login-form" onSubmit={login}>
-          {registering && <label>Account type<select value={registrationType} disabled={loginLoading} onChange={event=>setRegistrationType(event.target.value)}><option value="member">Member</option><option value="business">Business / brand</option></select></label>}
-          {registering && registrationType === "member" && <label>Invitation ID (optional)<input inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} placeholder="6-digit number" value={referrerPromoterId} disabled={loginLoading} onChange={event=>setReferrerPromoterId(event.target.value.replace(/\D/g, "").slice(0, 6))}/></label>}
-          {registering && registrationType === "member" && <p className="publish-help">Join immediately as a member, with wallet and referral rewards. No approval needed. You can apply for creator access from your profile later.</p>}
-          {registering && registrationType === "business" && <p className="publish-help">Business accounts do not participate in member wallet or referral rewards.</p>}
-          <label>Username<input autoComplete="username" minLength={3} maxLength={32} required value={username} onChange={e=>setUsername(e.target.value)} /></label>
-          <label>Password<input type="password" autoComplete={registering ? "new-password" : "current-password"} minLength={registering ? 8 : undefined} maxLength={128} required value={password} onChange={e=>setPassword(e.target.value)} /></label>
+          <label className="auth-field"><UserRound size={22} aria-hidden="true"/><span>Username<input autoComplete="username" minLength={3} maxLength={32} required value={username} onChange={e=>setUsername(e.target.value)} /></span></label>
+          <label className="auth-field"><LockKeyhole size={22} aria-hidden="true"/><span>Password<input aria-label="Password" type={showAuthPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} minLength={registering ? 8 : undefined} maxLength={128} required value={password} onChange={e=>setPassword(e.target.value)} /></span><button className="auth-password-toggle" type="button" aria-label={showAuthPassword ? "Hide password" : "Show password"} aria-pressed={showAuthPassword} onClick={()=>setShowAuthPassword(value=>!value)}>{showAuthPassword ? <EyeOff size={21}/> : <Eye size={21}/>}</button></label>
+          {registering && <fieldset className="auth-account-types" disabled={loginLoading}><legend>Account type</legend>{[["member","Member","For viewers & creators",UserRound],["business","Business","For brands & sellers",Store]].map(([value,title,subtitle,Icon])=><label key={value} className={`auth-type-card ${registrationType===value ? "selected" : ""}`}><input type="radio" name="accountType" value={value} checked={registrationType===value} onChange={()=>setRegistrationType(value)}/><Icon size={28}/><span className="auth-type-check" aria-hidden="true">{registrationType===value && <Check size={15}/>}</span><strong>{title}</strong><small>{subtitle}</small></label>)}</fieldset>}
+          {registering && <div className="auth-benefits"><Sparkles size={25}/><p>{registrationType === "member" ? "Watch, earn rewards, and invite friends. Join immediately with no approval needed. Apply for creator access from your profile anytime." : "Your business account is ready immediately. Business accounts do not participate in member wallet or referral rewards."}</p></div>}
+          {registering && registrationType === "member" && <label className="auth-field"><Gift size={23} aria-hidden="true"/><span>Invitation ID <small>(optional)</small><input inputMode="numeric" pattern="[1-9][0-9]{5}" maxLength={6} placeholder="Enter 6-digit referral code" value={referrerPromoterId} disabled={loginLoading} onChange={event=>setReferrerPromoterId(event.target.value.replace(/\D/g, "").slice(0, 6))}/></span></label>}
           {registering && registrationType==="business" && <><label>Business name<input required maxLength={100} value={businessProfile.businessName} onChange={event=>setBusinessProfile(current=>({...current,businessName:event.target.value}))}/></label><label>About your business<textarea maxLength={1000} rows={3} value={businessProfile.businessAbout} onChange={event=>setBusinessProfile(current=>({...current,businessAbout:event.target.value}))} placeholder="What does your business do?"/></label></>}
           {registering && <label className="profile-photo-field">{registrationType==="business"?"Business logo (optional)":"Profile photo (optional)"}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={loginLoading} onChange={e=>setProfilePhotoFile(e.target.files?.[0] || null)}/>{profilePhotoFile && profilePhotoPreview && <img className="profile-signup-preview" src={profilePhotoPreview} alt="Selected image preview"/>}<span>JPEG, PNG, WebP, or GIF, up to 8 MB.</span>{profilePhotoFile && <strong>{profilePhotoFile.name}</strong>}</label>}
-          <button className="primary-btn" type="submit" disabled={loginLoading}>{loginLoading ? (registering ? "Creating account…" : "Signing in…") : (registering ? "Create account" : "Sign in")}</button>
+          <button className="primary-btn auth-submit" type="submit" disabled={loginLoading} aria-busy={loginLoading}>{loginLoading && <RefreshCw size={18} className="auth-loading"/>}{loginLoading ? (registering ? "Creating account…" : "Signing in…") : (registering ? "Create account" : "Sign in")}{!loginLoading && <ArrowRight size={22}/>}</button>
         </form>
-        <button className="auth-mode-toggle" type="button" onClick={()=>{setRegistering(!registering);setProfilePhotoFile(null);setError("");}}> {registering ? "Already have an account? Sign in" : "New to Zinda Play? Create an account"}</button>
+        <button className="auth-mode-toggle" type="button" disabled={loginLoading} onClick={()=>{setRegistering(!registering);setProfilePhotoFile(null);setError("");}}> {registering ? <>Already have an account? <strong>Sign in</strong></> : <>New to Zinda Play? <strong>Create an account</strong></>}</button>
         {registering && <p className="auth-help">Username: 3–32 letters, numbers, dots, underscores, or hyphens. Password: at least 8 characters.</p>}
       </div></section>
       : page === "delete-account" ? <DeleteAccount api={API} token={adminToken} role={authRole} onSignIn={()=>{window.history.replaceState({}, "", "/?delete-account=1");setRegistering(false);setPage("admin");}} onDeleted={()=>{
