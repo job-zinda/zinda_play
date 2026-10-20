@@ -58,7 +58,11 @@ export default function VideoPreview({ video }) {
           });
           hls.loadSource(source);
           hls.attachMedia(element);
-        } else element.src = source;
+        } else {
+          element.src = source;
+          // preload="none" needs an explicit play request before canplay can fire.
+          play();
+        }
       } catch {
         fail("Preview unavailable. Tap to watch.");
       }
