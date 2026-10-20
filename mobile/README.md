@@ -46,8 +46,8 @@ Changing `API_URL` requires a new run/build; reinstall a rebuilt APK on the phon
 
 ## Reward controls and accounting
 
-Web admin -> **Reward settings** independently enables/pauses and sets all six
-rates (whole rupees per 1,000 qualifying events):
+Web admin -> **Reward settings** independently enables/pauses and sets all seven
+rates (whole rupees per 1,000 qualifying events, except the flat signup bonus):
 
 | Reward | Default |
 | --- | --- |
@@ -57,6 +57,14 @@ rates (whole rupees per 1,000 qualifying events):
 | Creator Simply views | INR 25 |
 | Creator-linked regular-video ad completions | INR 200 |
 | Creator-linked Simply ad completions | INR 100 |
+| Referral signup bonus, members and creators (per joined account) | INR 3 |
+
+The referral signup bonus is credited to the member or creator wallet whose
+referral ID a new member account uses, once per joined account. The amount is
+frozen when the account is created; accounts created while the bonus is paused
+never earn it later. Existing referred accounts are not credited retroactively.
+If crediting is interrupted, opening the wallet or requesting a withdrawal
+repairs it.
 
 All new rewards accrue proportionally per event, including personal/referral
 rewards (not the former INR 10/100-watch milestone scheme). Personal and referral
@@ -68,7 +76,8 @@ per ad. Paused activity still consumes its distinct-view eligibility and cannot
 earn retroactively when re-enabled.
 
 `GET /api/rewards/settings` returns current public rates. Admin-only
-`GET`/`PUT /api/admin/rewards/settings` reads/writes all six settings atomically
+`GET`/`PUT /api/admin/rewards/settings` reads/writes all seven settings atomically
+(an omitted `referralSignup` keeps its saved value)
 in `siteContent`. New event amounts are frozen in milli-rupees at qualification,
 including in-flight ads. Retried member credits use the original unique watch's
 snapshot. Existing member milestone credits and all historical creator/ad

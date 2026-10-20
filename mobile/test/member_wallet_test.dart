@@ -41,6 +41,7 @@ void main() {
             'rewardSettings': {
               'memberWatch': {'enabled': true, 'rateRupees': 30},
               'referralViews': {'enabled': false, 'rateRupees': 20},
+              'referralSignup': {'enabled': false, 'rateRupees': 3},
             },
             'withdrawals': [
               {
@@ -76,6 +77,7 @@ void main() {
             findsOneWidget,
           );
           expect(find.text('Referral rewards: paused.'), findsOneWidget);
+          expect(find.text('Referral sign-up bonus: paused.'), findsOneWidget);
           expect(find.textContaining('more to the next reward'), findsNothing);
           expect(requests, contains('/api/promoter/wallet'));
           expect(
@@ -111,11 +113,17 @@ void main() {
           'paidRupees': 0,
           'pendingRupees': 0,
           'referredViews': 4,
+          'referralSignups': 2,
           'distinctVideosWatched': 3,
           'withdrawals': [],
           'rewardSettings': {
             'memberWatch': {'enabled': false, 'rateRupees': 90},
             'referralViews': {'enabled': true, 'rateRupees': 40},
+            'referralSignup': {
+              'enabled': true,
+              'rateRupees': 3,
+              'rateViews': 1,
+            },
           },
         }),
         200,
@@ -131,6 +139,17 @@ void main() {
       );
       expect(
         find.textContaining('Referral views: ₹40.00 per 1,000'),
+        findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        find.text('Bonus-earning referral sign-ups: 2'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.textContaining(
+          'Referral sign-up bonus: ₹3.00 for each new account',
+        ),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);

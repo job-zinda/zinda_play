@@ -17,7 +17,10 @@ import { ensureReferralCode, initializeReferrals, referralOwner } from "./referr
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
-import { memberRewardTotals, recordMemberWatch, recordRegularView, registerRewardRoutes, rewardSettings } from "./rewards.js";
+import {
+  creditReferralSignup, eventMilliRupees, memberRewardTotals, recordMemberWatch, recordRegularView,
+  registerRewardRoutes, repairReferralSignupCredits, rewardSettings
+} from "./rewards.js";
 import { initializeCreatorWithdrawals, registerCreatorWithdrawalRoutes } from "./creator-withdrawals.js";
 import { creatorPreviewHtml, publicWebOrigin, videoPreviewHtml } from "./public-links.js";
 import { accountAccessGuard, accountDeletionHandler } from "./account-deletion.js";
@@ -1115,6 +1118,9 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
     return res.status(409).json({ error: "That username is reserved." });
   }
   const { salt, hash } = await hashPassword(password);
+  const referralSignupMilliRupees = referrerPromoterId
+    ? eventMilliRupees((await rewardSettings(database)).referralSignup)
+    : 0;
   const user = {
     username,
     usernameKey: username.toLowerCase(),
@@ -1123,7 +1129,10 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
     accountType,
     ...(accountType === "business"
       ? { businessName, businessAbout }
-      : { approvalStatus: "draft", ...(referrerPromoterId ? { referrerPromoterId } : {}) }),
+      : {
+          approvalStatus: "draft",
+          ...(referrerPromoterId ? { referrerPromoterId, referralSignupMilliRupees } : {})
+        }),
     createdAt: new Date()
   };
   try {
@@ -1133,6 +1142,26 @@ app.post("/api/auth/register", asyncRoute(async (req, res) => {
       return res.status(409).json({ error: "That username is already taken." });
     }
     throw error;
+  }
+  if (referralSignupMilliRupees > 0) {
+    try {
+      const bonusRupees = await creditReferralSignup(database, user);
+      if (bonusRupees > 0) {
+        await notificationsCollection().insertOne({
+          recipientId: referrerPromoterId,
+          type: "referral_signup_bonus",
+          userId: user._id.toString(),
+          username: user.username,
+          title: `₹${bonusRupees} referral bonus`,
+          message: `${user.username} joined with your referral ID.`,
+          readAt: null,
+          createdAt: user.createdAt
+        });
+      }
+    } catch (error) {
+      // The wallet repairs missing signup credits, so registration must still succeed.
+      console.error("Referral signup bonus failed", error);
+    }
   }
   const accountLabel = accountType === "business" ? "business" : "member";
   await notificationsCollection().insertOne({
@@ -2471,12 +2500,14 @@ registerCreatorWithdrawalRoutes(app, {
 });
 app.get("/api/promoter/wallet", requirePromoter, asyncRoute(async (req, res) => {
   const promoterId = req.promoterId;
-  const [referredViews, watchedVideos, rewards, withdrawals, rates] = await Promise.all([
+  await repairReferralSignupCredits(database, promoterId);
+  const [referredViews, watchedVideos, rewards, withdrawals, rates, referralSignups] = await Promise.all([
     promoterVideoWatchesCollection().countDocuments({ referredByPromoterId: promoterId }),
     promoterVideoWatchesCollection().countDocuments({ watchingPromoterId: promoterId }),
     memberRewardTotals(database, promoterId),
     promoterWithdrawalsCollection().find({ promoterId }).sort({ createdAt: -1 }).toArray(),
-    rewardSettings(database)
+    rewardSettings(database),
+    promoterRewardsCollection().countDocuments({ promoterId, type: "referral_signup" })
   ]);
   const earnedRupees = rewards.earnedRupees;
   const paidRupees = withdrawals.filter(item => item.status === "paid").reduce((total, item) => total + item.amountRupees, 0);
@@ -2484,6 +2515,7 @@ app.get("/api/promoter/wallet", requirePromoter, asyncRoute(async (req, res) => 
   res.json({
     referralCode: await ensureReferralCode(usersCollection(), new ObjectId(promoterId)),
     referredViews,
+    referralSignups,
     rewardSettings: rates,
     proportionalRewards: true,
     referralRewardMilestones: rewards.referralRewardMilestones,
@@ -2505,6 +2537,7 @@ app.post("/api/promoter/withdrawals", requirePromoter, asyncRoute(async (req, re
   if (!validUpiId && !validMobile) {
     return res.status(400).json({ error: "Enter a valid UPI ID or its 10-digit UPI-linked mobile number." });
   }
+  await repairReferralSignupCredits(database, req.promoterId);
   const [rewards, withdrawals, existingRequest] = await Promise.all([
     memberRewardTotals(database, req.promoterId),
     promoterWithdrawalsCollection().find({ promoterId: req.promoterId, status: { $in: ["pending", "paid"] } }).toArray(),

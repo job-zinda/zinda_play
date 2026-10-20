@@ -117,6 +117,7 @@ class _PromoterScreenState extends State<PromoterScreen> {
     final settings = w?['rewardSettings'] as Map?;
     final watchRate = settings?['memberWatch'] as Map?;
     final referralRate = settings?['referralViews'] as Map?;
+    final signupRate = settings?['referralSignup'] as Map?;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Wallet & referrals'),
@@ -271,6 +272,12 @@ class _PromoterScreenState extends State<PromoterScreen> {
                                   ? 'Referral rewards: paused.'
                                   : 'Referral views: ${_rupees(referralRate['rateRupees'])} per 1,000 qualifying views from people who joined through your referral.',
                             ),
+                            if (signupRate != null)
+                              Text(
+                                signupRate['enabled'] == false
+                                    ? 'Referral sign-up bonus: paused.'
+                                    : 'Referral sign-up bonus: ${_rupees(signupRate['rateRupees'])} for each new account that joins with your referral ID.',
+                              ),
                             const Text(
                               'Credited proportionally for each new qualifying watch. Members and creators both qualify without creator approval. Rate changes and pauses never change previously credited earnings.',
                             ),
@@ -280,6 +287,10 @@ class _PromoterScreenState extends State<PromoterScreen> {
                               'Current reward rates are unavailable. Update the backend and refresh.',
                             ),
                           Text('Referred views: ${w['referredViews']}'),
+                          if (w['referralSignups'] != null)
+                            Text(
+                              'Bonus-earning referral sign-ups: ${w['referralSignups']}',
+                            ),
                           const SizedBox(height: 4),
                           Text(
                             'Distinct eligible videos watched: ${w['distinctVideosWatched']}',

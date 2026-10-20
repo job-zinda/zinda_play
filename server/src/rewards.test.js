@@ -4,8 +4,8 @@ import test from "node:test";
 import express from "express";
 import { memoryDatabase } from "../test-support/memory-database.js";
 import {
-  creditMemberWatch, defaultRewardSettings, eventMilliRupees, memberRewardTotals,
-  recordMemberWatch, recordRegularView, registerRewardRoutes, rewardSettings, validateRewardSettings
+  creditMemberWatch, creditReferralSignup, defaultRewardSettings, eventMilliRupees, memberRewardTotals,
+  recordMemberWatch, recordRegularView, registerRewardRoutes, repairReferralSignupCredits, rewardSettings, validateRewardSettings
 } from "./rewards.js";
 import { creatorWallet } from "./creator-wallet.js";
 
@@ -32,11 +32,11 @@ async function fixture(t) {
   return { db, request };
 }
 
-test("six defaults, admin-only persistence, validation and public rate reads", async t => {
+test("seven defaults, admin-only persistence, validation and public rate reads", async t => {
   const f = await fixture(t);
   const initial = (await f.request()).body;
-  assert.deepEqual(Object.values(initial).map(item => item.rateRupees), [30, 20, 50, 25, 200, 100]);
-  assert.ok(Object.values(initial).every(item => item.enabled && item.rateViews === 1000));
+  assert.deepEqual(Object.values(initial).map(item => item.rateRupees), [30, 20, 50, 25, 200, 100, 3]);
+  assert.ok(Object.entries(initial).every(([key, item]) => item.enabled && item.rateViews === (key === "referralSignup" ? 1 : 1000)));
   for (const token of ["", "member", "creator", "business"]) {
     assert.equal((await f.request(undefined, "GET", undefined, token)).status, 401);
     assert.equal((await f.request(undefined, "PUT", initial, token)).status, 401);
@@ -45,7 +45,10 @@ test("six defaults, admin-only persistence, validation and public rate reads", a
     null, {}, [], { ...initial, unexpected: {} },
     ...[-1, 1.5, "30", null, 1000001].map(rateRupees => ({ ...initial, memberWatch: { enabled: true, rateRupees } })),
     { ...initial, referralViews: { enabled: "false", rateRupees: 20 } },
-    { ...initial, creatorSimplyViews: { enabled: true, rateRupees: 25, rateViews: 100 } }
+    { ...initial, creatorSimplyViews: { enabled: true, rateRupees: 25, rateViews: 100 } },
+    { ...initial, referralSignup: { enabled: true, rateRupees: 10001 } },
+    { ...initial, referralSignup: { enabled: true, rateRupees: 3, rateViews: 1000 } },
+    { ...initial, referralSignup: { enabled: "true", rateRupees: 3 } }
   ];
   for (const body of invalid) {
     assert.ok(validateRewardSettings(body));
@@ -56,8 +59,53 @@ test("six defaults, admin-only persistence, validation and public rate reads", a
   assert.equal((await f.request(undefined, "PUT", next)).status, 200);
   const publicSettings = await f.request("/rewards/settings", "GET", undefined, "");
   assert.equal(publicSettings.headers.get("cache-control"), "no-store");
-  for (const key of Object.keys(next)) assert.deepEqual(publicSettings.body[key], { ...next[key], rateViews: 1000 });
+  for (const key of Object.keys(next)) {
+    assert.deepEqual(publicSettings.body[key], { ...next[key], rateViews: key === "referralSignup" ? 1 : 1000 });
+  }
   assert.equal((await f.db.collection("siteContent").findOne({ _id: "reward-settings" })).memberWatch.rateRupees, 0);
+  // Older admin pages omit the signup bonus; its saved value must survive.
+  const { referralSignup: _omitted, ...legacyBody } = next;
+  const legacy = await f.request(undefined, "PUT", { ...legacyBody, memberWatch: { enabled: true, rateRupees: 31 } });
+  assert.equal(legacy.status, 200);
+  assert.deepEqual(legacy.body.referralSignup, { enabled: false, rateRupees: 6, rateViews: 1 });
+  assert.deepEqual(legacy.body.memberWatch, { enabled: true, rateRupees: 31, rateViews: 1000 });
+});
+
+test("referral signup bonus credits the referrer once, freezes its amount, and repairs interrupted credits", async () => {
+  const db = memoryDatabase();
+  const users = db.collection("users");
+  async function join(id, referrerPromoterId) {
+    const referralSignupMilliRupees = referrerPromoterId ? eventMilliRupees((await rewardSettings(db)).referralSignup) : 0;
+    const user = {
+      _id: id, accountType: "member", createdAt: new Date(),
+      ...(referrerPromoterId ? { referrerPromoterId, referralSignupMilliRupees } : {})
+    };
+    await users.insertOne(user);
+    return user;
+  }
+  const first = await join("joined-1", "creator");
+  assert.equal(first.referralSignupMilliRupees, 3000);
+  const results = await Promise.all([creditReferralSignup(db, first), creditReferralSignup(db, first)]);
+  assert.deepEqual(results.sort(), [0, 3]);
+  assert.equal(await creditReferralSignup(db, first), 0);
+  assert.equal((await memberRewardTotals(db, "creator")).earnedRupees, 3);
+  assert.equal((await memberRewardTotals(db, "creator")).referralRewardMilestones, 0);
+
+  assert.equal(await creditReferralSignup(db, await join("no-referrer")), 0);
+  await join("interrupted", "member");
+  await repairReferralSignupCredits(db, "member");
+  await repairReferralSignupCredits(db, "member");
+  assert.equal((await memberRewardTotals(db, "member")).earnedRupees, 3);
+
+  const settings = { _id: "reward-settings", referralSignup: { enabled: false, rateRupees: 3 } };
+  await db.collection("siteContent").insertOne(settings);
+  const paused = await join("paused", "creator");
+  assert.equal(paused.referralSignupMilliRupees, 0);
+  await db.collection("siteContent").updateOne({ _id: "reward-settings" }, { $set: { referralSignup: { enabled: true, rateRupees: 5 } } });
+  await repairReferralSignupCredits(db, "creator");
+  assert.equal((await memberRewardTotals(db, "creator")).earnedRupees, 3);
+  await creditReferralSignup(db, await join("after-change", "creator"));
+  assert.equal((await memberRewardTotals(db, "creator")).earnedRupees, 8);
 });
 
 test("personal/referral rewards accrue per distinct event, preserve old milestones, freeze rates, and repair partial retries", async () => {

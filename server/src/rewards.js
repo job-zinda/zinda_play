@@ -5,34 +5,78 @@ export const defaultRewardSettings = {
   creatorRegularViews: { enabled: true, rateRupees: 50 },
   creatorSimplyViews: { enabled: true, rateRupees: 25 },
   creatorRegularAds: { enabled: true, rateRupees: 200 },
-  creatorSimplyAds: { enabled: true, rateRupees: 100 }
+  creatorSimplyAds: { enabled: true, rateRupees: 100 },
+  referralSignup: { enabled: true, rateRupees: 3 }
 };
+// Referral signups pay a flat amount per joined account; all other rewards are per 1,000 events.
+const rateViewsFor = key => key === "referralSignup" ? 1 : 1000;
+const maxRateFor = key => key === "referralSignup" ? 10000 : 1000000;
 export const displayRupees = milliRupees => Math.round(milliRupees / 10) / 100;
 
 export async function rewardSettings(db) {
   const saved = await db.collection("siteContent").findOne({ _id: settingsId });
   return Object.fromEntries(Object.entries(defaultRewardSettings).map(([key, value]) => [
-    key, { ...(saved?.[key] ?? value), rateViews: 1000 }
+    key, { ...(saved?.[key] ?? value), rateViews: rateViewsFor(key) }
   ]));
 }
 
 export function validateRewardSettings(body) {
-  if (!body || typeof body !== "object" || Array.isArray(body)) return "Supply all six reward settings.";
+  if (!body || typeof body !== "object" || Array.isArray(body)) return "Supply the reward settings.";
   const keys = Object.keys(defaultRewardSettings);
   if (Object.keys(body).some(key => !keys.includes(key))) return "Unknown reward setting.";
-  for (const key of keys) {
+  // Older admin pages may omit the referral signup bonus; omitted settings keep their saved values.
+  for (const key of keys.filter(key => key !== "referralSignup" || Object.hasOwn(body, key))) {
     const item = body[key];
     if (typeof item?.enabled !== "boolean") return `Specify whether ${key} is enabled.`;
-    if (!Number.isSafeInteger(item.rateRupees) || item.rateRupees < 0 || item.rateRupees > 1000000) {
-      return `${key}: enter a whole rupee rate between 0 and 1,000,000 per 1,000 events.`;
+    const max = maxRateFor(key);
+    if (!Number.isSafeInteger(item.rateRupees) || item.rateRupees < 0 || item.rateRupees > max) {
+      return key === "referralSignup"
+        ? `referralSignup: enter a whole rupee amount between 0 and ${max.toLocaleString("en-IN")} per joined account.`
+        : `${key}: enter a whole rupee rate between 0 and 1,000,000 per 1,000 events.`;
     }
     if (Object.keys(item).some(field => !["enabled", "rateRupees", "rateViews"].includes(field)) ||
-        (item.rateViews !== undefined && item.rateViews !== 1000)) return "Reward rates must be per 1,000 events.";
+        (item.rateViews !== undefined && item.rateViews !== rateViewsFor(key))) {
+      return key === "referralSignup" ? "The referral signup bonus is paid per joined account." : "Reward rates must be per 1,000 events.";
+    }
   }
   return null;
 }
 
-export const eventMilliRupees = setting => setting.enabled ? setting.rateRupees : 0;
+export const eventMilliRupees = setting => setting.enabled ? setting.rateRupees * 1000 / setting.rateViews : 0;
+
+// The amount is frozen on the new account so a later rate change or retry cannot reprice it.
+export async function creditReferralSignup(db, user) {
+  const amount = user?.referralSignupMilliRupees;
+  if (!user?.referrerPromoterId || !Number.isSafeInteger(amount) || amount <= 0) return 0;
+  const userId = user._id.toString();
+  const sourceKey = `referral-signup:${userId}`;
+  try {
+    const result = await db.collection("promoterRewards").updateOne({ sourceKey }, {
+      $setOnInsert: {
+        sourceKey, promoterId: user.referrerPromoterId, type: "referral_signup", rewardVersion: 2,
+        referredUserId: userId, earningMilliRupees: amount, amountRupees: amount / 1000,
+        createdAt: new Date(user.createdAt || Date.now()).toISOString()
+      }
+    }, { upsert: true });
+    return result.upsertedCount ? amount / 1000 : 0;
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    return 0;
+  }
+}
+
+// Repairs a credit that was interrupted after the referred account was saved.
+export async function repairReferralSignupCredits(db, promoterId) {
+  const users = await db.collection("users").find(
+    { referrerPromoterId: promoterId, referralSignupMilliRupees: { $gt: 0 } },
+    { projection: { _id: 1, referrerPromoterId: 1, referralSignupMilliRupees: 1, createdAt: 1 } }
+  ).toArray();
+  if (!users.length) return;
+  const credited = new Set((await db.collection("promoterRewards").find(
+    { promoterId, type: "referral_signup" }, { projection: { referredUserId: 1 } }
+  ).toArray()).map(row => row.referredUserId));
+  for (const user of users) if (!credited.has(user._id.toString())) await creditReferralSignup(db, user);
+}
 
 export async function recordRegularView(db, videoId, ipHash) {
   const rates = await rewardSettings(db);
@@ -76,9 +120,11 @@ export function registerRewardRoutes(app, { getDb, requireAdmin, asyncRoute }) {
   app.put("/api/admin/rewards/settings", requireAdmin, asyncRoute(async (req, res) => {
     const error = validateRewardSettings(req.body);
     if (error) return res.status(400).json({ error });
-    const settings = Object.fromEntries(Object.keys(defaultRewardSettings).map(key => [
-      key, { enabled: req.body[key].enabled, rateRupees: req.body[key].rateRupees }
-    ]));
+    const current = await rewardSettings(getDb());
+    const settings = Object.fromEntries(Object.keys(defaultRewardSettings).map(key => {
+      const item = req.body[key] ?? current[key];
+      return [key, { enabled: item.enabled, rateRupees: item.rateRupees }];
+    }));
     await getDb().collection("siteContent").updateOne({ _id: settingsId }, {
       $set: { ...settings, updatedAt: new Date().toISOString() }
     }, { upsert: true });
