@@ -108,3 +108,49 @@ test("video previews name the creator and creator previews use their profile pho
   assert.ok(creator.includes('location.replace("https://zindaplay.com/?creator=c1")'));
   assert.ok(!creatorPreviewHtml({ _id: "c2", username: "x" }, previewConfig).includes("og:image"));
 });
+
+test("Android share pages open the installed app by package, falling back to the website", async () => {
+  const vm = await import("node:vm");
+  const { creatorPreviewHtml, referralJoinHtml } = await import("./public-links.js");
+  const pages = [
+    [videoPreviewHtml({ _id: "</script>", title: "x" }, previewConfig), "/share/video/%3C%2Fscript%3E?preview=video-frame-v2", "https://zindaplay.com/?video=%3C%2Fscript%3E"],
+    [creatorPreviewHtml({ _id: "c1", username: "asha" }, previewConfig), "/share/creator/c1", "https://zindaplay.com/?creator=c1"],
+    [referralJoinHtml("123456", previewConfig), "/join/123456", "https://zindaplay.com/?ref=123456"]
+  ];
+  for (const [html, path, target] of pages) {
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
+    assert.equal(scripts.length, 1);
+    const intent = `intent://zindaplay.com${path}#Intent;scheme=zindaplay;package=com.zindaplay.zinda_play;S.browser_fallback_url=${encodeURIComponent(target)};end`;
+    assert.ok(html.includes(intent.replace(/&/g, "&amp;")), html);
+    function run(userAgent, leaves) {
+      const timers = [], listeners = {}, openApp = { hidden: true };
+      const location = { replaced: null, href: "", replace(url) { this.replaced = url; } };
+      const document = {
+        hidden: false, getElementById: id => id === "open-app" ? openApp : null,
+        addEventListener: (type, listener) => { listeners[type] = listener; }
+      };
+      vm.runInNewContext(scripts[0], { navigator: { userAgent }, document, location, setTimeout: fn => timers.push(fn) });
+      if (leaves) { document.hidden = true; listeners.visibilitychange(); }
+      timers.forEach(fn => fn());
+      return { location, openApp };
+    }
+    const desktop = run("Mozilla/5.0 (Windows NT 10.0)");
+    assert.equal(desktop.location.replaced, target);
+    assert.equal(desktop.location.href, "");
+    const appOpened = run("Mozilla/5.0 (Linux; Android 14)", true);
+    assert.equal(appOpened.location.href, intent);
+    assert.equal(appOpened.location.replaced, null);
+    assert.equal(appOpened.openApp.hidden, false);
+    const blocked = run("Mozilla/5.0 (Linux; Android 14)", false);
+    assert.equal(blocked.location.replaced, target);
+  }
+});
+
+test("referral join pages accept only real invitation codes", async () => {
+  const { isReferralCode, referralJoinHtml } = await import("./public-links.js");
+  for (const code of ["123456", "900001"]) assert.ok(isReferralCode(code));
+  for (const code of ["012345", "12345", "1234567", "12a456", "", undefined]) assert.equal(isReferralCode(code), false);
+  const html = referralJoinHtml("123456", previewConfig);
+  assert.match(html, /rel="canonical" href="https:\/\/zindaplay.com\/join\/123456"/);
+  assert.match(html, /property="og:title" content="Join me on Zinda Play"/);
+});

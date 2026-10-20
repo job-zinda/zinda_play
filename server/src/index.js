@@ -22,7 +22,7 @@ import {
   registerRewardRoutes, repairReferralSignupCredits, rewardSettings
 } from "./rewards.js";
 import { initializeCreatorWithdrawals, registerCreatorWithdrawalRoutes } from "./creator-withdrawals.js";
-import { creatorPreviewHtml, publicWebOrigin, videoPreviewHtml } from "./public-links.js";
+import { creatorPreviewHtml, isReferralCode, publicWebOrigin, referralJoinHtml, videoPreviewHtml } from "./public-links.js";
 import { accountAccessGuard, accountDeletionHandler } from "./account-deletion.js";
 import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, deliverCreatorAdNotifications, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
 
@@ -822,6 +822,10 @@ app.get("/api/share/creator/:id", asyncRoute(async (req, res) => {
     apiOrigin: publicApiOrigin
   }));
 }));
+app.get("/api/share/join/:code", (req, res) => {
+  if (!isReferralCode(req.params.code)) return res.redirect(302, publicWebsite);
+  res.set("Cache-Control", "public, max-age=300").type("html").send(referralJoinHtml(req.params.code, { website: publicWebsite }));
+});
 app.get("/api/videos", asyncRoute(async (req, res) => {
   const q = String(req.query.search || "").toLowerCase();
   const category = String(req.query.category || "");

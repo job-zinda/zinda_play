@@ -4,12 +4,13 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'screens/auth_screen.dart';
 import 'screens/creator_screen.dart';
 import 'screens/watch_screen.dart';
 
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
-enum DeepLinkKind { video, creator }
+enum DeepLinkKind { video, creator, referral }
 
 class DeepLink {
   final DeepLinkKind kind;
@@ -25,12 +26,23 @@ class DeepLink {
 }
 
 const _hosts = {'zindaplay.com', 'www.zindaplay.com'};
+// zindaplay:// is used by share pages to open the installed app even before Android verifies https links.
+const _schemes = {'https', 'zindaplay'};
+final _referralCode = RegExp(r'^[1-9]\d{5}$');
 
-/// Maps zindaplay.com share links (and the `?video=`, `?short=`, `?creator=`
-/// pages they redirect to) to in-app destinations.
+/// Maps zindaplay.com share and invitation links (and the `?video=`, `?short=`,
+/// `?creator=`, `?ref=` pages they redirect to) to in-app destinations.
 DeepLink? parseDeepLink(Uri uri) {
-  if (!_hosts.contains(uri.host.toLowerCase())) return null;
+  if (!_schemes.contains(uri.scheme.toLowerCase()) ||
+      !_hosts.contains(uri.host.toLowerCase())) {
+    return null;
+  }
   final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  if (segments.length == 2 &&
+      segments[0] == 'join' &&
+      _referralCode.hasMatch(segments[1])) {
+    return DeepLink(DeepLinkKind.referral, segments[1]);
+  }
   if (segments.length == 3 &&
       segments[0] == 'share' &&
       segments[2].trim().isNotEmpty) {
@@ -49,6 +61,10 @@ DeepLink? parseDeepLink(Uri uri) {
   final creator = query['creator'];
   if (creator != null && creator.trim().isNotEmpty) {
     return DeepLink(DeepLinkKind.creator, creator);
+  }
+  final ref = query['ref'];
+  if (ref != null && _referralCode.hasMatch(ref)) {
+    return DeepLink(DeepLinkKind.referral, ref);
   }
   return null;
 }
@@ -83,6 +99,10 @@ class _DeepLinkListenerState extends State<DeepLinkListener> {
   Future<void> _open(Uri uri) async {
     final link = parseDeepLink(uri);
     if (link == null) return;
+    if (link.kind == DeepLinkKind.referral) {
+      _openReferral(link.id);
+      return;
+    }
     final id = Uri.encodeComponent(link.id);
     try {
       final data = await Api.instance.get(
@@ -113,6 +133,24 @@ class _DeepLinkListenerState extends State<DeepLinkListener> {
         ),
       );
     }
+  }
+
+  void _openReferral(String code) {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator == null) return;
+    if (Api.instance.signedIn) {
+      ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'You are already signed in. Invitation IDs apply when creating a new account.',
+          ),
+        ),
+      );
+      return;
+    }
+    navigator.push(
+      MaterialPageRoute<void>(builder: (_) => AuthScreen(referralCode: code)),
+    );
   }
 
   @override

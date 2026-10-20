@@ -17,14 +17,16 @@ void main() {
       videoShareUrl('id/?'),
       'https://zindaplay.com/share/video/id%2F%3F?preview=video-frame-v2',
     );
-    expect(referralUrl('123456'), 'https://zindaplay.com/?ref=123456');
+    expect(referralUrl('123456'), 'https://zindaplay.com/join/123456');
     expect(
       creatorShareUrl('creator id'),
       'https://zindaplay.com/share/creator/creator%20id',
     );
-    expect(Uri.parse(referralUrl('code&video=other')).queryParameters, {
-      'ref': 'code&video=other',
-    });
+    expect(Uri.parse(referralUrl('code&video=other')).pathSegments, [
+      'join',
+      'code&video=other',
+    ]);
+    expect(Uri.parse(referralUrl('code&video=other')).query, isEmpty);
   });
 
   test('Ask me opens the requested WhatsApp number and message', () {
@@ -70,7 +72,7 @@ void main() {
     );
     await tester.tap(find.text('Copy invitation link'));
     await tester.pumpAndSettle();
-    expect(copied, 'https://zindaplay.com/?ref=my-code');
+    expect(copied, 'https://zindaplay.com/join/my-code');
     expect(find.text('Link copied.'), findsOneWidget);
   });
 
@@ -114,7 +116,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       payload?['text'],
-      'Join me on Zinda Play\nhttps://zindaplay.com/?ref=my-code',
+      'Join me on Zinda Play\nhttps://zindaplay.com/join/my-code',
     );
     expect(payload?['originWidth'], greaterThan(0));
     expect(payload?['originHeight'], greaterThan(0));

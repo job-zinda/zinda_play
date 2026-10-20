@@ -36,6 +36,14 @@
                 <data android:host="www.zindaplay.com"/>
                 <data android:pathPrefix="/share/video/"/>
                 <data android:pathPrefix="/share/creator/"/>
+                <data android:pathPrefix="/join/"/>
+            </intent-filter>
+            <!-- Fallback used by zindaplay.com share pages; works even before App Links verification completes. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="zindaplay" android:host="zindaplay.com"/>
             </intent-filter>
             <!-- app_links handles incoming links instead of Flutter's built-in route deep linking. -->
             <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>

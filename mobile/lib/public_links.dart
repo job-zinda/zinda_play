@@ -12,9 +12,7 @@ String creatorShareUrl(String id) =>
     '$publicWebsite/share/creator/${Uri.encodeComponent(id)}';
 
 String referralUrl(String code) =>
-    Uri.parse(publicWebsite)
-        .replace(path: '/', queryParameters: {'ref': code})
-        .toString();
+    '$publicWebsite/join/${Uri.encodeComponent(code)}';
 
 Future<void> sharePublicLink(
   BuildContext context,

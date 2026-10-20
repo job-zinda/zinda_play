@@ -15,7 +15,8 @@ test("all share and invitation links use the public domain, with encoded IDs", (
   assert.equal(videoShareUrl("video-id"), "https://zindaplay.com/share/video/video-id?preview=video-frame-v2");
   assert.equal(creatorShareUrl("a b"), "https://zindaplay.com/share/creator/a%20b");
   assert.equal(videoShareUrl("id/?"), "https://zindaplay.com/share/video/id%2F%3F?preview=video-frame-v2");
-  assert.equal(referralUrl("123456"), "https://zindaplay.com/?ref=123456");
+  assert.equal(referralUrl("123456"), "https://zindaplay.com/join/123456");
+  assert.equal(referralUrl("a/b"), "https://zindaplay.com/join/a%2Fb");
   assert.throws(() => referralUrl(undefined), /not available/);
 });
 
@@ -53,7 +54,7 @@ test("denied or unsupported native sharing falls back to copying the invitation"
     let copied;
     navigatorWith({ share, clipboard: { writeText: async value => { copied = value; } } });
     assert.equal(await shareLink("Invite", referralUrl("code")), "copied");
-    assert.equal(copied, "https://zindaplay.com/?ref=code");
+    assert.equal(copied, "https://zindaplay.com/join/code");
   }
 });
 
@@ -73,6 +74,9 @@ test("Vercel forwards the public preview route to the existing API, preserving t
   }, {
     source: "/share/creator/:id",
     destination: "https://zinda-play.onrender.com/api/share/creator/:id"
+  }, {
+    source: "/join/:code",
+    destination: "https://zinda-play.onrender.com/api/share/join/:code"
   }]);
 });
 

@@ -25,6 +25,10 @@
     {
       "source": "/share/creator/:id",
       "destination": "https://zinda-play.onrender.com/api/share/creator/:id"
+    },
+    {
+      "source": "/join/:code",
+      "destination": "https://zinda-play.onrender.com/api/share/join/:code"
     }
   ]
 }

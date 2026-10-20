@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import '../api.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  /// Opens member sign-up with this invitation ID filled in.
+  final String? referralCode;
+  const AuthScreen({super.key, this.referralCode});
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
@@ -12,10 +14,10 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final _user = TextEditingController();
   final _pass = TextEditingController();
-  final _ref = TextEditingController();
+  late final _ref = TextEditingController(text: widget.referralCode ?? '');
   final _business = TextEditingController();
   String _type = 'member';
-  bool _register = false;
+  late bool _register = widget.referralCode != null;
   bool _busy = false;
   String? _error;
 

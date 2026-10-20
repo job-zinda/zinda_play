@@ -32,5 +32,5 @@ test("Vercel serves the APK as a download without stale long-lived caching", asy
   assert.equal(get("Content-Type"), "application/vnd.android.package-archive");
   assert.equal(get("Content-Disposition"), 'attachment; filename="zinda-play.apk"');
   assert.equal(get("Cache-Control"), "public, max-age=0, must-revalidate");
-  assert.equal(config.rewrites.length, 2, "Existing share-link rewrites are preserved");
+  assert.deepEqual(config.rewrites.map(rule => rule.source), ["/share/video/:id", "/share/creator/:id", "/join/:code"], "Share and invitation rewrites are preserved");
 });

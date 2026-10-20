@@ -15,7 +15,7 @@ export function creatorShareUrl(id) {
 
 export function referralUrl(code) {
   if (!code) throw new Error("Your referral link is not available yet. Please refresh and retry.");
-  return `${website}/?ref=${encodeURIComponent(code)}`;
+  return `${website}/join/${encodeURIComponent(code)}`;
 }
 
 export async function shareLink(title, url) {
