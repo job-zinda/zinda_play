@@ -58,15 +58,19 @@ const sharePathOf = url => { const parsed = new URL(url); return parsed.pathname
 
 export function videoPreviewHtml(video, { website, apiOrigin, cdnOrigin, creatorName = "" }) {
   const target = videoLandingUrl(video, website);
-  const shareUrl = new URL(`/share/video/${encodeURIComponent(video._id)}?preview=video-frame-v2`, website).href;
+  const shareUrl = new URL(`/share/video/${encodeURIComponent(video._id)}?preview=video-frame-v3`, website).href;
   const image = videoPreviewImage(video, apiOrigin, cdnOrigin);
+  // Bunny Stream thumbnails are 1280x720 JPEGs; declaring the size lets WhatsApp show the large card.
+  const imageDetails = image && cdnOrigin && video.bunnyVideoId
+    ? `<meta property="og:image:secure_url" content="${escapeHtml(image)}"><meta property="og:image:type" content="image/jpeg"><meta property="og:image:width" content="1280"><meta property="og:image:height" content="720">`
+    : "";
   const title = String(video.title || "Zinda Play").slice(0, 120);
   const byline = creatorName ? `By ${String(creatorName).slice(0, 60)} · ` : "";
   const description = (byline + String(video.description || video.caption || "Watch this video on Zinda Play.")).slice(0, 200);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)} · Zinda Play</title>
 <link rel="canonical" href="${escapeHtml(shareUrl)}">
 <meta property="og:type" content="website"><meta property="og:site_name" content="Zinda Play"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(shareUrl)}">
-${image ? `<meta property="og:image" content="${escapeHtml(image)}"><meta property="og:image:alt" content="${escapeHtml(title)}"><meta name="twitter:image" content="${escapeHtml(image)}"><meta name="twitter:image:alt" content="${escapeHtml(title)}">` : ""}
+${image ? `<meta property="og:image" content="${escapeHtml(image)}">${imageDetails}<meta property="og:image:alt" content="${escapeHtml(title)}"><meta name="twitter:image" content="${escapeHtml(image)}"><meta name="twitter:image:alt" content="${escapeHtml(title)}">` : ""}
 <meta name="twitter:card" content="${image ? "summary_large_image" : "summary"}"><meta name="twitter:title" content="${escapeHtml(title)}"><meta name="twitter:description" content="${escapeHtml(description)}">
 </head><body>${openAppOrWebsite(sharePathOf(shareUrl), target, `Watch “${escapeHtml(title)}” on Zinda Play`)}</body></html>`;
 }

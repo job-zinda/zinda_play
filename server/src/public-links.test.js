@@ -74,9 +74,12 @@ test("preview metadata stays on the share URL while clicks open the correct play
   for (const videoType of ["regular", "short"]) {
     const html = videoPreviewHtml({ _id: "video-id", title: "My video", bunnyVideoId: "bunny-id", videoType }, previewConfig);
     assert.match(html, /property="og:image" content="https:\/\/example.b-cdn.net\/bunny-id\/thumbnail.jpg"/);
+    assert.match(html, /property="og:image:type" content="image\/jpeg"/);
+    assert.match(html, /property="og:image:width" content="1280"/);
+    assert.match(html, /property="og:image:height" content="720"/);
     assert.match(html, /name="twitter:card" content="summary_large_image"/);
-    assert.match(html, /property="og:url" content="https:\/\/zindaplay.com\/share\/video\/video-id\?preview=video-frame-v2"/);
-    assert.match(html, /rel="canonical" href="https:\/\/zindaplay.com\/share\/video\/video-id\?preview=video-frame-v2"/);
+    assert.match(html, /property="og:url" content="https:\/\/zindaplay.com\/share\/video\/video-id\?preview=video-frame-v3"/);
+    assert.match(html, /rel="canonical" href="https:\/\/zindaplay.com\/share\/video\/video-id\?preview=video-frame-v3"/);
     assert.ok(html.includes(`location.replace("https://zindaplay.com/?${videoType === "short" ? "short" : "video"}=video-id")`));
     assert.ok(!html.includes('http-equiv="refresh"'));
     assert.ok(!html.includes("app-icon"));
@@ -113,7 +116,7 @@ test("Android share pages open the installed app by package, falling back to the
   const vm = await import("node:vm");
   const { creatorPreviewHtml, referralJoinHtml } = await import("./public-links.js");
   const pages = [
-    [videoPreviewHtml({ _id: "</script>", title: "x" }, previewConfig), "/share/video/%3C%2Fscript%3E?preview=video-frame-v2", "https://zindaplay.com/?video=%3C%2Fscript%3E"],
+    [videoPreviewHtml({ _id: "</script>", title: "x" }, previewConfig), "/share/video/%3C%2Fscript%3E?preview=video-frame-v3", "https://zindaplay.com/?video=%3C%2Fscript%3E"],
     [creatorPreviewHtml({ _id: "c1", username: "asha" }, previewConfig), "/share/creator/c1", "https://zindaplay.com/?creator=c1"],
     [referralJoinHtml("123456", previewConfig), "/join/123456", "https://zindaplay.com/?ref=123456"]
   ];

@@ -12,9 +12,9 @@ afterEach(() => {
 const navigatorWith = value => Object.defineProperty(globalThis, "navigator", { configurable: true, value });
 
 test("all share and invitation links use the public domain, with encoded IDs", () => {
-  assert.equal(videoShareUrl("video-id"), "https://zindaplay.com/share/video/video-id?preview=video-frame-v2");
+  assert.equal(videoShareUrl("video-id"), "https://zindaplay.com/share/video/video-id?preview=video-frame-v3");
   assert.equal(creatorShareUrl("a b"), "https://zindaplay.com/share/creator/a%20b");
-  assert.equal(videoShareUrl("id/?"), "https://zindaplay.com/share/video/id%2F%3F?preview=video-frame-v2");
+  assert.equal(videoShareUrl("id/?"), "https://zindaplay.com/share/video/id%2F%3F?preview=video-frame-v3");
   assert.equal(referralUrl("123456"), "https://zindaplay.com/join/123456");
   assert.equal(referralUrl("a/b"), "https://zindaplay.com/join/a%2Fb");
   assert.throws(() => referralUrl(undefined), /not available/);
@@ -38,7 +38,7 @@ test("native share receives a title and a non-empty canonical URL", async () => 
   let payload;
   navigatorWith({ share: async value => { payload = value; } });
   assert.equal(await shareLink("Watch me", videoShareUrl("id")), "shared");
-  assert.deepEqual(payload, { title: "Watch me", text: "Watch me", url: "https://zindaplay.com/share/video/id?preview=video-frame-v2" });
+  assert.deepEqual(payload, { title: "Watch me", text: "Watch me", url: "https://zindaplay.com/share/video/id?preview=video-frame-v3" });
 });
 
 test("cancelling share does not copy a link unexpectedly", async () => {

@@ -6,7 +6,7 @@ export function isReferralCode(code) {
 }
 
 export function videoShareUrl(id) {
-  return `${website}/share/video/${encodeURIComponent(id)}?preview=video-frame-v2`;
+  return `${website}/share/video/${encodeURIComponent(id)}?preview=video-frame-v3`;
 }
 
 export function creatorShareUrl(id) {

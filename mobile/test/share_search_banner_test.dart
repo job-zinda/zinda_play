@@ -78,7 +78,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       copied,
-      'https://zindaplay.com/share/video/video-1?preview=video-frame-v2',
+      'https://zindaplay.com/share/video/video-1?preview=video-frame-v3',
     );
     expect(find.text('Link copied.'), findsOneWidget);
   });

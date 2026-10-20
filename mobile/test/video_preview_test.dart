@@ -189,7 +189,9 @@ void main() {
         navigatorObservers: [appRouteObserver],
         home: const HomeScreen(),
       ));
-      await tester.pumpAndSettle();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
       expect(find.byType(MutedVideoPreview), findsOneWidget);
       expect(players.playing, hasLength(1));
       expect(players.volumes.values, everyElement(0));

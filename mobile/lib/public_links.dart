@@ -6,7 +6,7 @@ const publicWebsite = 'https://zindaplay.com';
 const whatsAppHelpUrl = 'https://wa.me/919847561998?text=Zindaplay';
 
 String videoShareUrl(String id) =>
-    '$publicWebsite/share/video/${Uri.encodeComponent(id)}?preview=video-frame-v2';
+    '$publicWebsite/share/video/${Uri.encodeComponent(id)}?preview=video-frame-v3';
 
 String creatorShareUrl(String id) =>
     '$publicWebsite/share/creator/${Uri.encodeComponent(id)}';

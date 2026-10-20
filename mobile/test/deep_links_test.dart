@@ -20,7 +20,7 @@ void main() {
     expect(
       parseDeepLink(
         Uri.parse(
-          'https://zindaplay.com/share/video/abc-123?preview=video-frame-v2',
+          'https://zindaplay.com/share/video/abc-123?preview=video-frame-v3',
         ),
       ),
       const DeepLink(DeepLinkKind.video, 'abc-123'),
@@ -48,7 +48,7 @@ void main() {
     expect(
       parseDeepLink(
         Uri.parse(
-          'zindaplay://zindaplay.com/share/video/abc?preview=video-frame-v2',
+          'zindaplay://zindaplay.com/share/video/abc?preview=video-frame-v3',
         ),
       ),
       const DeepLink(DeepLinkKind.video, 'abc'),
