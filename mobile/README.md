@@ -2,15 +2,69 @@
 
 A new Flutter project.
 
+## Normal video playback and ad loading
+
+Normal Bunny embeds on web and Android explicitly enable preloading, the
+player's **Settings -> Speed** menu, and quality capping to the rendered player
+size. Quality remains adaptive; viewers can still use the Bunny player controls.
+Direct video files have a separate 0.5x-2x speed control (HLS uses adaptive
+playback on supported platforms). Speed changes never apply to ads.
+
+Ad media prepares while authorization is in progress instead of waiting for
+each independent request sequentially. Playback still waits for an accepted
+impression, and creator-ad completion tickets and skip delays are unchanged.
+After 15 seconds without loading/playback progress, an explicit connection
+message offers **Continue to video**; a stalled/skipped ad does not submit a
+completed-watch reward. Uploaded MP4 ads still use the API's byte-range
+delivery; large, high-bitrate uploads can buffer on slow connections. Prefer
+adaptive Bunny-hosted creator ads, or compressed web-optimized MP4 files.
+
+Completed ads transition immediately to the existing end card or main video;
+reward tracking runs independently and logs failures without blocking playback.
+Mobile player controls rebuild only when their displayed state changes, while
+the video texture and seek bar continue updating normally. Web ad-load recovery
+also covers playback stalled before the first frame, even if the browser reports
+the media as paused.
+
+## Reactions and threaded comments
+
+Normal and Simply on web and mobile support **Like, Love, Haha, Wow, Sad,
+Angry** on videos, comments and replies. Tap Like for a quick like; long-press
+it (or press the small **Choose reaction** button) for all six choices and their
+counts. Each account has one reaction per item: choosing another replaces it;
+choosing the same reaction again removes it. The main count includes all
+reactions. Existing likes are retained as Like reactions.
+
+Each comment has **Reply** and **Show replies** controls. Replies can themselves
+receive replies and reactions. Threads load on demand in pages of 20 rather than
+loading the entire conversation alongside the video. Failed submissions keep
+their drafts and display an error. Guests can read threads but must sign in to
+react or reply.
+
+Successful reaction additions/changes and comment/reply submissions play a
+short confirmation sound (not failed requests or reaction removals). Web uses a
+quiet generated tone subject to browser audio permissions; mobile uses the
+device's system click sound and respects device sound settings.
+
+Deploy the API before the web/mobile clients. `/videos/:id/reaction` and
+`/videos/:id/comments/:commentId/reaction` accept `{ "reaction": "love" }` (or
+another supported type). `/videos/:id/comments` accepts an optional `parentId`
+for replies; its GET endpoint accepts `parentId` and `before` for pagination.
+Interactions retain `liked`, `likeCount`, `comments`, and `commentCount`, and add
+the viewer's `reaction`, per-type `reactions`, and `commentsNextCursor`. The
+legacy `/like` endpoint remains available. New indexes are created at API startup.
+Account deletion removes reactions and anonymizes authored comments to preserve
+other viewers' reply ancestry; deleting a video removes its comments/reactions.
+
 ## Simply engagement
 
 Simply keeps its vertical swipe feed on web and Android. Its compact translucent
-action rail uses the shared neon Like/Comments treatment, an animated heart,
+action rail uses shared reaction controls and neon Comments treatment,
 paper-plane sharing, and a highlighted saved bookmark. Follow/Following has an
 explicit selected state, and paused videos have a central resume control.
 Comments use the shared illustrated empty state and a guest sign-in prompt.
-Existing like, comment, follow, save, report, view and reward APIs are unchanged;
-Simply bookmarks still use the server-backed Watch Later list.
+Follow, save, report, view and reward APIs are unchanged; Simply bookmarks still
+use the server-backed Watch Later list.
 
 ## Authentication presentation
 

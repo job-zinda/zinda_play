@@ -25,6 +25,7 @@ import { initializeCreatorWithdrawals, registerCreatorWithdrawalRoutes } from ".
 import { creatorPreviewHtml, isReferralCode, publicWebOrigin, referralJoinHtml, videoPreviewHtml } from "./public-links.js";
 import { accountAccessGuard, accountDeletionHandler } from "./account-deletion.js";
 import { createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable, deliverCreatorAdNotifications, initializeCreatorAds, registerCreatorAdRoutes, softDeleteCreatorVideo } from "./creator-ads.js";
+import { initializeEngagement, registerEngagementRoutes } from "./engagement.js";
 
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
@@ -1007,91 +1008,15 @@ app.post("/api/videos/:id/impression", asyncRoute(async (req, res) => {
   );
   res.status(204).end();
 }));
-app.get("/api/videos/:id/interactions", asyncRoute(async (req, res) => {
-  const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
-  if (!video) return res.status(404).json({ error: "Video not found." });
-  if (!await videoAvailableInViewerCity(video, req)) return res.status(404).json({ error: "Video not found." });
-  if (!await campaignVideoIsAvailable(video, req)) return res.status(404).json({ error: "Video not found." });
-  const token = req.get("authorization")?.replace(/^Bearer\s+/i, "");
-  const session = token && sessions.get(token);
-  const [likeCount, comments, commentCount, liked] = await Promise.all([
-    likesCollection().countDocuments({ videoId: video._id }),
-    commentsCollection().find({ videoId: video._id }).sort({ createdAt: -1 }).limit(100).toArray(),
-    commentsCollection().countDocuments({ videoId: video._id }),
-    session?.userId ? likesCollection().findOne({ videoId: video._id, userId: session.userId }) : null
-  ]);
-  res.json({
-    likeCount,
-    commentCount,
-    liked: Boolean(liked),
-    comments: comments.map(({ _id, videoId: _videoId, userId: _userId, ...comment }) => ({ id: _id, ...comment }))
-  });
-}));
-app.post("/api/videos/:id/like", requireVideoAccount, shortEngagementLimit, asyncRoute(async (req, res) => {
-  const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
-  if (!video) return res.status(404).json({ error: "Video not found." });
-  if (!await videoAvailableInViewerCity(video, req)) return res.status(404).json({ error: "Video not found." });
-  if (!await campaignVideoIsAvailable(video, req)) return res.status(404).json({ error: "Video not found." });
-  const userId = req.session.userId;
-  const existing = await likesCollection().findOne({ videoId: video._id, userId });
-  let liked;
-  let createdLike = false;
-  if (existing) {
-    await likesCollection().deleteOne({ _id: existing._id });
-    liked = false;
-  } else {
-    try {
-      await likesCollection().insertOne({ videoId: video._id, userId, createdAt: new Date().toISOString() });
-      liked = true;
-      createdLike = true;
-    } catch (error) {
-      if (error.code !== 11000) throw error;
-      liked = true;
-    }
-    if (createdLike && video.ownerId && video.ownerId !== userId) {
-      await notificationsCollection().insertOne({
-        recipientId: video.ownerId,
-        type: "video_like",
-        actorId: userId,
-        videoId: video._id,
-        title: "Your video got a like",
-        message: `${req.session.username} liked "${video.title}".`,
-        readAt: null,
-        createdAt: new Date().toISOString()
-      });
-    }
+registerEngagementRoutes(app, {
+  getDb: () => database, asyncRoute, requireAccount: requireVideoAccount, limit: shortEngagementLimit,
+  sessionFor: req => sessions.get(req.get("authorization")?.replace(/^Bearer\s+/i, "")),
+  availableVideo: async req => {
+    const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
+    if (!video || !await videoAvailableInViewerCity(video, req) || !await campaignVideoIsAvailable(video, req)) return null;
+    return video;
   }
-  res.json({ liked, likeCount: await likesCollection().countDocuments({ videoId: video._id }) });
-}));
-app.post("/api/videos/:id/comments", requireVideoAccount, shortEngagementLimit, asyncRoute(async (req, res) => {
-  const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
-  if (!video) return res.status(404).json({ error: "Video not found." });
-  if (!await videoAvailableInViewerCity(video, req)) return res.status(404).json({ error: "Video not found." });
-  if (!await campaignVideoIsAvailable(video, req)) return res.status(404).json({ error: "Video not found." });
-  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
-  if (!text || text.length > 1000) return res.status(400).json({ error: "Comments must be between 1 and 1000 characters." });
-  const comment = {
-    videoId: video._id,
-    userId: req.session.userId,
-    username: req.session.username,
-    text,
-    createdAt: new Date().toISOString()
-  };
-  const result = await commentsCollection().insertOne(comment);
-  if (video.ownerId && video.ownerId !== req.session.userId) {
-    await notificationsCollection().insertOne({
-      recipientId: video.ownerId,
-      type: "video_comment",
-      actorId: req.session.userId,
-      videoId: video._id,
-      title: "New comment on your video",
-      message: `${req.session.username} commented on "${video.title}".`,
-      readAt: null,
-      createdAt: comment.createdAt
-    });
-  }
-  res.status(201).json({ id: result.insertedId, username: comment.username, text: comment.text, createdAt: comment.createdAt });
-}));
+});
 app.post("/api/auth/register", asyncRoute(async (req, res) => {
   const username = typeof req.body?.username === "string" ? req.body.username.trim() : "";
   const password = req.body?.password;
@@ -2428,6 +2353,7 @@ app.patch("/api/admin/videos/:id/review", requireAdmin, asyncRoute(async (req, r
     await Promise.all([
       likesCollection().deleteMany({ videoId: video._id }),
       commentsCollection().deleteMany({ videoId: video._id }),
+      database.collection("commentReactions").deleteMany({ videoId: video._id }),
       uniqueViewsCollection().deleteMany({ videoId: video._id }),
       deleteShortRecords(database, video._id)
     ]);
@@ -2811,6 +2737,7 @@ app.delete("/api/admin/videos/:id", requireAdmin, asyncRoute(async (req, res) =>
   await Promise.all([
     likesCollection().deleteMany({ videoId: video._id }),
     commentsCollection().deleteMany({ videoId: video._id }),
+    database.collection("commentReactions").deleteMany({ videoId: video._id }),
     uniqueViewsCollection().deleteMany({ videoId: video._id }),
     deleteShortRecords(database, video._id)
   ]);
@@ -2842,6 +2769,7 @@ async function start() {
   await initializeBusinessAds(database);
   await initializeShorts(database);
   await initializeCreatorAds(database);
+  await initializeEngagement(database);
 
   await database.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   for (const saved of await database.collection("sessions").find({ expiresAt: { $gt: new Date() } }).toArray()) {

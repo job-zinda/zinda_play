@@ -1,0 +1,54 @@
+diff --git a/mobile/lib/screens/watch_screen.dart b/mobile/lib/screens/watch_screen.dart
+index 7f2c063..27bd5a2 100644
+--- a/mobile/lib/screens/watch_screen.dart
++++ b/mobile/lib/screens/watch_screen.dart
+@@ -5,10 +5,12 @@ import 'package:webview_flutter/webview_flutter.dart';
+ 
+ import '../ads.dart';
+ import '../api.dart';
++import '../playback.dart';
+ import 'auth_screen.dart';
+ import 'shorts_screen.dart';
+ import '../widgets/share_sheet.dart';
+ import '../widgets/member_watch_tracker.dart';
++import '../widgets/normal_video_player.dart';
+ import '../widgets/video_engagement.dart';
+ import '../theme.dart';
+ 
+@@ -53,14 +55,14 @@ class _WatchScreenState extends State<WatchScreen> {
+     if (widget.video['videoType'] == 'short') return;
+     Interests.record(widget.video['categoryId']);
+     final url = widget.video['playbackUrl'] as String?;
+-    if (url != null && url.isNotEmpty) {
++    if (url != null && url.isNotEmpty && !isDirectPlayback(url)) {
+       final controller = WebViewController();
+       if (!kIsWeb) {
+         controller
+           ..setJavaScriptMode(JavaScriptMode.unrestricted)
+           ..setBackgroundColor(Colors.black);
+       }
+-      _web = controller..loadRequest(Uri.parse(url));
++      _web = controller..loadRequest(Uri.parse(normalPlaybackUrl(url)));
+     }
+     _loadInteractions();
+     _loadSaved();
+@@ -241,7 +243,7 @@ class _WatchScreenState extends State<WatchScreen> {
+           children: [
+             AspectRatio(
+               aspectRatio: 16 / 9,
+-              child: _web == null
++              child: '${v['playbackUrl'] ?? ''}'.isEmpty
+                   ? const Center(child: Text('Video is not available yet.'))
+                   : PlayerGate(
+                       builder: (_) => MemberWatchTracker(
+@@ -250,7 +252,9 @@ class _WatchScreenState extends State<WatchScreen> {
+                         onError: (message) {
+                           if (mounted) setState(() => _error = message);
+                         },
+-                        child: WebViewWidget(controller: _web!),
++                        child: isDirectPlayback('${v['playbackUrl']}')
++                            ? NormalVideoPlayer(source: '${v['playbackUrl']}')
++                            : WebViewWidget(controller: _web!),
+                       ),
+                     ),
+             ),

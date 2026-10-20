@@ -1,0 +1,12 @@
+﻿552: bool _isDisposed = false;
+553: Completer<void>? _creatingCompleter;
+559: static const int kUninitializedPlayerId = -1;
+560: int _playerId = kUninitializedPlayerId;
+568: Future<void> initialize() async {
+574: _creatingCompleter = Completer<void>();
+615: (await _videoPlayerPlatform.createWithOptions(creationOptions)) ?? kUninitializedPlayerId;
+616: _creatingCompleter!.complete(null);
+707: if (_creatingCompleter != null) {
+708: await _creatingCompleter!.future;
+1174: late int _playerId;
+1209: return _playerId == VideoPlayerController.kUninitializedPlayerId

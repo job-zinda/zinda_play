@@ -1,0 +1,31 @@
+✔ website exposes the Android download page in the header and menu (7.5633ms)
+✔ public APK is a real release archive with a matching SHA-256 checksum (76.6394ms)
+✔ Vercel serves the APK as a download without stale long-lived caching (2.1293ms)
+✔ normal Bunny player enables speed and caps resolution without losing signed parameters (2.2221ms)
+✔ Bunny videos keep embedded player controls including speed (6.8047ms)
+✔ direct video speed selector sets the media playback rate for every offered speed (3.101ms)
+✔ all share and invitation links use the public domain, with encoded IDs (4.5061ms)
+✔ invitation input accepts exactly six digits and rejects old long IDs (0.5778ms)
+✔ Ask me uses the WhatsApp number and prefilled Zindaplay message (0.4396ms)
+✔ native share receives a title and a non-empty canonical URL (1.6551ms)
+✔ cancelling share does not copy a link unexpectedly (0.7293ms)
+✔ denied or unsupported native sharing falls back to copying the invitation (0.6654ms)
+✔ a blocked clipboard presents the complete link for manual copying (0.5578ms)
+✔ Vercel forwards the public preview route to the existing API, preserving the ID (8.7313ms)
+✔ new shares and preview metadata use the same stable cache-refresh URL (1.9083ms)
+✔ Simply action exposes accurate count and selected state with a compact layout (20.6556ms)
+✔ compact save action has no phantom count and exposes saved state (0.5866ms)
+✔ normal video bar keeps its count placeholder alignment (0.2255ms)
+✔ shared comments empty state renders its illustration and message (0.3639ms)
+✔ visible preview starts without waiting for canplay: https://cdn.example/video/playlist.m3u8 (2.1121ms)
+✔ visible preview starts without waiting for canplay: https://cdn.example/video.mp4 (1.3397ms)
+✔ blocked autoplay displays an explicit preview error (0.7368ms)
+✔ an aborted playback request during cleanup is not displayed as a failure (1.4064ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 200.1755

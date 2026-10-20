@@ -1,0 +1,10 @@
+warning: in the working copy of 'client/src/App.jsx', LF will be replaced by CRLF the next time Git touches it
+ client/src/Ads.jsx                   |  81 ++++++++++++++++------
+ client/src/App.jsx                   |   3 +-
+ client/src/watch.css                 |   5 ++
+ mobile/README.md                     |  17 +++++
+ mobile/lib/ads.dart                  |  99 +++++++++++++++++++++-----
+ mobile/lib/screens/watch_screen.dart |  12 ++--
+ mobile/pubspec.yaml                  |   2 +-
+ mobile/test/ads_test.dart            | 130 ++++++++++++++++++++++++++++++++---
+ 8 files changed, 297 insertions(+), 52 deletions(-)

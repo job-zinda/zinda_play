@@ -1,0 +1,10 @@
+﻿
+Name      
+----      
+.agents   
+.claude   
+.dart_tool
+.gemini   
+.git      
+
+

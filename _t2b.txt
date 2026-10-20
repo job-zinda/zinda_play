@@ -1,0 +1,4 @@
+﻿00:00 +0: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/_scratch_test.dart
+00:00 +0: direct controller dispose reaches platform
+AFTER INIT creations=1
+AFTER DISPOSE disposals=1

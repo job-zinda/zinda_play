@@ -1,0 +1,210 @@
+warning: in the working copy of 'client/src/App.jsx', LF will be replaced by CRLF the next time Git touches it
+diff --git a/client/src/Ads.jsx b/client/src/Ads.jsx
+index dfb4f2c..b6faf91 100644
+--- a/client/src/Ads.jsx
++++ b/client/src/Ads.jsx
+@@ -3,6 +3,7 @@ import { Megaphone, Plus, Trash2, Pencil, Eye, MousePointerClick, Play, X, Exter
+ import "./ads.css";
+ import { dueVideoAds, markAdDelivered } from "./ad-frequency.js";
+ import { AdminBusinessAdReview, PrivateAdMedia } from "./BusinessAds.jsx";
++import { hlsPlaybackConfig } from "./playback.js";
+ 
+ const track = (api, id, event) => fetch(`${api}/ads/${id}/${event}`, { method: "POST" })
+   .then(response => { if (!response.ok) throw new Error(`Ad tracking failed (${response.status}).`); })
+@@ -21,9 +22,10 @@ export function recordInterest(categoryId) {
+ }
+ const adsUrl = (api, placement) => `${api}/ads?placement=${placement}&interests=${encodeURIComponent(readInterests().join(","))}`;
+ const mediaSrc = (api, url) => (url && url.startsWith("/") ? `${api}${url}` : url);
+-async function claimAd(api, ad, ticket, token) {
++async function claimAd(api, ad, ticket, token, signal) {
+   const response = await fetch(`${api}/ads/${ad.id}/impression`, {
+     method: "POST",
++    signal,
+     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+     body: ticket ? JSON.stringify({ ticket }) : undefined
+   });
+@@ -73,58 +75,92 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+   const lastPosition = useRef(0);
+   const [playError, setPlayError] = useState("");
+   const [finishing, setFinishing] = useState(false);
++  const lastProgress = useRef(0);
++  const displayingAd = phase !== "done" && phase !== "endcard";
+   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+ 
+   useEffect(() => {
+     if (!active || phase !== "loading") return;
+     let cancelled = false;
+-    fetch(adsUrl(api, placement))
+-      .then(response => (response.ok ? response.json() : []))
++    const controller = new AbortController();
++    fetch(adsUrl(api, placement), { signal: controller.signal })
++      .then(response => {
++        if (!response.ok) throw new Error(`Could not load ads (${response.status}).`);
++        return response.json();
++      })
+       .then(async list => {
+         if (cancelled) return;
+         const due = dueVideoAds(list);
+         if (!due.length) return setPhase("done");
+         const chosen = pickRandom(due);
++        // Buffer the selected media while the impression is being authorized.
++        setAd(chosen);
+         if (chosen.creatorVideoId) {
+-          const response = await fetch(`${api}/ads/${chosen.id}/view-start`, { method: "POST", headers: authHeaders });
++          const response = await fetch(`${api}/ads/${chosen.id}/view-start`, { method: "POST", headers: authHeaders, signal: controller.signal });
+           const data = await response.json();
+           if (!response.ok) throw new Error(data.error || "Could not start creator ad watch tracking.");
+           if (cancelled) return;
+           ticket.current = data;
+         }
+-        if (!await claimAd(api, chosen, ticket.current?.ticket, token) || cancelled) {
++        if (!await claimAd(api, chosen, ticket.current?.ticket, token, controller.signal) || cancelled) {
+           if (!cancelled) setPhase("done");
+           return;
+         }
+         markAdDelivered(chosen.id);
+-        setAd(chosen);
+         setPhase("ad");
+       })
+       .catch(error => { console.error("Video ad delivery failed:", error); if (!cancelled) setPhase("done"); });
+-    return () => { cancelled = true; };
+-  }, [api, token, placement, active]);
++    return () => { cancelled = true; controller.abort(); };
++  }, [api, token, placement, active, phase]);
+ 
+   useEffect(() => {
+-    if (!active) videoRef.current?.pause();
+-  }, [active]);
++    const media = videoRef.current;
++    if (!media) return;
++    if (!active || phase !== "ad" || document.hidden) media.pause();
++    else if (!playError) {
++      lastProgress.current = Date.now();
++      media.play().catch(error => {
++        if (error.name === "NotAllowedError") setPaused(true);
++        else if (error.name !== "AbortError") setPlayError(error.message);
++      });
++    }
++  }, [active, phase, playError]);
++
++  useEffect(() => {
++    if (!active || !["loading", "ad"].includes(phase)) return;
++    lastProgress.current = Date.now();
++    const timer = window.setInterval(() => {
++      const media = videoRef.current;
++      if (document.hidden || (phase === "ad" && media?.paused)) {
++        lastProgress.current = Date.now();
++        return;
++      }
++      if (Date.now() - lastProgress.current >= 15000) {
++        media?.pause();
++        setPlayError("The ad is taking too long to load. Check your connection or continue to your video.");
++        window.clearInterval(timer);
++      }
++    }, 1000);
++    return () => window.clearInterval(timer);
++  }, [active, phase]);
+ 
+   useEffect(() => {
+     if (phase === "done") onDone?.();
+   }, [phase, onDone]);
+ 
+   useEffect(() => {
+-    if (phase !== "ad" || !ad) return;
++    if (!ad || !displayingAd) return;
+     const media = videoRef.current;
+     let hls;
+     let cancelled = false;
+     const src = mediaSrc(api, ad.mediaUrl);
+     async function attach() {
+       try {
+-        if (ad.creatorVideoId && !media.canPlayType("application/vnd.apple.mpegurl")) {
++        if (/\.m3u8(?:$|[?#])/i.test(src) && !media.canPlayType("application/vnd.apple.mpegurl")) {
+           const { default: Hls } = await import("hls.js/dist/hls.light.mjs");
+           if (cancelled) return;
+           if (!Hls.isSupported()) throw new Error("This browser cannot play this video ad.");
+-          hls = new Hls({ maxBufferLength: 10, maxMaxBufferLength: 20, backBufferLength: 0 });
++          hls = new Hls({ ...hlsPlaybackConfig, backBufferLength: 0 });
+           hls.on(Hls.Events.ERROR, (_event, data) => {
+             if (!cancelled && data.fatal) {
+               hls.stopLoad();
+@@ -154,9 +190,11 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+       media.removeAttribute("src");
+       media.load();
+     };
+-  }, [phase, ad, api]);
++  }, [ad, api, displayingAd]);
+ 
+-  if (phase === "loading") return <div className="ad-preroll" aria-busy="true" />;
++  if (phase === "loading" && !ad) return <div className="ad-preroll" aria-busy={!playError}>
++    {playError && <div className="ad-error" role="alert"><p>{playError}</p><button className="secondary-btn" onClick={() => setPhase("done")}>Continue to video</button></div>}
++  </div>;
+   if (phase === "done" || !ad) return children;
+ 
+   const skipAt = Math.min(ad.skipAfterSeconds, duration || ad.skipAfterSeconds);
+@@ -211,7 +249,7 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+     <div className="ad-preroll">
+       <video
+         ref={videoRef}
+-        autoPlay={active}
++        autoPlay={active && phase === "ad"}
+         playsInline
+         preload="auto"
+         disablePictureInPicture
+@@ -221,12 +259,13 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+           const media = event.currentTarget;
+           const delta = media.currentTime - lastPosition.current;
+           lastPosition.current = media.currentTime;
+-          if (active && !document.hidden && !media.paused && !media.seeking && delta > 0 && delta < 1.5) watchedMs.current += delta * 1000;
++          if (delta > 0) lastProgress.current = Date.now();
++          if (phase === "ad" && active && !document.hidden && !media.paused && !media.seeking && delta > 0 && delta < 1.5) watchedMs.current += delta * 1000;
+           setElapsed(media.currentTime);
+         }}
+         onSeeking={event => { lastPosition.current = event.currentTarget.currentTime; }}
+         onCanPlay={event => {
+-          if (active && !document.hidden) event.currentTarget.play().catch(error => {
++          if (phase === "ad" && active && !document.hidden && !playError) event.currentTarget.play().catch(error => {
+             if (error.name === "NotAllowedError") setPaused(true);
+             else if (error.name !== "AbortError") setPlayError(error.message);
+           });
+@@ -240,8 +279,8 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+       />
+       <span className="ad-label">Ad</span>
+       {playError && <div className="ad-error" role="alert"><p>{playError}</p><button className="secondary-btn" onClick={finish}>Continue to video</button></div>}
+-      {paused && <button type="button" className="ad-play" aria-label="Play ad" onClick={() => videoRef.current?.play()}><Play size={30} fill="currentColor"/></button>}
+-      <div className="ad-bottom-bar">
++      {paused && !playError && phase === "ad" && <button type="button" className="ad-play" aria-label="Play ad" onClick={() => videoRef.current?.play().catch(error => setPlayError(error.message))}><Play size={30} fill="currentColor"/></button>}
++      {phase === "ad" && <div className="ad-bottom-bar">
+         {ad.targetUrl && <a className="ad-visit ad-live-visit" href={ad.targetUrl}
+           target="_blank" rel="noopener noreferrer sponsored"
+           onClick={() => { videoRef.current?.pause(); track(api, ad.id, "click"); }}>
+@@ -250,7 +289,7 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+         {ad.skippable
+           ? <button type="button" className="ad-skip" disabled={!canSkip} onClick={finish}>{canSkip ? "Skip ad ›" : `Skip in ${Math.max(1, Math.ceil(skipAt - elapsed))}s`}</button>
+           : <span className="ad-skip ad-must">You can watch your video in {remaining || ""}{remaining ? "s" : "…"}</span>}
+-      </div>
++      </div>}
+     </div>
+   );
+ }
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index 8aa4013..d1a0525 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -21,6 +21,7 @@ import { AdminRewards, RewardSummary } from "./Rewards.jsx";
+ import { CommentsPanel, EngagementBar, useCommentsFocus, useSavedVideo } from "./WatchEngagement.jsx";
+ import { ArrowRight, Gift, LockKeyhole, Store } from "lucide-react";
+ import "./auth.css";
++import WatchPlayer from "./WatchPlayer.jsx";
+ 
+ const API = import.meta.env.DEV
+   ? "/api"
+@@ -1742,7 +1743,7 @@ function App() {
+         <button className="back-link" onClick={closeVideo}>← Back to Explore</button>
+         {selected.isBusinessPreview && <div className="membership-status"><Clock3 size={20}/><div><strong>Private business preview</strong><span>This preview is only available to your business account. It is not publicly visible until approved and promoted.</span></div></div>}
+         {selected.creatorProfile && <div className="creator-profile"><button type="button" className="creator-avatar-link" onClick={()=>openCreatorFromCard(selected.creatorProfile)} aria-label={`View ${selected.creatorProfile.displayName || selected.creatorProfile.username}'s profile`}>{selected.creatorProfile.profilePhotoUrl ? <img className="creator-avatar" src={apiAssetSrc(selected.creatorProfile.profilePhotoUrl)} alt=""/> : <span className="creator-avatar"><UserRound size={18}/></span>}</button><span className="creator-profile-details"><small>CREATOR</small><button type="button" className="creator-name-link" onClick={()=>openCreatorFromCard(selected.creatorProfile)}>{selected.creatorProfile.displayName || selected.creatorProfile.username}</button>{selected.creatorProfile.bio && <span className="creator-bio">{selected.creatorProfile.bio}</span>}<span className="creator-follower-count">{(creatorFollowData.creatorId === selected.creatorProfile.id ? creatorFollowData.followerCount : 0).toLocaleString()} followers</span><IntroVideo api={API} url={selected.creatorProfile.introVideoUrl}/></span><button className="secondary-btn creator-share-btn" onClick={()=>shareCreator(selected.creatorProfile)} aria-label={`Share ${selected.creatorProfile.displayName || selected.creatorProfile.username}'s profile`}><Share2 size={15}/></button>{!(creatorFollowData.creatorId === selected.creatorProfile.id && creatorFollowData.isSelf) && authRole !== "admin" && <button className={`creator-follow-btn ${creatorFollowData.following ? "following" : ""}`} disabled={creatorFollowLoading || creatorFollowSubmitting || creatorFollowData.creatorId !== selected.creatorProfile.id} onClick={toggleCreatorFollow}><UserPlus size={16}/>{creatorFollowData.following ? "Unfollow" : "Follow"}</button>}</div>}
+-        <div className="player-wrap" onContextMenu={event=>event.preventDefault()}><span className="player-view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span><PlayerGate key={selected.id} api={API} token={adminToken}>{selected.playbackUrl ? isDirectVideoUrl(selected.playbackUrl) ? <video src={selected.playbackUrl} title={selected.title} controls controlsList="nodownload noremoteplayback" disablePictureInPicture disableRemotePlayback playsInline/> : <iframe src={selected.playbackUrl} title={selected.title} allow="autoplay; encrypted-media" allowFullScreen/> : <div className="empty-player"><Play size={48}/><p>Add a Bunny Stream player URL in Admin to enable playback.</p></div>}</PlayerGate></div>
++        <div className="player-wrap" onContextMenu={event=>event.preventDefault()}><span className="player-view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span><PlayerGate key={selected.id} api={API} token={adminToken}>{selected.playbackUrl ? <WatchPlayer key={selected.id} source={selected.playbackUrl} title={selected.title}/> : <div className="empty-player"><Play size={48}/><p>Add a Bunny Stream player URL in Admin to enable playback.</p></div>}</PlayerGate></div>
+         <div className="watch-meta"><div><span className="eyebrow">{selected.category?.name || (selected.isSponsored ? "PROMOTIONAL VIDEO" : "ZINDA PLAY ORIGINAL")}</span><h1>{selected.title}</h1><span className="view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span></div></div>
+         <div className="watch-views-row"><Eye size={14}/> {Number(selected.views || 0).toLocaleString()} views</div>
+         {!selected.isBusinessPreview && <EngagementBar liked={videoInteractions.liked} likes={videoInteractions.likeCount} comments={videoInteractions.commentCount} saved={videoSaved} liking={likeSubmitting} onLike={toggleVideoLike} onComments={()=>{openComments(); if (!interactionsRefreshing) refreshVideoInteractions();}} onShare={() => shareVideo(selected)} onSave={toggleVideoSave}/>}

@@ -1,0 +1,395 @@
+﻿1	import 'dart:async';
+2	import 'dart:convert';
+3	
+4	import 'package:flutter/material.dart';
+5	import 'package:flutter/services.dart';
+6	import 'package:flutter_test/flutter_test.dart';
+7	import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+8	import 'package:http/http.dart' as http;
+9	import 'package:http/testing.dart';
+10	import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+11	import 'package:zinda_play/ads.dart';
+12	
+13	class _AdPlayer extends VideoPlayerPlatform {
+14	  bool initializeAutomatically = true;
+15	  int creations = 0;
+16	  int disposals = 0;
+17	  late final StreamController<VideoEvent> events = StreamController<VideoEvent>(
+18	    onListen: () {
+19	      if (initializeAutomatically) initialize();
+20	    },
+21	  );
+22	  void initialize() => events.add(
+23	    VideoEvent(
+24	      eventType: VideoEventType.initialized,
+25	      duration: const Duration(seconds: 3),
+26	      size: const Size(720, 1280),
+27	    ),
+28	  );
+29	  Duration position = Duration.zero;
+30	  bool playing = false;
+31	  @override
+32	  Future<void> init() async {}
+33	  @override
+34	  Future<int?> createWithOptions(VideoCreationOptions options) async {
+35	    creations++;
+36	    return 1;
+37	  }
+38	
+39	  @override
+40	  Stream<VideoEvent> videoEventsFor(int playerId) => events.stream;
+41	  @override
+42	  Future<void> dispose(int playerId) async {
+43	    disposals++;
+44	    await events.close();
+45	  }
+46	
+47	  @override
+48	  Future<void> play(int playerId) async {
+49	    playing = true;
+50	  }
+51	
+52	  @override
+53	  Future<void> pause(int playerId) async {
+54	    playing = false;
+55	  }
+56	
+57	  @override
+58	  Future<void> setVolume(int playerId, double volume) async {}
+59	  @override
+60	  Future<void> setLooping(int playerId, bool looping) async {}
+61	  @override
+62	  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+63	  @override
+64	  Future<void> seekTo(int playerId, Duration position) async {}
+65	  @override
+66	  Future<Duration> getPosition(int playerId) async => position;
+67	  @override
+68	  Widget buildViewWithOptions(VideoViewOptions options) =>
+69	      const ColoredBox(color: Colors.black);
+70	}
+71	
+72	void main() {
+73	  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+74	  testWidgets(
+75	    'creator media prepares concurrently with ticket and waits for claim before playing',
+76	    (tester) async {
+77	      final player = _AdPlayer()..initializeAutomatically = false;
+78	      VideoPlayerPlatform.instance = player;
+79	      final ticket = Completer<http.Response>();
+80	      final claim = Completer<http.Response>();
+81	      final calls = <String>[];
+82	      final client = MockClient((request) async {
+83	        calls.add(request.url.path);
+84	        if (request.url.path.endsWith('/view-start')) return ticket.future;
+85	        if (request.url.path.endsWith('/impression')) return claim.future;
+86	        return http.Response(
+87	          jsonEncode([
+88	            {
+89	              'id': 'parallel-ad',
+90	              'creatorVideoId': 'creator-video',
+91	              'frequency': 1,
+92	              'mediaUrl': 'https://example.test/ad.mp4',
+93	              'skippable': false,
+94	            },
+95	          ]),
+96	          200,
+97	        );
+98	      });
+99	      await http.runWithClient(() async {
+100	        await tester.pumpWidget(
+101	          MaterialApp(
+102	            home: Scaffold(
+103	              body: SizedBox(
+104	                width: 320,
+105	                height: 180,
+106	                child: PlayerGate(builder: (_) => const Text('Content')),
+107	              ),
+108	            ),
+109	          ),
+110	        );
+111	        await tester.pump();
+112	        await tester.pump();
+113	        expect(player.creations, 1);
+114	        expect(calls, contains('/api/ads/parallel-ad/view-start'));
+115	        expect(calls.any((path) => path.endsWith('/impression')), isFalse);
+116	        expect(player.playing, isFalse);
+117	        ticket.complete(
+118	          http.Response(
+119	            '{"ticket":"parallel-ticket","minimumWatchMs":3000}',
+120	            200,
+121	          ),
+122	        );
+123	        await tester.pump();
+124	        expect(calls.any((path) => path.endsWith('/impression')), isFalse);
+125	        player.initialize();
+126	        await tester.pump();
+127	        await tester.pump();
+128	        expect(calls, contains('/api/ads/parallel-ad/impression'));
+129	        expect(player.playing, isFalse);
+130	        claim.complete(http.Response('{"accepted":true}', 200));
+131	        await tester.pumpAndSettle();
+132	        expect(player.playing, isTrue);
+133	        await tester.pumpWidget(const SizedBox.shrink());
+134	        expect(player.disposals, 1);
+135	      }, () => client);
+136	    },
+137	  );
+138	
+139	  testWidgets(
+140	    'slow ad lookup offers recovery at 15 seconds and late results cannot play',
+141	    (tester) async {
+142	      final player = _AdPlayer();
+143	      VideoPlayerPlatform.instance = player;
+144	      final response = Completer<http.Response>();
+145	      await http.runWithClient(() async {
+146	        await tester.pumpWidget(
+147	          MaterialApp(
+148	            home: Scaffold(
+149	              body: PlayerGate(builder: (_) => const Text('Content')),
+150	            ),
+151	          ),
+152	        );
+153	        await tester.pump(const Duration(seconds: 14));
+154	        expect(find.text('Continue to video'), findsNothing);
+155	        await tester.pump(const Duration(seconds: 1));
+156	        expect(find.text('Continue to video'), findsOneWidget);
+157	        await tester.tap(find.text('Continue to video'));
+158	        await tester.pump();
+159	        expect(find.text('Content'), findsOneWidget);
+160	        response.complete(
+161	          http.Response(
+162	            '[{"id":"late-ad","mediaUrl":"https://example.test/ad.mp4"}]',
+163	            200,
+164	          ),
+165	        );
+166	        await tester.pumpAndSettle();
+167	        expect(player.creations, 0);
+168	        expect(player.playing, isFalse);
+169	        await tester.pumpWidget(const SizedBox.shrink());
+170	      }, () => MockClient((_) => response.future));
+171	    },
+172	  );
+173	
+174	  for (final placement in ['video', 'simply', 'home']) {
+175	    testWidgets('$placement ads load only when active and pause offscreen', (
+176	      tester,
+177	    ) async {
+178	      final player = _AdPlayer();
+179	      VideoPlayerPlatform.instance = player;
+180	      var active = false;
+181	      var requests = 0;
+182	      var claims = 0;
+183	      var clicks = 0;
+184	      String? openedUrl;
+185	      const launcher = MethodChannel('plugins.flutter.io/url_launcher');
+186	      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(launcher, (
+187	        call,
+188	      ) async {
+189	        openedUrl = (call.arguments as Map)['url'] as String;
+190	        return true;
+191	      });
+192	      addTearDown(
+193	        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+194	          launcher,
+195	          null,
+196	        ),
+197	      );
+198	      late StateSetter update;
+199	      final client = MockClient((request) async {
+200	        if (request.url.path == '/api/ads') {
+201	          requests++;
+202	          expect(request.url.queryParameters['placement'], placement);
+203	          return http.Response(
+204	            jsonEncode([
+205	              {
+206	                'id': 'placement-$placement',
+207	                'type': 'video',
+208	                'title': 'Placement ad',
+209	                'mediaUrl': 'https://example.test/ad.mp4',
+210	                'targetUrl': 'https://example.test/advertiser',
+211	                'frequency': 1,
+212	                'skippable': true,
+213	                'skipAfterSeconds': 1,
+214	              },
+215	            ]),
+216	            200,
+217	          );
+218	        }
+219	        if (request.url.path.endsWith('/click')) {
+220	          clicks++;
+221	          return http.Response('', 204);
+222	        }
+223	        expect(request.url.path, '/api/ads/placement-$placement/impression');
+224	        claims++;
+225	        return http.Response('{"accepted":true}', 200);
+226	      });
+227	      await http.runWithClient(() async {
+228	        await tester.pumpWidget(
+229	          MaterialApp(
+230	            home: Scaffold(
+231	              body: StatefulBuilder(
+232	                builder: (_, setState) {
+233	                  update = setState;
+234	                  return SizedBox(
+235	                    width: 320,
+236	                    height: 180,
+237	                    child: PlayerGate(
+238	                      placement: placement,
+239	                      active: active,
+240	                      builder: (_) => const Text('Content'),
+241	                    ),
+242	                  );
+243	                },
+244	              ),
+245	            ),
+246	          ),
+247	        );
+248	        await tester.pumpAndSettle();
+249	        expect(requests, 0);
+250	        expect(claims, 0);
+251	        update(() => active = true);
+252	        await tester.pumpAndSettle();
+253	        expect(requests, 1);
+254	        expect(claims, 1);
+255	        expect(player.playing, isTrue);
+256	        expect(find.text('Visit advertiser'), findsOneWidget);
+257	        final cta = tester.getRect(find.text('Visit advertiser'));
+258	        expect(cta.right, lessThanOrEqualTo(320));
+259	        expect(cta.bottom, lessThanOrEqualTo(180));
+260	        update(() => active = false);
+261	        await tester.pumpAndSettle();
+262	        expect(player.playing, isFalse);
+263	        update(() => active = true);
+264	        await tester.pumpAndSettle();
+265	        expect(requests, 1);
+266	        expect(claims, 1);
+267	        expect(find.text('Visit advertiser'), findsOneWidget);
+268	        await tester.tap(find.text('Visit advertiser'));
+269	        await tester.pumpAndSettle();
+270	        expect(openedUrl, 'https://example.test/advertiser');
+271	        expect(clicks, 1);
+272	        expect(player.playing, isFalse);
+273	        await tester.pumpWidget(const SizedBox.shrink());
+274	        await tester.pump();
+275	        expect(tester.takeException(), isNull);
+276	      }, () => client);
+277	    });
+278	  }
+279	
+280	  testWidgets('homepage slot disappears when no homepage video ads exist', (
+281	    tester,
+282	  ) async {
+283	    final client = MockClient((request) async {
+284	      expect(request.url.queryParameters['placement'], 'home');
+285	      return http.Response('[]', 200);
+286	    });
+287	    await http.runWithClient(() async {
+288	      await tester.pumpWidget(
+289	        const MaterialApp(home: Scaffold(body: HomeVideoAd())),
+290	      );
+291	      await tester.pumpAndSettle();
+292	      expect(find.byType(PlayerGate), findsNothing);
+293	      expect(find.byType(AspectRatio), findsNothing);
+294	      await tester.pumpWidget(const SizedBox.shrink());
+295	    }, () => client);
+296	  });
+297	
+298	  for (final skip in [false, true]) {
+299	    testWidgets(
+300	      'creator ad ${skip ? "skip does not earn" : "full watch posts one earning ticket"}',
+301	      (tester) async {
+302	        final player = _AdPlayer();
+303	        VideoPlayerPlatform.instance = player;
+304	        final calls = <String>[];
+305	        final adId = skip ? 'skip-ad' : 'full-ad';
+306	        final client = MockClient((request) async {
+307	          final path = request.url.path;
+308	          calls.add('${request.method} $path');
+309	          Object body;
+310	          if (path == '/api/ads') {
+311	            body = [
+312	              {
+313	                'id': adId,
+314	                'type': 'video',
+315	                'title': 'Full watch offer',
+316	                'targetUrl': 'https://example.com/business',
+317	                'productUrl': 'https://example.com/product',
+318	                'creatorVideoId': 'simply',
+319	                'mediaUrl': 'https://example.b-cdn.net/video/playlist.m3u8',
+320	                'frequency': 1,
+321	                'skippable': skip,
+322	                'skipAfterSeconds': 1,
+323	              },
+324	            ];
+325	          } else if (path.endsWith('/impression')) {
+326	            expect(jsonDecode(request.body)['ticket'], 'full-watch-ticket');
+327	            expect(
+328	              calls.indexOf('POST /api/ads/$adId/view-start'),
+329	              lessThan(calls.length - 1),
+330	            );
+331	            body = {'accepted': true};
+332	          } else if (path.endsWith('/view-start')) {
+333	            body = {'ticket': 'full-watch-ticket', 'minimumWatchMs': 3000};
+334	          } else if (path.endsWith('/view')) {
+335	            expect(jsonDecode(request.body)['ticket'], 'full-watch-ticket');
+336	            body = {'counted': true};
+337	          } else {
+338	            return http.Response(
+339	              jsonEncode({'error': 'Unexpected request'}),
+340	              404,
+341	            );
+342	          }
+343	          return http.Response(jsonEncode(body), 200);
+344	        });
+345	        await http.runWithClient(() async {
+346	          await tester.pumpWidget(
+347	            MaterialApp(
+348	              home: Scaffold(
+349	                body: PlayerGate(builder: (_) => const Text('Main video')),
+350	              ),
+351	            ),
+352	          );
+353	          await tester.pumpAndSettle();
+354	          expect(player.playing, isTrue);
+355	          expect(calls, contains('POST /api/ads/$adId/view-start'));
+356	          expect(find.text('Visit advertiser'), findsOneWidget);
+357	          final steps = skip ? 4 : 12;
+358	          for (int step = 1; step <= steps; step++) {
+359	            player.position = Duration(milliseconds: step * 250);
+360	            await tester.pump(const Duration(milliseconds: 250));
+361	            await tester.pump();
+362	            expect(find.text('Visit advertiser'), findsOneWidget);
+363	          }
+364	          if (skip) {
+365	            await tester.binding.setSurfaceSize(const Size(320, 640));
+366	            await tester.pump();
+367	            final visit = tester.getRect(find.text('Visit advertiser'));
+368	            final skipButton = tester.getRect(find.text('Skip ad â€º'));
+369	            expect((visit.center.dy - skipButton.center.dy).abs(), lessThan(1));
+370	            expect(visit.right, lessThan(skipButton.left));
+371	            expect(skipButton.bottom, greaterThan(560));
+372	            await tester.binding.setSurfaceSize(null);
+373	            await tester.pump();
+374	            await tester.tap(find.text('Skip ad â€º'));
+375	          } else {
+376	            player.events.add(VideoEvent(eventType: VideoEventType.completed));
+377	            await tester.pumpAndSettle();
+378	            expect(find.text('Visit advertiser'), findsOneWidget);
+379	            expect(find.text('View product'), findsOneWidget);
+380	            await tester.tap(find.text('Skip ad â€º'));
+381	          }
+382	          await tester.pumpAndSettle();
+383	          expect(find.text('Main video'), findsOneWidget);
+384	          expect(
+385	            calls.where((call) => call == 'POST /api/ads/$adId/view'),
+386	            hasLength(skip ? 0 : 1),
+387	          );
+388	          await tester.pumpWidget(const SizedBox.shrink());
+389	          await tester.pump();
+390	        }, () => client);
+391	        expect(tester.takeException(), isNull);
+392	      },
+393	    );
+394	  }
+395	}

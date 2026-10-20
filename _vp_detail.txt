@@ -1,0 +1,84 @@
+﻿ 700| 
+ 701|   @override
+ 702|   Future<void> dispose() async {
+ 703|     if (_isDisposed) {
+ 704|       return;
+ 705|     }
+ 706| 
+ 707|     if (_creatingCompleter != null) {
+ 708|       await _creatingCompleter!.future;
+ 709|       if (!_isDisposed) {
+ 710|         _isDisposed = true;
+ 711|         _timer?.cancel();
+ 712|         await _eventSubscription?.cancel();
+ 713|         await _videoPlayerPlatform.dispose(_playerId);
+ 714|       }
+ 715|       _lifeCycleObserver?.dispose();
+ 716|     }
+ 717|     _isDisposed = true;
+ 718|     super.dispose();
+ 719|   }
+ 720| 
+ 721|   /// Starts playing the video.
+ 722|   ///
+=== NETWORKURL CTOR ===
+ 421|   /// for the request to the [dataSource].
+ 422|   @Deprecated('Use VideoPlayerController.networkUrl instead')
+ 423|   VideoPlayerController.network(
+ 424|     this.dataSource, {
+ 425|     this.formatHint,
+ 426|     Future<ClosedCaptionFile>? closedCaptionFile,
+ 427|     this.videoPlayerOptions,
+ 428|     this.httpHeaders = const <String, String>{},
+ 429|     this.viewType = platform_interface.VideoViewType.textureView,
+ 430|   }) : _closedCaptionFileFuture = closedCaptionFile,
+ 431|        dataSourceType = platform_interface.DataSourceType.network,
+ 432|        package = null,
+ 433|        super(
+ 434|          VideoPlayerValue(
+ 435|            duration: Duration.zero,
+ 436|            preventsDisplaySleepDuringVideoPlayback:
+ 437|                videoPlayerOptions?.preventsDisplaySleepDuringVideoPlayback ?? true,
+ 438|          ),
+ 439|        );
+ 440| 
+ 441|   /// Constructs a [VideoPlayerController] playing a network video.
+ 442|   ///
+ 443|   /// The URI for the video is given by the [dataSource] argument.
+ 444|   ///
+ 445|   /// **Android only**: The [formatHint] option allows the caller to override
+ 446|   /// the video format detection code.
+ 447|   ///
+ 448|   /// [httpHeaders] option allows to specify HTTP headers
+ 449|   /// for the request to the [dataSource].
+ 450|   VideoPlayerController.networkUrl(
+ 449|   /// for the request to the [dataSource].
+ 450|   VideoPlayerController.networkUrl(
+ 451|     Uri url, {
+ 452|     this.formatHint,
+ 453|     Future<ClosedCaptionFile>? closedCaptionFile,
+ 454|     this.videoPlayerOptions,
+ 455|     this.httpHeaders = const <String, String>{},
+ 456|     this.viewType = platform_interface.VideoViewType.textureView,
+ 457|   }) : _closedCaptionFileFuture = closedCaptionFile,
+ 458|        dataSource = url.toString(),
+ 459|        dataSourceType = platform_interface.DataSourceType.network,
+ 460|        package = null,
+ 461|        super(
+ 462|          VideoPlayerValue(
+ 463|            duration: Duration.zero,
+ 464|            preventsDisplaySleepDuringVideoPlayback:
+ 465|                videoPlayerOptions?.preventsDisplaySleepDuringVideoPlayback ?? true,
+ 466|          ),
+ 467|        );
+ 468| 
+ 469|   /// Constructs a [VideoPlayerController] playing a video from a file.
+ 470|   ///
+ 471|   /// This will load the file from a file:// URI constructed from [file]'s path.
+ 472|   /// [httpHeaders] option allows to specify HTTP headers, mainly used for hls files like (m3u8).
+ 473|   VideoPlayerController.file(
+ 474|     File file, {
+ 475|     Future<ClosedCaptionFile>? closedCaptionFile,
+ 476|     this.videoPlayerOptions,
+ 477|     this.httpHeaders = const <String, String>{},
+ 478|     this.viewType = platform_interface.VideoViewType.textureView,

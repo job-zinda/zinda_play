@@ -21,6 +21,9 @@ import { AdminRewards, RewardSummary } from "./Rewards.jsx";
 import { CommentsPanel, EngagementBar, useCommentsFocus, useSavedVideo } from "./WatchEngagement.jsx";
 import { ArrowRight, Gift, LockKeyhole, Store } from "lucide-react";
 import "./auth.css";
+import WatchPlayer from "./WatchPlayer.jsx";
+import { engagementRequest } from "./Reactions.jsx";
+import { playEngagementSound, prepareEngagementSound } from "./engagement-feedback.js";
 
 const API = import.meta.env.DEV
   ? "/api"
@@ -400,11 +403,13 @@ function App() {
   }
   async function toggleCardLike(video) {
     if (!canLike()) { setError("Sign in with a viewer account to like videos."); return; }
+    prepareEngagementSound();
     try {
       const response = await fetch(`${API}/videos/${video.id}/like`, { method: "POST", headers: { Authorization: `Bearer ${adminToken}` } });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to update your like.");
       setCardLikes(current => ({ ...current, [video.id]: { liked: data.liked, likeCount: data.likeCount } }));
+      if (data.liked) playEngagementSound();
     } catch (err) { setError(err.message); }
   }
   async function openCreatorFromCard(creator) {
@@ -1035,20 +1040,19 @@ function App() {
       setError(err.message);
     }
   }
-  async function toggleVideoLike() {
+  async function toggleVideoLike(reaction = "like") {
     if (!adminToken || !["member", "creator", "promoter", "business"].includes(authRole)) {
       setError("Sign in to like this video.");
       return;
     }
+    if (likeSubmitting) return;
+    prepareEngagementSound();
+    const videoId = selected.id;
     setLikeSubmitting(true);
     try {
-      const response = await fetch(`${API}/videos/${selected.id}/like`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${adminToken}` }
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to update your like.");
-      setVideoInteractions(current => ({ ...current, liked: data.liked, likeCount: data.likeCount }));
+      const data = await engagementRequest(API, adminToken, `/videos/${videoId}/reaction`, { reaction });
+      if (selectedVideoId.current === videoId) setVideoInteractions(current => ({ ...current, ...data }));
+      if (data.reaction) playEngagementSound();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1081,21 +1085,26 @@ function App() {
   }
   async function submitVideoComment(event) {
     event.preventDefault();
+    if (commentSubmitting || !commentText.trim()) return;
     if (!adminToken || !["member", "creator", "promoter", "business"].includes(authRole)) {
       setError("Sign in to comment on this video.");
       return;
     }
+    const videoId = selected.id;
     setCommentSubmitting(true);
     try {
-      const response = await fetch(`${API}/videos/${selected.id}/comments`, {
+      const response = await fetch(`${API}/videos/${videoId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
         body: JSON.stringify({ text: commentText })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to post your comment.");
-      setVideoInteractions(current => ({ ...current, commentCount: current.commentCount + 1, comments: [data, ...current.comments] }));
-      setCommentText("");
+      if (selectedVideoId.current === videoId) {
+        setVideoInteractions(current => ({ ...current, commentCount: current.commentCount + 1, comments: [data, ...current.comments] }));
+        setCommentText("");
+      }
+      playEngagementSound(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1742,13 +1751,13 @@ function App() {
         <button className="back-link" onClick={closeVideo}>← Back to Explore</button>
         {selected.isBusinessPreview && <div className="membership-status"><Clock3 size={20}/><div><strong>Private business preview</strong><span>This preview is only available to your business account. It is not publicly visible until approved and promoted.</span></div></div>}
         {selected.creatorProfile && <div className="creator-profile"><button type="button" className="creator-avatar-link" onClick={()=>openCreatorFromCard(selected.creatorProfile)} aria-label={`View ${selected.creatorProfile.displayName || selected.creatorProfile.username}'s profile`}>{selected.creatorProfile.profilePhotoUrl ? <img className="creator-avatar" src={apiAssetSrc(selected.creatorProfile.profilePhotoUrl)} alt=""/> : <span className="creator-avatar"><UserRound size={18}/></span>}</button><span className="creator-profile-details"><small>CREATOR</small><button type="button" className="creator-name-link" onClick={()=>openCreatorFromCard(selected.creatorProfile)}>{selected.creatorProfile.displayName || selected.creatorProfile.username}</button>{selected.creatorProfile.bio && <span className="creator-bio">{selected.creatorProfile.bio}</span>}<span className="creator-follower-count">{(creatorFollowData.creatorId === selected.creatorProfile.id ? creatorFollowData.followerCount : 0).toLocaleString()} followers</span><IntroVideo api={API} url={selected.creatorProfile.introVideoUrl}/></span><button className="secondary-btn creator-share-btn" onClick={()=>shareCreator(selected.creatorProfile)} aria-label={`Share ${selected.creatorProfile.displayName || selected.creatorProfile.username}'s profile`}><Share2 size={15}/></button>{!(creatorFollowData.creatorId === selected.creatorProfile.id && creatorFollowData.isSelf) && authRole !== "admin" && <button className={`creator-follow-btn ${creatorFollowData.following ? "following" : ""}`} disabled={creatorFollowLoading || creatorFollowSubmitting || creatorFollowData.creatorId !== selected.creatorProfile.id} onClick={toggleCreatorFollow}><UserPlus size={16}/>{creatorFollowData.following ? "Unfollow" : "Follow"}</button>}</div>}
-        <div className="player-wrap" onContextMenu={event=>event.preventDefault()}><span className="player-view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span><PlayerGate key={selected.id} api={API} token={adminToken}>{selected.playbackUrl ? isDirectVideoUrl(selected.playbackUrl) ? <video src={selected.playbackUrl} title={selected.title} controls controlsList="nodownload noremoteplayback" disablePictureInPicture disableRemotePlayback playsInline/> : <iframe src={selected.playbackUrl} title={selected.title} allow="autoplay; encrypted-media" allowFullScreen/> : <div className="empty-player"><Play size={48}/><p>Add a Bunny Stream player URL in Admin to enable playback.</p></div>}</PlayerGate></div>
+        <div className="player-wrap" onContextMenu={event=>event.preventDefault()}><span className="player-view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span><PlayerGate key={selected.id} api={API} token={adminToken}>{selected.playbackUrl ? <WatchPlayer key={selected.id} source={selected.playbackUrl} title={selected.title}/> : <div className="empty-player"><Play size={48}/><p>Add a Bunny Stream player URL in Admin to enable playback.</p></div>}</PlayerGate></div>
         <div className="watch-meta"><div><span className="eyebrow">{selected.category?.name || (selected.isSponsored ? "PROMOTIONAL VIDEO" : "ZINDA PLAY ORIGINAL")}</span><h1>{selected.title}</h1><span className="view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span></div></div>
         <div className="watch-views-row"><Eye size={14}/> {Number(selected.views || 0).toLocaleString()} views</div>
-        {!selected.isBusinessPreview && <EngagementBar liked={videoInteractions.liked} likes={videoInteractions.likeCount} comments={videoInteractions.commentCount} saved={videoSaved} liking={likeSubmitting} onLike={toggleVideoLike} onComments={()=>{openComments(); if (!interactionsRefreshing) refreshVideoInteractions();}} onShare={() => shareVideo(selected)} onSave={toggleVideoSave}/>}
+        {!selected.isBusinessPreview && <EngagementBar liked={videoInteractions.liked} reaction={videoInteractions.reaction} reactions={videoInteractions.reactions} likes={videoInteractions.likeCount} comments={videoInteractions.commentCount} saved={videoSaved} liking={likeSubmitting} onLike={toggleVideoLike} onComments={()=>{openComments(); if (!interactionsRefreshing) refreshVideoInteractions();}} onShare={() => shareVideo(selected)} onSave={toggleVideoSave}/>}
         {(selected.isBusinessPreview || (selected.promotionUrl && /^https:\/\/\S+$/i.test(selected.promotionUrl))) && <div className="watch-actions">{selected.promotionUrl && /^https:\/\/\S+$/i.test(selected.promotionUrl) && <a className="primary-btn" href={selected.promotionUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={17}/> Let's Plan</a>}{selected.isBusinessPreview && <button className="secondary-btn share-btn" onClick={() => shareVideo(selected)}><Share2 size={17}/> Share video</button>}</div>}
         {selected.description && <p className="watch-description">{selected.description}</p>}
-        {selected.isBusinessPreview ? null : <CommentsPanel panelRef={commentsPanelRef} inputRef={commentInputRef} count={videoInteractions.commentCount} comments={videoInteractions.comments} canComment={canInteract} signedIn={Boolean(adminToken)} commentText={commentText} onCommentText={setCommentText} onSubmit={submitVideoComment} submitting={commentSubmitting} onRefresh={refreshVideoInteractions} refreshing={interactionsRefreshing} onSignIn={openAdmin}/>}
+        {selected.isBusinessPreview ? null : <CommentsPanel key={selected.id} panelRef={commentsPanelRef} inputRef={commentInputRef} count={videoInteractions.commentCount} comments={videoInteractions.comments} canComment={canInteract} signedIn={Boolean(adminToken)} commentText={commentText} onCommentText={setCommentText} onSubmit={submitVideoComment} submitting={commentSubmitting} onRefresh={refreshVideoInteractions} refreshing={interactionsRefreshing} onSignIn={openAdmin} api={API} token={adminToken} videoId={selected.id} nextCursor={videoInteractions.commentsNextCursor} onReplyAdded={() => setVideoInteractions(current => ({ ...current, commentCount: current.commentCount + 1 }))}/>}
       </section>
       : page === "discover" ? <section className="admin-panel discovery-panel">
         {!(discoverCreatorProfile || discoverBrandProfile || discoverProfileLoading) && <>

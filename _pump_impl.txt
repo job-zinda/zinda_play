@@ -1,0 +1,9 @@
+﻿
+> D:\flutter\flutter\packages\flutter_test\lib\src\binding.dart:2258:        _currentFakeAsync!.flushMicrotasks();
+  D:\flutter\flutter\packages\flutter_test\lib\src\binding.dart:2259:        handleBeginFrame(Duration(microseconds: 
+_clock!.now().microsecondsSinceEpoch));
+> D:\flutter\flutter\packages\flutter_test\lib\src\binding.dart:2260:        _currentFakeAsync!.flushMicrotasks();
+  D:\flutter\flutter\packages\flutter_test\lib\src\binding.dart:2261:        handleDrawFrame();
+  D:\flutter\flutter\packages\flutter_test\lib\src\binding.dart:2262:      }
+
+

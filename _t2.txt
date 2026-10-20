@@ -1,0 +1,16 @@
+﻿00:00 +0: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/_scratch_test.dart
+00:00 +0: direct controller dispose reaches platform
+AFTER INIT creations=1
+AFTER DISPOSE disposals=1
+10:00 +0 -1: direct controller dispose reaches platform [E]
+  TimeoutException after 0:10:00.000000: Test timed out after 10 minutes.
+  dart:isolate  _RawReceivePort._handleMessage
+  
+10:00 +0 -1: widget teardown dispose reaches platform
+AFTER INIT creations=1
+AFTER TEARDOWN disposals=0
+AFTER EXTRA PUMP disposals=0
+10:00 +1 -1: Some tests failed.
+
+Failing tests:
+  D:/zinda play/zinda_play_node_react (1)/mobile/test/_scratch_test.dart: direct controller dispose reaches platform

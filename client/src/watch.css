@@ -40,6 +40,11 @@
 .comments-signin button{flex:0 0 auto;padding:12px 14px;border:0;border-radius:13px;background:linear-gradient(120deg,#9a76ff,#7c4fe0);color:#fff;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px #8059e440}
 
 .watch-views-row{display:none}
+.normal-video-player{position:relative;width:100%;height:100%;background:#000}
+.normal-video-player>video{width:100%;height:100%;object-fit:contain}
+.playback-speed{position:absolute;right:10px;top:10px;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:10px;background:#100b19e6;color:#fff;font-size:12px}
+.playback-speed select{max-width:120px;min-height:32px;margin:0;padding:4px;border:1px solid #7852a6;border-radius:6px;background:#211a31;color:#fff;font-size:12px}
+.playback-error{position:absolute;left:10px;right:10px;top:55px;padding:10px;border-radius:10px;background:#211a31;color:#fff;font-size:13px}
 
 /* On phones the watch page follows the Zinda Play app: edge-to-edge player, title, actions, details, comments. */
 @media(max-width:600px){

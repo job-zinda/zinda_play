@@ -1,19 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../engagement.dart';
 import '../screens/auth_screen.dart';
 import '../widgets/video_engagement.dart';
 import '../theme.dart';
+import 'comment_threads.dart';
 
 class ShortComments extends StatefulWidget {
   final String id;
   final List<Map<String, dynamic>> comments;
   final int commentCount;
+  final String? nextCursor;
   const ShortComments({
     super.key,
     required this.id,
     required this.comments,
     required this.commentCount,
+    this.nextCursor,
   });
   @override
   State<ShortComments> createState() => _ShortCommentsState();
@@ -59,6 +65,7 @@ class _ShortCommentsState extends State<ShortComments> {
         _commentCount++;
         _text.clear();
       });
+      unawaited(playEngagementSound());
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     } finally {
@@ -106,11 +113,16 @@ class _ShortCommentsState extends State<ShortComments> {
                 ? const SingleChildScrollView(child: VideoCommentsEmptyState())
                 : ListView(
                     children: [
-                      for (final comment in _comments)
-                        ListTile(
-                          title: Text('${comment['username']}'),
-                          subtitle: Text('${comment['text']}'),
-                        ),
+                      CommentThreads(
+                        videoId: widget.id,
+                        comments: _comments,
+                        nextCursor: widget.nextCursor,
+                        requireSignIn: () async {
+                          if (!Api.instance.signedIn) await _signIn();
+                          return mounted && Api.instance.signedIn;
+                        },
+                        onAdded: () => setState(() => _commentCount++),
+                      ),
                     ],
                   ),
           ),
@@ -154,6 +166,7 @@ class _ShortCommentsState extends State<ShortComments> {
                   child: Tooltip(
                     message: 'Post comment',
                     child: FilledButton(
+                      style: const ButtonStyle(enableFeedback: false),
                       onPressed: _sending ? null : _send,
                       child: Text(_sending ? 'Sending...' : 'Send'),
                     ),

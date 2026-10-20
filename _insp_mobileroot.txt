@@ -1,0 +1,19 @@
+.dart_tool
+.flutter-plugins-dependencies
+.gitignore
+.idea
+.metadata
+analysis_options.yaml
+android
+assets
+build
+ios
+key store
+lib
+pubspec.lock
+pubspec.yaml
+README.md
+test
+tool
+web
+zinda_play.iml

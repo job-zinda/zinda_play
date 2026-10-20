@@ -111,7 +111,7 @@ export async function softDeleteCreatorVideo(db, video, now = new Date().toISOSt
   for (const ad of ads) await db.collection("ads").updateOne({ _id: ad._id }, {
     $set: { active: false, sourceDeletedAt: video.deletedAt || now, updatedAt: now }
   });
-  await Promise.all(["savedShorts", "shortReports", "videoLikes", "videoComments"].map(name =>
+  await Promise.all(["savedShorts", "shortReports", "videoLikes", "videoComments", "commentReactions"].map(name =>
     db.collection(name).deleteMany({ videoId: video._id })));
 }
 

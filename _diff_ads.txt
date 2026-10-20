@@ -1,0 +1,195 @@
+﻿diff --git a/mobile/lib/ads.dart b/mobile/lib/ads.dart
+index 339411b..cad48a8 100644
+--- a/mobile/lib/ads.dart
++++ b/mobile/lib/ads.dart
+@@ -1,3 +1,4 @@
++import 'dart:async';
+ import 'dart:convert';
+ import 'dart:math';
+ 
+@@ -216,6 +217,9 @@ class _PlayerGateState extends State<PlayerGate>
+   bool _done = false;
+   Map<String, dynamic>? _ad;
+   VideoPlayerController? _video;
++  VideoPlayerController? _preparing;
++  Timer? _loadWatchdog;
++  int _idleSeconds = 0;
+   Map<String, dynamic>? _ticket;
+   int _watchedMs = 0;
+   int _lastPosition = 0;
+@@ -274,53 +278,83 @@ class _PlayerGateState extends State<PlayerGate>
+   Future<void> _start() async {
+     if (_started) return;
+     _started = true;
++    _idleSeconds = 0;
++    _loadWatchdog = Timer.periodic(const Duration(seconds: 1), (timer) {
++      final value = _video?.value;
++      if (!_canPlay ||
++          (!_loading &&
++              value?.isPlaying == false &&
++              value?.isBuffering == false)) {
++        _idleSeconds = 0;
++        return;
++      }
++      if (++_idleSeconds >= 15) {
++        timer.cancel();
++        _video?.pause();
++        if (mounted && !_done) {
++          setState(
++            () => _error = 'The ad is taking too long to load. Check your connection or continue to your video.',
++          );
++        }
++      }
++    });
+     final ads = AdsApi.dueVideos(await AdsApi.fetch(widget.placement));
+-    if (!mounted) return;
++    if (!mounted || _done) return;
+     if (ads.isEmpty) return _finish();
+     final ad = AdsApi.pick(ads);
+     final controller = VideoPlayerController.networkUrl(
+       Uri.parse(assetUrl('${ad['mediaUrl']}')),
+     );
++    _preparing = controller;
+     try {
+-      await controller.initialize().timeout(const Duration(seconds: 25));
++      // Media preparation and the watch ticket do not depend on one another.
++      await Future.wait([
++        controller.initialize().timeout(const Duration(seconds: 15)),
++        if (ad['creatorVideoId'] != null)
++          Api.instance.post('/ads/${ad['id']}/view-start').then((data) {
++            _ticket = Map<String, dynamic>.from(data as Map);
++          }),
++      ]);
+     } catch (error) {
+       debugPrint('Video ad initialization failed: $error');
+-      await controller.dispose();
+-      if (mounted) _finish();
++      await _discardPreparing(controller);
++      if (mounted && !_done) {
++        setState(
++          () => _error = 'Could not load this ad. Check your connection or continue to your video.',
++        );
++      }
+       return;
+     }
+-    if (!mounted) {
+-      await controller.dispose();
++    if (!mounted || _done) {
++      await _discardPreparing(controller);
+       return;
+     }
+     try {
+-      if (ad['creatorVideoId'] != null) {
+-        _ticket = Map<String, dynamic>.from(
+-          await Api.instance.post('/ads/${ad['id']}/view-start') as Map,
+-        );
+-      }
+       if (!await AdsApi.claim(ad, ticket: _ticket?['ticket'] as String?)) {
+-        await controller.dispose();
++        await _discardPreparing(controller);
+         if (mounted) _finish();
+         return;
+       }
+       AdsApi.markDelivered('${ad['id']}');
+     } catch (error) {
+       debugPrint('Video ad delivery failed: $error');
+-      await controller.dispose();
++      await _discardPreparing(controller);
+       if (mounted) _finish();
+       return;
+     }
+-    if (!mounted) {
+-      await controller.dispose();
++    if (!mounted || _done) {
++      await _discardPreparing(controller);
+       return;
+     }
++    _preparing = null;
+     controller.addListener(_tick);
+     setState(() {
+       _ad = ad;
+       _video = controller;
+       _loading = false;
++      _error = null;
+     });
++    _idleSeconds = 0;
+     try {
+       if (_canPlay) await controller.play();
+     } catch (error) {
+@@ -328,12 +362,19 @@ class _PlayerGateState extends State<PlayerGate>
+     }
+   }
+ 
++  Future<void> _discardPreparing(VideoPlayerController controller) async {
++    if (_preparing != controller) return;
++    _preparing = null;
++    await controller.dispose();
++  }
++
+   void _tick() {
+     final v = _video;
+     if (v == null || !mounted || _done) return;
+     final value = v.value;
+     final position = value.position.inMilliseconds;
+     final delta = position - _lastPosition;
++    if (delta > 0) _idleSeconds = 0;
+     _lastPosition = position;
+     final ended =
+         value.duration > Duration.zero && value.position >= value.duration;
+@@ -359,6 +400,7 @@ class _PlayerGateState extends State<PlayerGate>
+   Future<void> _complete() async {
+     if (_completing) return;
+     _completing = true;
++    _loadWatchdog?.cancel();
+     final ticket = _ticket;
+     final minimum = (ticket?['minimumWatchMs'] as num?)?.toInt();
+     if (ticket != null && minimum != null && _watchedMs >= minimum - 250) {
+@@ -381,6 +423,10 @@ class _PlayerGateState extends State<PlayerGate>
+   }
+ 
+   void _finish() {
++    if (_done) return;
++    _loadWatchdog?.cancel();
++    final preparing = _preparing;
++    if (preparing != null) unawaited(_discardPreparing(preparing));
+     _video?.removeListener(_tick);
+     _video?.dispose();
+     _video = null;
+@@ -395,6 +441,9 @@ class _PlayerGateState extends State<PlayerGate>
+ 
+   @override
+   void dispose() {
++    _loadWatchdog?.cancel();
++    final preparing = _preparing;
++    if (preparing != null) unawaited(_discardPreparing(preparing));
+     WidgetsBinding.instance.removeObserver(this);
+     appRouteObserver.unsubscribe(this);
+     _video?.removeListener(_tick);
+@@ -419,9 +468,25 @@ class _PlayerGateState extends State<PlayerGate>
+     final ad = _ad;
+     final video = _video;
+     if (_loading || ad == null || video == null) {
+-      return const ColoredBox(
++      return ColoredBox(
+         color: Colors.black,
+-        child: Center(child: CircularProgressIndicator()),
++        child: Center(
++          child: _error == null
++              ? const CircularProgressIndicator()
++              : Padding(
++                  padding: const EdgeInsets.all(12),
++                  child: Column(
++                    mainAxisSize: MainAxisSize.min,
++                    children: [
++                      Text(_error!, textAlign: TextAlign.center),
++                      TextButton(
++                        onPressed: _finish,
++                        child: const Text('Continue to video'),
++                      ),
++                    ],
++                  ),
++                ),
++        ),
+       );
+     }
+     final value = video.value;

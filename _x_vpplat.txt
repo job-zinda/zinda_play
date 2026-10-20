@@ -1,0 +1,23 @@
+﻿132: platform_interface.VideoPlayerPlatform get _videoPlayerPlatform {
+611: await _videoPlayerPlatform.setMixWithOthers(videoPlayerOptions!.mixWithOthers);
+615: (await _videoPlayerPlatform.createWithOptions(creationOptions)) ?? kUninitializedPlayerId;
+619: await _videoPlayerPlatform.setPreventsDisplaySleepDuringVideoPlayback(
+626: await _videoPlayerPlatform.setWebOptions(_playerId, videoPlayerOptions!.webOptions!);
+648: '(${_videoPlayerPlatform.runtimeType}) has a bug and is sending '
+695: _eventSubscription = _videoPlayerPlatform
+713: await _videoPlayerPlatform.dispose(_playerId);
+765: await _videoPlayerPlatform.setLooping(_playerId, value.isLooping);
+772: await _videoPlayerPlatform.setPreventsDisplaySleepDuringVideoPlayback(
+783: await _videoPlayerPlatform.play(_playerId);
+803: await _videoPlayerPlatform.pause(_playerId);
+811: await _videoPlayerPlatform.setVolume(_playerId, value.volume);
+826: await _videoPlayerPlatform.setPlaybackSpeed(_playerId, value.playbackSpeed);
+834: return _videoPlayerPlatform.getPosition(_playerId);
+851: await _videoPlayerPlatform.seekTo(_playerId, position);
+1021: final List<platform_interface.VideoAudioTrack> platformTracks = await _videoPlayerPlatform
+1039: await _videoPlayerPlatform.selectAudioTrack(_playerId, trackId);
+1061: return _videoPlayerPlatform.isAudioTrackSupportAvailable();
+1086: final List<platform_interface.VideoTrack> platformTracks = await _videoPlayerPlatform
+1121: await _videoPlayerPlatform.selectVideoTrack(_playerId, platformTrack);
+1129: return _videoPlayerPlatform.isVideoTrackSupportAvailable();
+1213: child: _videoPlayerPlatform.buildViewWithOptions(

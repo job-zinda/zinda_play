@@ -1,0 +1,28 @@
+00:00 +0: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart
+test/playback_test.dart:10:14: Error: Can't infer the type of 'events': circularity found during type inference.
+Specify the type explicitly.
+  late final events = StreamController<VideoEvent>(
+             ^^^^^^
+test/playback_test.dart:134:28: Error: This expression has type 'void' and can't be used.
+      await tester.binding.handleAppLifecycleStateChanged(
+                           ^
+test/playback_test.dart:139:28: Error: This expression has type 'void' and can't be used.
+      await tester.binding.handleAppLifecycleStateChanged(
+                           ^
+00:00 +0 -1: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart [E]
+  Failed to load "D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart":
+  Compilation failed for testPath=D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart: test/playback_test.dart:10:14: Error: Can't infer the type of 'events': circularity found during type inference.
+  Specify the type explicitly.
+    late final events = StreamController<VideoEvent>(
+               ^^^^^^
+  test/playback_test.dart:134:28: Error: This expression has type 'void' and can't be used.
+        await tester.binding.handleAppLifecycleStateChanged(
+                             ^
+  test/playback_test.dart:139:28: Error: This expression has type 'void' and can't be used.
+        await tester.binding.handleAppLifecycleStateChanged(
+                             ^
+  .
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart

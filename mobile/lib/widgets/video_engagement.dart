@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'reaction_button.dart';
+
 const _purple = Color(0xFFAC6CFF);
 const _muted = Color(0xFFB2ADCE);
 
@@ -41,6 +43,9 @@ class VideoEngagementBar extends StatelessWidget {
   final VoidCallback onComments;
   final VoidCallback onShare;
   final VoidCallback onSave;
+  final String? reaction;
+  final Map<String, dynamic>? reactions;
+  final ValueChanged<String>? onReact;
 
   const VideoEngagementBar({
     super.key,
@@ -55,20 +60,20 @@ class VideoEngagementBar extends StatelessWidget {
     required this.onComments,
     required this.onShare,
     required this.onSave,
+    this.reaction,
+    this.reactions,
+    this.onReact,
   });
 
   @override
   Widget build(BuildContext context) {
     final actions = [
-      VideoEngagementAction(
-        label: 'Like',
+      ReactionButton(
+        reaction: reaction ?? (liked ? 'like' : null),
+        counts: reactions,
         count: loading ? null : likes,
-        selected: liked,
         busy: liking,
-        onTap: loading || liking ? null : onLike,
-        icon: Icons.favorite_rounded,
-        colors: const [Color(0xFFFF4B9B), Color(0xFFFFA568)],
-        animate: true,
+        onReact: loading || liking ? null : onReact ?? (_) => onLike(),
       ),
       VideoEngagementAction(
         label: 'Comments',

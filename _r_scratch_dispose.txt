@@ -1,0 +1,124 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:video_player/video_player.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+
+class _P extends VideoPlayerPlatform {
+  _P({this.broadcast = false, this.closeInDispose = true, this.log = ''});
+  final bool broadcast;
+  final bool closeInDispose;
+  final String log;
+  late final StreamController<VideoEvent> events = _makeController();
+
+  StreamController<VideoEvent> _makeController() {
+    void onListen() {
+      print('$log LISTEN');
+      events.add(
+        VideoEvent(
+          eventType: VideoEventType.initialized,
+          duration: const Duration(seconds: 60),
+          size: const Size(1280, 720),
+        ),
+      );
+    }
+
+    void onCancel() => print('$log SUB CANCEL');
+    if (broadcast) {
+      return StreamController<VideoEvent>.broadcast(
+        onListen: onListen,
+        onCancel: onCancel,
+      );
+    }
+    return StreamController<VideoEvent>(onListen: onListen, onCancel: onCancel);
+  }
+  int disposed = 0;
+  @override
+  Future<void> init() async {}
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) async => 1;
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) {
+    print('$log videoEventsFor($playerId)');
+    return events.stream;
+  }
+  @override
+  Future<void> dispose(int playerId) async {
+    print('$log PLATFORM dispose ENTER');
+    disposed++;
+    if (closeInDispose) {
+      await events.close();
+      print('$log PLATFORM close() returned');
+    }
+    print('$log PLATFORM dispose EXIT');
+  }
+
+  @override
+  Future<void> play(int playerId) async {}
+  @override
+  Future<void> pause(int playerId) async {}
+  @override
+  Future<void> setVolume(int playerId, double volume) async {}
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {}
+  @override
+  Future<Duration> getPosition(int playerId) async => Duration.zero;
+  @override
+  Widget buildViewWithOptions(VideoViewOptions options) =>
+      const ColoredBox(color: Colors.black);
+}
+
+void main() {
+  testWidgets('manual dispose chain', (tester) async {
+    final p = _P();
+    final completer = Completer<void>();
+    final sub = p.events.stream.listen((_) {});
+    completer.complete(null);
+    print('CHAIN start');
+    await completer.future;
+    print('CHAIN after completer.future');
+    await sub.cancel();
+    print('CHAIN after sub.cancel()');
+    await p.dispose(1);
+    print('CHAIN after platform dispose disposed=${p.disposed}');
+  });
+
+  testWidgets('scratch dispose', (tester) async {
+    final p = _P();
+    VideoPlayerPlatform.instance = p;
+    final c = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.test/video.mp4'),
+    );
+    await c.initialize();
+    print('STEP initialized disposed=${p.disposed}');
+    c.dispose();
+    print('STEP after dispose() call disposed=${p.disposed}');
+    await tester.pump();
+    print('STEP after pump() disposed=${p.disposed}');
+    await tester.pump(const Duration(milliseconds: 1));
+    print('STEP after pump(1ms) disposed=${p.disposed}');
+    await tester.pump(const Duration(milliseconds: 1));
+    print('STEP after pump(1ms)#2 disposed=${p.disposed}');
+    await tester.pumpAndSettle();
+    print('STEP after pumpAndSettle disposed=${p.disposed}');
+  });
+
+  testWidgets('scratch dispose no-close-in-platform', (tester) async {
+    final p = _P(closeInDispose: false, log: '[NOCLOSE]');
+    VideoPlayerPlatform.instance = p;
+    final c = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.test/video.mp4'),
+    );
+    await c.initialize();
+    c.dispose();
+    await tester.pump();
+    print('[NOCLOSE] STEP after pump() disposed=${p.disposed}');
+    await tester.pump(const Duration(milliseconds: 1));
+    print('[NOCLOSE] STEP after pump(1ms) disposed=${p.disposed}');
+  });
+}

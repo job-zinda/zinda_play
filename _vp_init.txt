@@ -1,0 +1,146 @@
+﻿ 555|   _VideoAppLifeCycleObserver? _lifeCycleObserver;
+ 556| 
+ 557|   /// The id of a player that hasn't been initialized.
+ 558|   @visibleForTesting
+ 559|   static const int kUninitializedPlayerId = -1;
+ 560|   int _playerId = kUninitializedPlayerId;
+ 561| 
+ 562|   /// This is just exposed for testing. It shouldn't be used by anyone depending
+ 563|   /// on the plugin.
+ 564|   @visibleForTesting
+ 565|   int get playerId => _playerId;
+ 566| 
+ 567|   /// Attempts to open the given [dataSource] and load metadata about the video.
+ 568|   Future<void> initialize() async {
+ 569|     final bool allowBackgroundPlayback = videoPlayerOptions?.allowBackgroundPlayback ?? false;
+ 570|     if (!allowBackgroundPlayback) {
+ 571|       _lifeCycleObserver = _VideoAppLifeCycleObserver(this);
+ 572|     }
+ 573|     _lifeCycleObserver?.initialize();
+ 574|     _creatingCompleter = Completer<void>();
+ 575| 
+ 576|     final platform_interface.DataSource dataSourceDescription;
+ 577|     switch (dataSourceType) {
+ 578|       case platform_interface.DataSourceType.asset:
+ 579|         dataSourceDescription = platform_interface.DataSource(
+ 580|           sourceType: platform_interface.DataSourceType.asset,
+ 581|           asset: dataSource,
+ 582|           package: package,
+ 583|         );
+ 584|       case platform_interface.DataSourceType.network:
+ 585|         dataSourceDescription = platform_interface.DataSource(
+ 586|           sourceType: platform_interface.DataSourceType.network,
+ 587|           uri: dataSource,
+ 588|           formatHint: formatHint,
+ 589|           httpHeaders: httpHeaders,
+ 590|         );
+ 591|       case platform_interface.DataSourceType.file:
+ 592|         dataSourceDescription = platform_interface.DataSource(
+ 593|           sourceType: platform_interface.DataSourceType.file,
+ 594|           uri: dataSource,
+ 595|           httpHeaders: httpHeaders,
+ 596|         );
+ 597|       case platform_interface.DataSourceType.contentUri:
+ 598|         dataSourceDescription = platform_interface.DataSource(
+ 599|           sourceType: platform_interface.DataSourceType.contentUri,
+ 600|           uri: dataSource,
+ 601|         );
+ 602|     }
+ 603| 
+ 604|     final creationOptions = platform_interface.VideoCreationOptions(
+ 605|       dataSource: dataSourceDescription,
+ 606|       viewType: viewType,
+ 607|       videoPlayerOptions: videoPlayerOptions,
+ 608|     );
+ 609| 
+ 610|     if (videoPlayerOptions?.mixWithOthers != null) {
+ 611|       await _videoPlayerPlatform.setMixWithOthers(videoPlayerOptions!.mixWithOthers);
+ 612|     }
+ 613| 
+ 614|     _playerId =
+ 615|         (await _videoPlayerPlatform.createWithOptions(creationOptions)) ?? kUninitializedPlayerId;
+ 616|     _creatingCompleter!.complete(null);
+ 617|     final initializingCompleter = Completer<void>();
+ 618| 
+ 619|     await _videoPlayerPlatform.setPreventsDisplaySleepDuringVideoPlayback(
+ 620|       _playerId,
+ 621|       value.preventsDisplaySleepDuringVideoPlayback,
+ 622|     );
+ 623| 
+ 624|     // Apply the web-specific options
+ 625|     if (kIsWeb && videoPlayerOptions?.webOptions != null) {
+ 626|       await _videoPlayerPlatform.setWebOptions(_playerId, videoPlayerOptions!.webOptions!);
+ 627|     }
+ 628| 
+ 629|     void eventListener(platform_interface.VideoEvent event) {
+ 630|       if (_isDisposed) {
+ 631|         return;
+ 632|       }
+ 633| 
+ 634|       switch (event.eventType) {
+ 635|         case platform_interface.VideoEventType.initialized:
+ 636|           value = value.copyWith(
+ 637|             duration: event.duration,
+ 638|             size: event.size,
+ 639|             rotationCorrection: event.rotationCorrection,
+ 640|             isInitialized: event.duration != null,
+ 641|             errorDescription: null,
+ 642|             isCompleted: false,
+ 643|           );
+ 644|           assert(
+ 645|             !initializingCompleter.isCompleted,
+ 646|             'VideoPlayerController already initialized. This is typically a '
+ 647|             'sign that an implementation of the VideoPlayerPlatform '
+ 648|             '(${_videoPlayerPlatform.runtimeType}) has a bug and is sending '
+ 649|             'more than one initialized event per instance.',
+ 650|           );
+ 651|           if (initializingCompleter.isCompleted) {
+ 652|             throw StateError('VideoPlayerController already initialized');
+ 653|           }
+ 654|           initializingCompleter.complete(null);
+ 655|           _applyLooping();
+ 656|           _applyVolume();
+ 657|           _applyPlayPause();
+ 658|         case platform_interface.VideoEventType.completed:
+ 659|           // In this case we need to stop _timer, set isPlaying=false, and
+ 660|           // position=value.duration. Instead of setting the values directly,
+ 661|           // we use pause() and seekTo() to ensure the platform stops playing
+ 662|           // and seeks to the last frame of the video.
+ 663|           pause().then((void pauseResult) => seekTo(value.duration));
+ 664|           value = value.copyWith(isCompleted: true);
+ 665|         case platform_interface.VideoEventType.bufferingUpdate:
+ 666|           value = value.copyWith(buffered: event.buffered);
+ 667|         case platform_interface.VideoEventType.bufferingStart:
+ 668|           value = value.copyWith(isBuffering: true);
+ 669|         case platform_interface.VideoEventType.bufferingEnd:
+ 670|           value = value.copyWith(isBuffering: false);
+ 671|         case platform_interface.VideoEventType.isPlayingStateUpdate:
+ 672|           if (event.isPlaying ?? false) {
+ 673|             value = value.copyWith(isPlaying: event.isPlaying, isCompleted: false);
+ 674|           } else {
+ 675|             value = value.copyWith(isPlaying: event.isPlaying);
+ 676|           }
+ 677|         case platform_interface.VideoEventType.unknown:
+ 678|           break;
+ 679|       }
+ 680|     }
+ 681| 
+ 682|     if (_closedCaptionFileFuture != null) {
+ 683|       await _updateClosedCaptionWithFuture(_closedCaptionFileFuture);
+ 684|     }
+ 685| 
+ 686|     void errorListener(Object obj) {
+ 687|       final e = obj as PlatformException;
+ 688|       value = VideoPlayerValue.erroneous(e.message!);
+ 689|       _timer?.cancel();
+ 690|       if (!initializingCompleter.isCompleted) {
+ 691|         initializingCompleter.completeError(obj);
+ 692|       }
+ 693|     }
+ 694| 
+ 695|     _eventSubscription = _videoPlayerPlatform
+ 696|         .videoEventsFor(_playerId)
+ 697|         .listen(eventListener, onError: errorListener);
+ 698|     return initializingCompleter.future;
+ 699|   }
+ 700| 

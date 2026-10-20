@@ -1,0 +1,121 @@
+-    return () => { cancelled = true; };
+-  }, [api, token, placement, active]);
++    return () => { cancelled = true; controller.abort(); };
++  }, [api, token, placement, active, phase]);
+ 
+   useEffect(() => {
+-    if (!active) videoRef.current?.pause();
+-  }, [active]);
++    const media = videoRef.current;
++    if (!media) return;
++    if (!active || phase !== "ad" || document.hidden) media.pause();
++    else if (!playError) {
++      lastProgress.current = Date.now();
++      media.play().catch(error => {
++        if (error.name === "NotAllowedError") setPaused(true);
++        else if (error.name !== "AbortError") setPlayError(error.message);
++      });
++    }
++  }, [active, phase, playError]);
++
++  useEffect(() => {
++    if (!active || !["loading", "ad"].includes(phase)) return;
++    lastProgress.current = Date.now();
++    const timer = window.setInterval(() => {
++      const media = videoRef.current;
++      if (document.hidden || (phase === "ad" && media?.paused)) {
++        lastProgress.current = Date.now();
++        return;
++      }
++      if (Date.now() - lastProgress.current >= 15000) {
++        media?.pause();
++        setPlayError("The ad is taking too long to load. Check your connection or continue to your video.");
++        window.clearInterval(timer);
++      }
++    }, 1000);
++    return () => window.clearInterval(timer);
++  }, [active, phase]);
+ 
+   useEffect(() => {
+     if (phase === "done") onDone?.();
+   }, [phase, onDone]);
+ 
+   useEffect(() => {
+-    if (phase !== "ad" || !ad) return;
++    if (!ad || !displayingAd) return;
+     const media = videoRef.current;
+     let hls;
+     let cancelled = false;
+     const src = mediaSrc(api, ad.mediaUrl);
+     async function attach() {
+       try {
+-        if (ad.creatorVideoId && !media.canPlayType("application/vnd.apple.mpegurl")) {
++        if (/\.m3u8(?:$|[?#])/i.test(src) && !media.canPlayType("application/vnd.apple.mpegurl")) {
+           const { default: Hls } = await import("hls.js/dist/hls.light.mjs");
+           if (cancelled) return;
+           if (!Hls.isSupported()) throw new Error("This browser cannot play this video ad.");
+-          hls = new Hls({ maxBufferLength: 10, maxMaxBufferLength: 20, backBufferLength: 0 });
++          hls = new Hls({ ...hlsPlaybackConfig, backBufferLength: 0 });
+           hls.on(Hls.Events.ERROR, (_event, data) => {
+             if (!cancelled && data.fatal) {
+               hls.stopLoad();
+@@ -154,9 +190,11 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+       media.removeAttribute("src");
+       media.load();
+     };
+-  }, [phase, ad, api]);
++  }, [ad, api, displayingAd]);
+ 
+-  if (phase === "loading") return <div className="ad-preroll" aria-busy="true" />;
++  if (phase === "loading" && !ad) return <div className="ad-preroll" aria-busy={!playError}>
++    {playError && <div className="ad-error" role="alert"><p>{playError}</p><button className="secondary-btn" onClick={() => setPhase("done")}>Continue to video</button></div>}
++  </div>;
+   if (phase === "done" || !ad) return children;
+ 
+   const skipAt = Math.min(ad.skipAfterSeconds, duration || ad.skipAfterSeconds);
+@@ -211,7 +249,7 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+     <div className="ad-preroll">
+       <video
+         ref={videoRef}
+-        autoPlay={active}
++        autoPlay={active && phase === "ad"}
+         playsInline
+         preload="auto"
+         disablePictureInPicture
+@@ -221,12 +259,13 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+           const media = event.currentTarget;
+           const delta = media.currentTime - lastPosition.current;
+           lastPosition.current = media.currentTime;
+-          if (active && !document.hidden && !media.paused && !media.seeking && delta > 0 && delta < 1.5) watchedMs.current += delta * 1000;
++          if (delta > 0) lastProgress.current = Date.now();
++          if (phase === "ad" && active && !document.hidden && !media.paused && !media.seeking && delta > 0 && delta < 1.5) watchedMs.current += delta * 1000;
+           setElapsed(media.currentTime);
+         }}
+         onSeeking={event => { lastPosition.current = event.currentTarget.currentTime; }}
+         onCanPlay={event => {
+-          if (active && !document.hidden) event.currentTarget.play().catch(error => {
++          if (phase === "ad" && active && !document.hidden && !playError) event.currentTarget.play().catch(error => {
+             if (error.name === "NotAllowedError") setPaused(true);
+             else if (error.name !== "AbortError") setPlayError(error.message);
+           });
+@@ -240,8 +279,8 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+       />
+       <span className="ad-label">Ad</span>
+       {playError && <div className="ad-error" role="alert"><p>{playError}</p><button className="secondary-btn" onClick={finish}>Continue to video</button></div>}
+-      {paused && <button type="button" className="ad-play" aria-label="Play ad" onClick={() => videoRef.current?.play()}><Play size={30} fill="currentColor"/></button>}
+-      <div className="ad-bottom-bar">
++      {paused && !playError && phase === "ad" && <button type="button" className="ad-play" aria-label="Play ad" onClick={() => videoRef.current?.play().catch(error => setPlayError(error.message))}><Play size={30} fill="currentColor"/></button>}
++      {phase === "ad" && <div className="ad-bottom-bar">
+         {ad.targetUrl && <a className="ad-visit ad-live-visit" href={ad.targetUrl}
+           target="_blank" rel="noopener noreferrer sponsored"
+           onClick={() => { videoRef.current?.pause(); track(api, ad.id, "click"); }}>
+@@ -250,7 +289,7 @@ export function PlayerGate({ api, token, children, placement = "video", active =
+         {ad.skippable
+           ? <button type="button" className="ad-skip" disabled={!canSkip} onClick={finish}>{canSkip ? "Skip ad ›" : `Skip in ${Math.max(1, Math.ceil(skipAt - elapsed))}s`}</button>
+           : <span className="ad-skip ad-must">You can watch your video in {remaining || ""}{remaining ? "s" : "…"}</span>}
+-      </div>
++      </div>}
+     </div>
+   );
+ }
+

@@ -1,0 +1,41 @@
+﻿diff --git a/mobile/README.md b/mobile/README.md
+index 042faea..ff73da3 100644
+--- a/mobile/README.md
++++ b/mobile/README.md
+@@ -2,6 +2,23 @@
+ 
+ A new Flutter project.
+ 
++## Normal video playback and ad loading
++
++Normal Bunny embeds on web and Android explicitly enable preloading, the
++player's **Settings -> Speed** menu, and quality capping to the rendered player
++size. Quality remains adaptive; viewers can still use the Bunny player controls.
++Direct video files have a separate 0.5x-2x speed control (HLS uses adaptive
++playback on supported platforms). Speed changes never apply to ads.
++
++Ad media prepares while authorization is in progress instead of waiting for
++each independent request sequentially. Playback still waits for an accepted
++impression, and creator-ad completion tickets and skip delays are unchanged.
++After 15 seconds without loading/playback progress, an explicit connection
++message offers **Continue to video**; a stalled/skipped ad does not submit a
++completed-watch reward. Uploaded MP4 ads still use the API's byte-range
++delivery; large, high-bitrate uploads can buffer on slow connections. Prefer
++adaptive Bunny-hosted creator ads, or compressed web-optimized MP4 files.
++
+ ## Simply engagement
+ 
+ Simply keeps its vertical swipe feed on web and Android. Its compact translucent
+diff --git a/mobile/pubspec.yaml b/mobile/pubspec.yaml
+index 6f06e64..43cdf4a 100644
+--- a/mobile/pubspec.yaml
++++ b/mobile/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.0.14+15
++version: 1.0.15+16
+ 
+ environment:
+   sdk: ^3.13.5

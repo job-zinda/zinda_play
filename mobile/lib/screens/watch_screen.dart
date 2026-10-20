@@ -1,15 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../ads.dart';
+import '../engagement.dart';
 import '../api.dart';
+import '../playback.dart';
 import 'auth_screen.dart';
 import 'shorts_screen.dart';
 import '../widgets/share_sheet.dart';
 import '../widgets/member_watch_tracker.dart';
+import '../widgets/normal_video_player.dart';
 import '../widgets/video_engagement.dart';
+import '../widgets/comment_threads.dart';
 import '../theme.dart';
 
 class WatchScreen extends StatefulWidget {
@@ -22,6 +28,9 @@ class WatchScreen extends StatefulWidget {
 class _WatchScreenState extends State<WatchScreen> {
   WebViewController? _web;
   bool _liked = false;
+  String? _reaction;
+  Map<String, dynamic>? _reactions;
+  String? _commentsNextCursor;
   int _likes = 0;
   int _commentCount = 0;
   List<Map<String, dynamic>> _comments = [];
@@ -53,14 +62,14 @@ class _WatchScreenState extends State<WatchScreen> {
     if (widget.video['videoType'] == 'short') return;
     Interests.record(widget.video['categoryId']);
     final url = widget.video['playbackUrl'] as String?;
-    if (url != null && url.isNotEmpty) {
+    if (url != null && url.isNotEmpty && !isDirectPlayback(url)) {
       final controller = WebViewController();
       if (!kIsWeb) {
         controller
           ..setJavaScriptMode(JavaScriptMode.unrestricted)
           ..setBackgroundColor(Colors.black);
       }
-      _web = controller..loadRequest(Uri.parse(url));
+      _web = controller..loadRequest(Uri.parse(normalPlaybackUrl(url)));
     }
     _loadInteractions();
     _loadSaved();
@@ -80,6 +89,11 @@ class _WatchScreenState extends State<WatchScreen> {
       if (!mounted) return;
       setState(() {
         _liked = data['liked'] == true;
+        _reaction = data['reaction'] as String?;
+        _reactions = data['reactions'] == null
+            ? null
+            : Map<String, dynamic>.from(data['reactions'] as Map);
+        _commentsNextCursor = data['commentsNextCursor'] as String?;
         _likes = (data['likeCount'] as num?)?.toInt() ?? 0;
         _comments = (data['comments'] as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
@@ -156,7 +170,7 @@ class _WatchScreenState extends State<WatchScreen> {
     }
   }
 
-  Future<void> _like() async {
+  Future<void> _like([String reaction = 'like']) async {
     if (_liking || _loading) return;
     setState(() {
       _liking = true;
@@ -164,12 +178,19 @@ class _WatchScreenState extends State<WatchScreen> {
     });
     try {
       if (!await _requireSignIn() || !mounted) return;
-      final data = await Api.instance.post('/videos/$_id/like') as Map;
+      final data = await Api.instance.post('/videos/$_id/reaction', {
+        'reaction': reaction,
+      }) as Map;
       if (!mounted) return;
       setState(() {
         _liked = data['liked'] == true;
+        _reaction = data['reaction'] as String?;
+        _reactions = data['reactions'] == null
+            ? null
+            : Map<String, dynamic>.from(data['reactions'] as Map);
         _likes = (data['likeCount'] as num?)?.toInt() ?? _likes;
       });
+      if (_reaction != null) unawaited(playEngagementSound());
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
@@ -189,6 +210,7 @@ class _WatchScreenState extends State<WatchScreen> {
       await Api.instance.post('/videos/$_id/comments', {'text': text});
       if (!mounted) return;
       _comment.clear();
+      unawaited(playEngagementSound());
       await _loadInteractions();
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -241,7 +263,7 @@ class _WatchScreenState extends State<WatchScreen> {
           children: [
             AspectRatio(
               aspectRatio: 16 / 9,
-              child: _web == null
+              child: '${v['playbackUrl'] ?? ''}'.isEmpty
                   ? const Center(child: Text('Video is not available yet.'))
                   : PlayerGate(
                       builder: (_) => MemberWatchTracker(
@@ -250,7 +272,9 @@ class _WatchScreenState extends State<WatchScreen> {
                         onError: (message) {
                           if (mounted) setState(() => _error = message);
                         },
-                        child: WebViewWidget(controller: _web!),
+                        child: isDirectPlayback('${v['playbackUrl']}')
+                            ? NormalVideoPlayer(source: '${v['playbackUrl']}')
+                            : WebViewWidget(controller: _web!),
                       ),
                     ),
             ),
@@ -285,6 +309,9 @@ class _WatchScreenState extends State<WatchScreen> {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
               child: VideoEngagementBar(
                 liked: _liked,
+                reaction: _reaction,
+                reactions: _reactions,
+                onReact: _like,
                 saved: _saved,
                 likes: _likes,
                 comments: _commentCount,
@@ -354,44 +381,13 @@ class _WatchScreenState extends State<WatchScreen> {
                           style: const TextStyle(color: Colors.redAccent),
                         ),
                       ),
-                    for (final c in _comments)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const CircleAvatar(
-                              radius: 16,
-                              backgroundColor: Color(0xFF332450),
-                              child: Icon(
-                                Icons.person_outline,
-                                size: 19,
-                                color: kPurple,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${c['username'] ?? ''}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: kPurple,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${c['text'] ?? ''}',
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    CommentThreads(
+                      videoId: _id,
+                      comments: _comments,
+                      nextCursor: _commentsNextCursor,
+                      requireSignIn: _requireSignIn,
+                      onAdded: () => setState(() => _commentCount++),
+                    ),
                     if (Api.instance.signedIn)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),
@@ -425,6 +421,7 @@ class _WatchScreenState extends State<WatchScreen> {
                             ),
                             IconButton(
                               tooltip: 'Post comment',
+                              enableFeedback: false,
                               onPressed: _posting ? null : _postComment,
                               icon: _posting
                                   ? const SizedBox(

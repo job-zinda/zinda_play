@@ -1,0 +1,5 @@
+D:\flutter\flutter\bin\flutter
+D:\flutter\flutter\bin\flutter.bat
+D:\flutter\flutter\bin\dart
+D:\flutter\flutter\bin\dart.bat
+C:\Program Files\nodejs\node.exe

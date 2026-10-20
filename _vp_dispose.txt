@@ -1,0 +1,24 @@
+﻿LINE 702
+  Future<void> dispose() async {
+    if (_isDisposed) {
+      return;
+    }
+
+    if (_creatingCompleter != null) {
+      await _creatingCompleter!.future;
+      if (!_isDisposed) {
+        _isDisposed = true;
+        _timer?.cancel();
+        await _eventSubscription?.cancel();
+        await _videoPlayerPlatform.dispose(_playerId);
+      }
+      _lifeCycleObserver?.dispose();
+    }
+    _isDisposed = true;
+    super.dispose();
+  }
+
+  /// Starts playing the video.
+  ///
+  /// If the video is at the end, this method starts playing from the beginning.
+  ///

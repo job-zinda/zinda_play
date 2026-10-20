@@ -1,0 +1,6 @@
+.well-known
+app-icon.png
+delete-account.html
+download-app.html
+downloads
+privacy.html

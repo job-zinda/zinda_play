@@ -23,7 +23,7 @@ async function fixture(t, role = "creator") {
     await db.collection(`${bucket}.files`).insertOne({ _id: fileId });
     await db.collection(`${bucket}.chunks`).insertOne({ files_id: fileId, data: "bytes" });
   }
-  for (const name of ["videoLikes", "videoComments", "savedShorts", "shortReports"]) {
+  for (const name of ["videoLikes", "videoComments", "commentReactions", "savedShorts", "shortReports"]) {
     await db.collection(name).insertOne({ userId: id.toString(), videoId: "other" });
     await db.collection(name).insertOne({ userId: other.toString(), videoId: "owned" });
     await db.collection(name).insertOne({ userId: other.toString(), videoId: "other" });
@@ -83,9 +83,13 @@ test("creator deletion removes profile/media/social data, revokes all sessions a
   assert.equal((await f.db.collection("videos").findOne({ _id: "other" })).published, true);
   assert.equal((await f.db.collection("ads").findOne({ creatorVideoId: "owned" })).active, false);
   assert.equal((await f.db.collection("ads").findOne({ creatorId: f.other.toString() })).active, true);
-  for (const name of ["videoLikes", "videoComments", "savedShorts", "shortReports"]) {
+  for (const name of ["videoLikes", "commentReactions", "savedShorts", "shortReports"]) {
     assert.equal(await f.db.collection(name).countDocuments({}), 1);
   }
+  assert.equal(await f.db.collection("videoComments").countDocuments({}), 2);
+  const deletedComment = await f.db.collection("videoComments").findOne({ userId: null });
+  assert.equal(deletedComment.username, "Deleted account");
+  assert.equal(deletedComment.text, "[deleted]");
   for (const bucket of ["creatorProfilePhotos", "videoThumbnails"]) {
     assert.equal(await f.db.collection(`${bucket}.files`).countDocuments({}), 0);
     assert.equal(await f.db.collection(`${bucket}.chunks`).countDocuments({}), 0);

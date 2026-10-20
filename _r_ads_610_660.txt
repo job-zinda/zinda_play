@@ -1,0 +1,52 @@
+        ),
+      );
+    }
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: AspectRatio(
+              aspectRatio: value.aspectRatio,
+              child: VideoPlayer(video),
+            ),
+          ),
+          const Positioned(left: 8, top: 8, child: _AdLabel()),
+          if (_error != null)
+            Center(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_error!),
+                      TextButton(
+                        onPressed: _finish,
+                        child: const Text('Continue to video'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (!value.isPlaying)
+            Positioned(
+              right: 10,
+              top: widget.placement == 'simply' ? 64 : 38,
+              child: IconButton.filled(
+                tooltip: 'Play ad',
+                iconSize: 24,
+                onPressed: _canPlay ? video.play : null,
+                icon: const Icon(Icons.play_arrow_rounded),
+              ),
+            ),
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 10,
+            child: Row(
+              children: [
+                Expanded(
+                  child: '${ad['targetUrl'] ?? ''}'.isEmpty

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Bookmark, Heart, Loader2, MessageCircle, RefreshCw, Send, UserRound } from "lucide-react";
 import "./watch.css";
+import { CommentThreads, ReactionButton } from "./Reactions.jsx";
+import { prepareEngagementSound } from "./engagement-feedback.js";
 
 export const savedVideoKey = (username, videoId) =>
   username && videoId ? `saved-video:${encodeURIComponent(username)}:${encodeURIComponent(videoId)}` : "";
@@ -38,9 +40,9 @@ export function Action({ label, count, icon, tone, selected, busy, onClick, comp
   </button>;
 }
 
-export function EngagementBar({ liked, likes, comments, saved, liking, onLike, onComments, onShare, onSave }) {
+export function EngagementBar({ liked, reaction, reactions, likes, comments, saved, liking, onLike, onComments, onShare, onSave }) {
   return <div className="engage-bar" role="group" aria-label="Video actions">
-    <Action label="Like" count={likes} tone="like" selected={liked} busy={liking} onClick={onLike} icon={<Heart size={19} fill={liked ? "currentColor" : "none"}/>}/>
+    <ReactionButton reaction={reaction || (liked ? "like" : null)} counts={reactions} count={likes} busy={liking} onReact={onLike}/>
     <Action label="Comments" count={comments} tone="comments" onClick={onComments} icon={<MessageCircle size={19}/>}/>
     <Action label="Share" onClick={onShare} icon={<Send size={19}/>}/>
     <Action label={saved ? "Saved" : "Save"} tone="save" selected={saved} onClick={onSave} icon={<Bookmark size={19} fill={saved ? "currentColor" : "none"}/>}/>
@@ -65,18 +67,15 @@ export function CommentsEmptyState() {
   </div>;
 }
 
-export function CommentsPanel({ panelRef, inputRef, count, comments, canComment, signedIn, commentText, onCommentText, onSubmit, submitting, onRefresh, refreshing, onSignIn }) {
+export function CommentsPanel({ panelRef, inputRef, count, comments, canComment, signedIn, commentText, onCommentText, onSubmit, submitting, onRefresh, refreshing, onSignIn, api, token, videoId, nextCursor, onReplyAdded }) {
   return <section className="comments-panel" ref={panelRef} aria-labelledby="comments-heading">
     <div className="comments-panel-head">
       <h2 id="comments-heading">Comments ({Number(count || 0).toLocaleString()})</h2>
       {onRefresh && <button type="button" className="comments-refresh" onClick={onRefresh} disabled={refreshing} aria-label="Refresh comments"><RefreshCw size={17}/></button>}
     </div>
-    {comments.length ? <div className="comment-list">{comments.map(comment => <article className="comment-item" key={comment.id}>
-      <div className="comment-avatar">{String(comment.username || "?").slice(0, 1).toUpperCase()}</div>
-      <div><strong>{comment.username}</strong>{comment.createdAt && <time>{new Date(comment.createdAt).toLocaleString()}</time>}<p>{comment.text}</p></div>
-    </article>)}</div> : <CommentsEmptyState/>}
+    {comments.length ? <CommentThreads comments={comments} nextCursor={nextCursor} api={api} token={token} videoId={videoId} canComment={canComment} onSignIn={onSignIn} onAdded={onReplyAdded}/> : <CommentsEmptyState/>}
     {canComment
-      ? <form className="comments-compose" onSubmit={onSubmit}>
+      ? <form className="comments-compose" onSubmit={event => { prepareEngagementSound(); onSubmit(event); }}>
         <textarea ref={inputRef} required rows={1} maxLength={1000} value={commentText} onChange={event => onCommentText(event.target.value)} placeholder="Share your thoughts..." aria-label="Add a comment"/>
         <button type="submit" disabled={submitting || !commentText.trim()} aria-label="Post comment">{submitting ? <Loader2 className="engage-spin" size={19}/> : <Send size={19}/>}</button>
       </form>

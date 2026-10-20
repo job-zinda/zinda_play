@@ -4,6 +4,8 @@ import "./shorts.css";
 import { shareLink, videoShareUrl } from "./public-links.js";
 import { PlayerGate } from "./Ads.jsx";
 import { Action, CommentsEmptyState } from "./WatchEngagement.jsx";
+import { CommentThreads, ReactionButton } from "./Reactions.jsx";
+import { playEngagementSound, prepareEngagementSound } from "./engagement-feedback.js";
 
 async function request(api, token, path, options = {}) {
   const response = await fetch(`${api}${path}`, {
@@ -331,10 +333,11 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, 
     {active && buffering && !playError && !paused && <div className="shorts-loading" role="status">Loading video...</div>}
     {active && playError && <div className="shorts-play-error" role="alert"><p>{playError}</p><button className="primary-btn" onClick={() => setRetry(value => value + 1)}>Retry playback</button></div>}
     <div className="shorts-actions" role="group" aria-label="Simply actions">
-      {button("Like", Heart, () => action(async () => {
-        const data = await request(api, token, `/videos/${video.id}/like`, { method: "POST" });
+      <ReactionButton reaction={state.reaction || (state.liked ? "like" : null)} counts={state.reactions} count={state.likeCount} busy={busy} onReact={reaction => action(async () => {
+        const data = await request(api, token, `/videos/${video.id}/reaction`, { method: "POST", body: JSON.stringify({ reaction }) });
         setState(current => ({ ...current, ...data }));
-      }), state.liked, "like", state.likeCount)}
+        if (data.reaction) playEngagementSound();
+      })}/>
       {button("Comments", MessageCircle, () => { setError(""); setModal("comments"); }, undefined, "comments", state.commentCount ?? state.comments.length)}
       {button("Share", Send, () => onShare ? onShare(video) : action(async () => {
         const result = await shareLink(video.title, videoShareUrl(video.id));
@@ -381,10 +384,10 @@ function ShortVideo({ video, api, token, role, active, muted, onMute, onSignIn, 
       }}>
       <div className="shorts-modal-heading"><h2>{modal === "comments" ? `Comments (${state.commentCount ?? state.comments.length})` : "Report Simply video"}</h2><button autoFocus disabled={busy} aria-label="Close dialog" onClick={() => setModal("")}><X/></button></div>
       {modal === "comments" ? <>
-        <div className="shorts-comments">{state.comments.length ? state.comments.map((item, i) => <div key={item.id || i}><strong>{item.username}</strong><p>{item.text}</p></div>) : <CommentsEmptyState/>}</div>
-        {!token ? <div className="comments-signin"><UserRound size={22}/><span>Sign in to like, comment or follow creators.</span><button type="button" onClick={onSignIn}>Sign In</button></div> : <form onSubmit={event => { event.preventDefault(); action(async () => {
+        <div className="shorts-comments">{state.comments.length ? <CommentThreads comments={state.comments} nextCursor={state.commentsNextCursor} api={api} token={token} videoId={video.id} canComment={canEngage} onSignIn={onSignIn} onAdded={() => setState(current => ({ ...current, commentCount: current.commentCount + 1 }))}/> : <CommentsEmptyState/>}</div>
+        {!token ? <div className="comments-signin"><UserRound size={22}/><span>Sign in to like, comment or follow creators.</span><button type="button" onClick={onSignIn}>Sign In</button></div> : <form onSubmit={event => { event.preventDefault(); prepareEngagementSound(); action(async () => {
           const data = await request(api, token, `/videos/${video.id}/comments`, { method: "POST", body: JSON.stringify({ text: comment.trim() }) });
-          setState(current => ({ ...current, commentCount: (current.commentCount ?? current.comments.length) + 1, comments: [data, ...current.comments] })); setComment("");
+          setState(current => ({ ...current, commentCount: (current.commentCount ?? current.comments.length) + 1, comments: [data, ...current.comments] })); setComment(""); playEngagementSound(true);
         }); }}>
           <label>Add a comment<textarea maxLength={500} value={comment} disabled={busy} onChange={event => setComment(event.target.value)}/></label>
           <button className="primary-btn" disabled={busy || !comment.trim()}>Post comment</button>

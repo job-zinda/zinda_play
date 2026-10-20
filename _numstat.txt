@@ -1,0 +1,8 @@
+﻿60	21	client/src/Ads.jsx
+2	1	client/src/App.jsx
+5	0	client/src/watch.css
+17	0	mobile/README.md
+82	17	mobile/lib/ads.dart
+8	4	mobile/lib/screens/watch_screen.dart
+1	1	mobile/pubspec.yaml
+122	8	mobile/test/ads_test.dart

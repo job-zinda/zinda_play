@@ -1,0 +1,141 @@
+      return;
+    }
+    try {
+      if (!await AdsApi.claim(ad, ticket: _ticket?['ticket'] as String?)) {
+        await _discardPreparing(controller);
+        if (mounted) _finish();
+        return;
+      }
+      AdsApi.markDelivered('${ad['id']}');
+    } catch (error) {
+      debugPrint('Video ad delivery failed: $error');
+      await _discardPreparing(controller);
+      if (mounted) _finish();
+      return;
+    }
+    if (!mounted || _done) {
+      await _discardPreparing(controller);
+      return;
+    }
+    _preparing = null;
+    controller.addListener(_tick);
+    setState(() {
+      _ad = ad;
+      _video = controller;
+      _loading = false;
+      _error = null;
+    });
+    _idleSeconds = 0;
+    try {
+      if (_canPlay) await controller.play();
+    } catch (error) {
+      if (mounted) setState(() => _error = 'Could not play this ad: $error');
+    }
+  }
+
+  Future<void> _discardPreparing(VideoPlayerController controller) async {
+    if (_preparing != controller) return;
+    _preparing = null;
+    await controller.dispose();
+  }
+
+  void _tick() {
+    final v = _video;
+    if (v == null || !mounted || _done) return;
+    final value = v.value;
+    final position = value.position.inMilliseconds;
+    final delta = position - _lastPosition;
+    if (delta > 0) _idleSeconds = 0;
+    _lastPosition = position;
+    final ended =
+        value.duration > Duration.zero && value.position >= value.duration;
+    if (_canPlay &&
+        !value.isBuffering &&
+        (value.isPlaying || ended) &&
+        delta > 0 &&
+        delta < 1500) {
+      _watchedMs += delta;
+    }
+    if (value.hasError) {
+      debugPrint('Video ad playback failed: ${value.errorDescription}');
+      _finish();
+      return;
+    }
+    if (ended) {
+      _complete();
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _complete() async {
+    if (_completing) return;
+    _completing = true;
+    _loadWatchdog?.cancel();
+    final ticket = _ticket;
+    final minimum = (ticket?['minimumWatchMs'] as num?)?.toInt();
+    if (ticket != null && minimum != null && _watchedMs >= minimum - 250) {
+      try {
+        await Api.instance.post('/ads/${_ad!['id']}/view', {
+          'ticket': ticket['ticket'],
+        });
+      } catch (error) {
+        debugPrint('Creator ad earning tracking failed: $error');
+      }
+    }
+    if (mounted) {
+      if ('${_ad!['targetUrl'] ?? ''}'.isNotEmpty ||
+          '${_ad!['productUrl'] ?? ''}'.isNotEmpty) {
+        setState(() => _ended = true);
+      } else {
+        _finish();
+      }
+    }
+  }
+
+  void _finish() {
+    if (_done) return;
+    _loadWatchdog?.cancel();
+    final preparing = _preparing;
+    if (preparing != null) unawaited(_discardPreparing(preparing));
+    _video?.removeListener(_tick);
+    _video?.dispose();
+    _video = null;
+    if (mounted) {
+      setState(() {
+        _done = true;
+        _loading = false;
+      });
+      widget.onDone?.call();
+    }
+  }
+
+  @override
+  void dispose() {
+    _loadWatchdog?.cancel();
+    final preparing = _preparing;
+    if (preparing != null) unawaited(_discardPreparing(preparing));
+    WidgetsBinding.instance.removeObserver(this);
+    appRouteObserver.unsubscribe(this);
+    _video?.removeListener(_tick);
+    _video?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return VisibilityDetector(
+      key: ObjectKey(this),
+      onVisibilityChanged: (info) {
+        _onScreen = info.visibleFraction >= 0.5;
+        if (!_canPlay) _video?.pause();
+      },
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
+    if (_done || (!_started && !widget.active)) return widget.builder(context);
+    final ad = _ad;
+    final video = _video;
+    if (_loading || ad == null || video == null) {

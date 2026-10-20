@@ -49,7 +49,12 @@ export async function deleteAccountData(db, user, { deleteVideoMedia, revokeSess
   await db.collection("businessCampaigns").updateMany({ businessId: id }, {
     $set: { businessName: "Deleted account" }, $unset: { targetUrl: "", targetCity: "", description: "", title: "" }
   });
-  for (const name of ["videoLikes", "videoComments", "savedShorts", "shortReports"]) {
+  // Preserve reply ancestry while removing the deleted account's comment content.
+  await db.collection("videoComments").updateMany({ userId: id }, {
+    $set: { userId: null, username: "Deleted account", text: "[deleted]" }
+  });
+  await db.collection("videoComments").deleteMany({ videoId: { $in: videoIds } });
+  for (const name of ["videoLikes", "commentReactions", "savedShorts", "shortReports"]) {
     await db.collection(name).deleteMany({ $or: [{ userId: id }, { videoId: { $in: videoIds } }] });
   }
   const conversationQuery = { $or: [{ creatorId: id }, { businessId: id }, { senderId: id }, { recipientId: id }] };

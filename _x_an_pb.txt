@@ -1,0 +1,15 @@
+﻿Analyzing playback_test.dart...                                 
+
+  error - The type of 'events' can't be inferred because it depends on itself through the cycle: events. Try adding an explicit type to one or more of the variables in the cycle in order to break the cycle - test\playback_test.dart:10:14 - top_level_cycle
+   info - Uses 'await' on an instance of 'void', which is not a subtype of 'Future'. Try removing the 'await' or changing the expression - test\playback_test.dart:134:7 - await_only_futures
+  error - This expression has a type of 'void' so its value can't be used. Try checking to see if you're using the correct API; there might be a function or call that returns void you didn't expect. Also check type parameters and variables which might also be void - test\playback_test.dart:134:28 - use_of_void_result
+   info - Uses 'await' on an instance of 'void', which is not a subtype of 'Future'. Try removing the 'await' or changing the expression - test\playback_test.dart:139:7 - await_only_futures
+  error - This expression has a type of 'void' so its value can't be used. Try checking to see if you're using the correct API; there might be a function or call that returns void you didn't expect. Also check type parameters and variables which might also be void - test\playback_test.dart:139:28 - use_of_void_result
+
+flutter : 5 issues found. (ran in 0.8s)
+At line:1 char:54
++ ... act (1)\mobile'; flutter analyze test/playback_test.dart 2>&1 | Out-F ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (5 issues found. (ran in 0.8s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

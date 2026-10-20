@@ -1,0 +1,140 @@
+﻿  @override
+  Future<void> dispose() async {
+    if (_isDisposed) {
+      return;
+    }
+
+    if (_creatingCompleter != null) {
+      await _creatingCompleter!.future;
+      if (!_isDisposed) {
+        _isDisposed = true;
+        _timer?.cancel();
+        await _eventSubscription?.cancel();
+        await _videoPlayerPlatform.dispose(_playerId);
+      }
+      _lifeCycleObserver?.dispose();
+    }
+    _isDisposed = true;
+    super.dispose();
+  }
+
+  /// Starts playing the video.
+  ///
+  /// If the video is at the end, this method starts playing from the beginning.
+  ///
+  /// This method returns a future that completes as soon as the "play" command
+  /// has been sent to the platform, not when playback itself is totally
+  /// finished.
+  Future<void> play() async {
+    if (value.position == value.duration) {
+      await seekTo(Duration.zero);
+    }
+    value = value.copyWith(isPlaying: true);
+    await _applyPlayPause();
+  }
+
+  /// Sets whether or not the video should loop after playing once. See also
+  /// [VideoPlayerValue.isLooping].
+  Future<void> setLooping(bool looping) async {
+    value = value.copyWith(isLooping: looping);
+    await _applyLooping();
+  }
+
+  /// Sets whether the screen is prevented from sleeping during video playback.
+  ///
+  /// See also [VideoPlayerValue.preventsDisplaySleepDuringVideoPlayback].
+  Future<void> setPreventsDisplaySleepDuringVideoPlayback(
+    bool preventsDisplaySleepDuringVideoPlayback,
+  ) async {
+    value = value.copyWith(
+      preventsDisplaySleepDuringVideoPlayback: preventsDisplaySleepDuringVideoPlayback,
+    );
+    await _applyPreventsDisplaySleepDuringVideoPlayback();
+  }
+
+  /// Pauses the video.
+  Future<void> pause() async {
+    value = value.copyWith(isPlaying: false);
+    await _applyPlayPause();
+  }
+
+  Future<void> _applyLooping() async {
+    if (_isDisposedOrNotInitialized) {
+      return;
+    }
+    await _videoPlayerPlatform.setLooping(_playerId, value.isLooping);
+  }
+
+  Future<void> _applyPreventsDisplaySleepDuringVideoPlayback() async {
+    if (_isDisposedOrNotInitialized) {
+      return;
+    }
+    await _videoPlayerPlatform.setPreventsDisplaySleepDuringVideoPlayback(
+      _playerId,
+      value.preventsDisplaySleepDuringVideoPlayback,
+    );
+  }
+
+  Future<void> _applyPlayPause() async {
+    if (_isDisposedOrNotInitialized) {
+      return;
+    }
+    if (value.isPlaying) {
+      await _videoPlayerPlatform.play(_playerId);
+
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(milliseconds: 100), (Timer timer) async {
+        if (_isDisposed) {
+          return;
+        }
+        final Duration? newPosition = await position;
+        if (newPosition == null) {
+          return;
+        }
+        _updatePosition(newPosition);
+      });
+
+      // This ensures that the correct playback speed is always applied when
+      // playing back. This is necessary because we do not set playback speed
+      // when paused.
+      await _applyPlaybackSpeed();
+    } else {
+      _timer?.cancel();
+      await _videoPlayerPlatform.pause(_playerId);
+    }
+  }
+
+  Future<void> _applyVolume() async {
+    if (_isDisposedOrNotInitialized) {
+      return;
+    }
+    await _videoPlayerPlatform.setVolume(_playerId, value.volume);
+  }
+
+  Future<void> _applyPlaybackSpeed() async {
+    if (_isDisposedOrNotInitialized) {
+      return;
+    }
+
+    // Setting the playback speed on iOS will trigger the video to play. We
+    // prevent this from happening by not applying the playback speed until
+    // the video is manually played from Flutter.
+    if (!value.isPlaying) {
+      return;
+    }
+
+    await _videoPlayerPlatform.setPlaybackSpeed(_playerId, value.playbackSpeed);
+  }
+
+  /// The position in the current video.
+  Future<Duration?> get position async {
+    if (_isDisposed) {
+      return null;
+    }
+    return _videoPlayerPlatform.getPosition(_playerId);
+  }
+
+  /// Sets the video's current timestamp to be at [moment]. The next
+  /// time the video is played it will resume from the given [moment].
+  ///
+  /// If [moment] is outside of the video's full range it will be automatically

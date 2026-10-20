@@ -1,0 +1,11 @@
+.env
+dist
+index.html
+node_modules
+package-lock.json
+package.json
+public
+scripts
+src
+vercel.json
+vite.config.js

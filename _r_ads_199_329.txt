@@ -1,0 +1,131 @@
+﻿  final String placement;
+  final bool active;
+  final VoidCallback? onDone;
+  const PlayerGate({
+    super.key,
+    required this.builder,
+    this.placement = 'video',
+    this.active = true,
+    this.onDone,
+  });
+  @override
+  State<PlayerGate> createState() => _PlayerGateState();
+}
+
+class _PlayerGateState extends State<PlayerGate>
+    with WidgetsBindingObserver, RouteAware {
+  bool _loading = true;
+  bool _done = false;
+  Map<String, dynamic>? _ad;
+  VideoPlayerController? _video;
+  VideoPlayerController? _preparing;
+  Timer? _loadWatchdog;
+  int _idleSeconds = 0;
+  Map<String, dynamic>? _ticket;
+  int _watchedMs = 0;
+  int _lastPosition = 0;
+  bool _visible = true;
+  bool _completing = false;
+  bool _ended = false;
+  bool _started = false;
+  bool _routeVisible = true;
+  bool _onScreen = true;
+  ModalRoute<void>? _route;
+  String? _error;
+  bool get _canPlay => widget.active && _visible && _routeVisible && _onScreen;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.active) _start();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of<void>(context);
+    if (route != _route) {
+      appRouteObserver.unsubscribe(this);
+      _route = route;
+      if (route != null) appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didUpdateWidget(PlayerGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !_started) _start();
+    if (!_canPlay) _video?.pause();
+  }
+
+  @override
+  void didPushNext() {
+    _routeVisible = false;
+    _video?.pause();
+  }
+
+  @override
+  void didPopNext() {
+    _routeVisible = true;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _visible = state == AppLifecycleState.resumed;
+    if (!_visible) _video?.pause();
+  }
+
+  Future<void> _start() async {
+    if (_started) return;
+    _started = true;
+    _idleSeconds = 0;
+    _loadWatchdog = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final value = _video?.value;
+      if (!_canPlay ||
+          (!_loading &&
+              value?.isPlaying == false &&
+              value?.isBuffering == false)) {
+        _idleSeconds = 0;
+        return;
+      }
+      if (++_idleSeconds >= 15) {
+        timer.cancel();
+        _video?.pause();
+        if (mounted && !_done) {
+          setState(
+            () => _error = 'The ad is taking too long to load. Check your connection or continue to your video.',
+          );
+        }
+      }
+    });
+    final ads = AdsApi.dueVideos(await AdsApi.fetch(widget.placement));
+    if (!mounted || _done) return;
+    if (ads.isEmpty) return _finish();
+    final ad = AdsApi.pick(ads);
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(assetUrl('${ad['mediaUrl']}')),
+    );
+    _preparing = controller;
+    try {
+      // Media preparation and the watch ticket do not depend on one another.
+      await Future.wait([
+        controller.initialize().timeout(const Duration(seconds: 15)),
+        if (ad['creatorVideoId'] != null)
+          Api.instance.post('/ads/${ad['id']}/view-start').then((data) {
+            _ticket = Map<String, dynamic>.from(data as Map);
+          }),
+      ]);
+    } catch (error) {
+      debugPrint('Video ad initialization failed: $error');
+      await _discardPreparing(controller);
+      if (mounted && !_done) {
+        setState(
+          () => _error = 'Could not load this ad. Check your connection or continue to your video.',
+        );
+      }
+      return;
+    }
+    if (!mounted || _done) {
+      await _discardPreparing(controller);
+      return;

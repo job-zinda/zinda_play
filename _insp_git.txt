@@ -1,0 +1,30 @@
+4d7c0e1 Refresh mobile and web authentication and Simply engagement
+0c6809a Start thumbnail-free homepage previews without waiting for preload
+8f00b68 Refresh WhatsApp video link previews
+0379b0d Match the website video page to the mobile app on phones
+d47dc20 Open shared and referral links in the installed app
+86b021d Fix shared links opening in browser: publish release certificate in assetlinks.json
+d271416 Align Visit advertiser with Skip ad on running ads and publish Android 1.0.11
+02304f7 Add configurable referral signup bonus and publish Android 1.0.10
+97294f5 Configure future reward rates and publish updated Android app
+42d53a6 Publish signed Android APK with website download and install page
+05fc9e8 latest ad corrections
+5e23d06 ad corrections
+04f119d Remove email signup verification and email account recovery
+1371e8f Unify Member wallets and add signup email OTP verification
+3c0857a new share issue fixed
+ca76c0f preview fixed
+f37a8dc link issues fixed
+e8ca375 Open creator profile from avatar on watch page and Simply
+88977e5 Open shared profile and video links directly
+da97584 Add creator wallet withdrawals and admin payouts
+7741f9f changes share option
+a29f5e4 changes 19-10-2026
+ec2e535 Update mobile privacy policy URL
+b7f24e9 latest with video arrangements
+766c47c Use video thumbnails for social link previews
+f5c2a18 Simplify homepage banner and fit Simply to mobile viewport
+a1710fa Fix custom-domain video shares and referral invitations
+8539eb3 added more features
+5884c76 Fit app branding icons and notify creators about ad conversions
+bafd57b Add creator video ads, retained earnings and creator deletion

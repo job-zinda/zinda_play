@@ -1,0 +1,42 @@
+﻿  int _playerId = kUninitializedPlayerId;
+
+  /// This is just exposed for testing. It shouldn't be used by anyone depending
+  /// on the plugin.
+  @visibleForTesting
+  int get playerId => _playerId;
+
+  /// Attempts to open the given [dataSource] and load metadata about the video.
+  Future<void> initialize() async {
+    final bool allowBackgroundPlayback = videoPlayerOptions?.allowBackgroundPlayback ?? false;
+    if (!allowBackgroundPlayback) {
+      _lifeCycleObserver = _VideoAppLifeCycleObserver(this);
+    }
+    _lifeCycleObserver?.initialize();
+    _creatingCompleter = Completer<void>();
+
+    final platform_interface.DataSource dataSourceDescription;
+    switch (dataSourceType) {
+      case platform_interface.DataSourceType.asset:
+        dataSourceDescription = platform_interface.DataSource(
+          sourceType: platform_interface.DataSourceType.asset,
+          asset: dataSource,
+          package: package,
+        );
+      case platform_interface.DataSourceType.network:
+        dataSourceDescription = platform_interface.DataSource(
+          sourceType: platform_interface.DataSourceType.network,
+          uri: dataSource,
+          formatHint: formatHint,
+          httpHeaders: httpHeaders,
+        );
+      case platform_interface.DataSourceType.file:
+        dataSourceDescription = platform_interface.DataSource(
+          sourceType: platform_interface.DataSourceType.file,
+          uri: dataSource,
+          httpHeaders: httpHeaders,
+        );
+      case platform_interface.DataSourceType.contentUri:
+        dataSourceDescription = platform_interface.DataSource(
+          sourceType: platform_interface.DataSourceType.contentUri,
+          uri: dataSource,
+        );

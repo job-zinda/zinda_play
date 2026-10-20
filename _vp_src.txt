@@ -1,0 +1,266 @@
+﻿
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:550:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:551:  Timer? _timer;
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:552:  bool _isDisposed = false;
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:553:  Completer<void>? _creatingCompleter;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:554:  StreamSubscription<dynamic>? 
+_eventSubscription;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:555:  _VideoAppLifeCycleObserver? 
+_lifeCycleObserver;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:556:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:557:  /// The id of a player that hasn't 
+been initialized.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:558:  @visibleForTesting
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:559:  static const int 
+kUninitializedPlayerId = -1;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:566:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:567:  /// Attempts to open the given 
+[dataSource] and load metadata about the video.
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:568:  Future<void> initialize() async {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:569:    final bool allowBackgroundPlayback = 
+videoPlayerOptions?.allowBackgroundPlayback ?? false;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:570:    if (!allowBackgroundPlayback) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:571:      _lifeCycleObserver = 
+_VideoAppLifeCycleObserver(this);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:572:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:573:    _lifeCycleObserver?.initialize();
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:574:    _creatingCompleter = 
+Completer<void>();
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:575:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:576:    final platform_interface.DataSource 
+dataSourceDescription;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:577:    switch (dataSourceType) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:578:      case 
+platform_interface.DataSourceType.asset:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:579:        dataSourceDescription = 
+platform_interface.DataSource(
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:580:          sourceType: 
+platform_interface.DataSourceType.asset,
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:615:        (await 
+_videoPlayerPlatform.createWithOptions(creationOptions)) ?? kUninitializedPlayerId;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:616:    _creatingCompleter!.complete(null);
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:617:    final initializingCompleter = 
+Completer<void>();
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:618:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:619:    await 
+_videoPlayerPlatform.setPreventsDisplaySleepDuringVideoPlayback(
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:620:      _playerId,
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:621:      
+value.preventsDisplaySleepDuringVideoPlayback,
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:622:    );
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:623:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:628:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:629:    void 
+eventListener(platform_interface.VideoEvent event) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:630:      if (_isDisposed) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:631:        return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:632:      }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:633:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:634:      switch (event.eventType) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:635:        case 
+platform_interface.VideoEventType.initialized:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:636:          value = value.copyWith(
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:700:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:701:  @override
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:702:  Future<void> dispose() async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:703:    if (_isDisposed) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:704:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:705:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:706:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:707:    if (_creatingCompleter != null) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:708:      await _creatingCompleter!.future;
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:709:      if (!_isDisposed) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:710:        _isDisposed = true;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:711:        _timer?.cancel();
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:712:        await 
+_eventSubscription?.cancel();
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:713:        await 
+_videoPlayerPlatform.dispose(_playerId);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:714:      }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:715:      _lifeCycleObserver?.dispose();
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:716:    }
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:717:    _isDisposed = true;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:718:    super.dispose();
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:719:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:720:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:721:  /// Starts playing the video.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:722:  ///
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:723:  /// If the video is at the end, this 
+method starts playing from the beginning.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:760:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:761:  Future<void> _applyLooping() async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:762:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:763:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:764:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:765:    await 
+_videoPlayerPlatform.setLooping(_playerId, value.isLooping);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:766:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:767:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:768:  Future<void> 
+_applyPreventsDisplaySleepDuringVideoPlayback() async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:769:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:770:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:771:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:772:    await 
+_videoPlayerPlatform.setPreventsDisplaySleepDuringVideoPlayback(
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:773:      _playerId,
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:774:      
+value.preventsDisplaySleepDuringVideoPlayback,
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:775:    );
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:777:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:778:  Future<void> _applyPlayPause() async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:779:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:780:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:781:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:782:    if (value.isPlaying) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:783:      await 
+_videoPlayerPlatform.play(_playerId);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:784:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:785:      _timer?.cancel();
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:786:      _timer = Timer.periodic(const 
+Duration(milliseconds: 100), (Timer timer) async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:787:        if (_isDisposed) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:788:          return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:789:        }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:790:        final Duration? newPosition = 
+await position;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:791:        if (newPosition == null) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:792:          return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:793:        }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:806:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:807:  Future<void> _applyVolume() async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:808:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:809:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:810:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:811:    await 
+_videoPlayerPlatform.setVolume(_playerId, value.volume);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:812:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:813:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:814:  Future<void> _applyPlaybackSpeed() 
+async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:815:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:816:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:817:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:818:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:819:    // Setting the playback speed on iOS 
+will trigger the video to play. We
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:820:    // prevent this from happening by 
+not applying the playback speed until
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:821:    // the video is manually played from 
+Flutter.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:829:  /// The position in the current video.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:830:  Future<Duration?> get position async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:831:    if (_isDisposed) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:832:      return null;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:833:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:834:    return 
+_videoPlayerPlatform.getPosition(_playerId);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:835:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:836:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:837:  /// Sets the video's current timestamp 
+to be at [moment]. The next
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:841:  /// and silently clamped.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:842:  Future<void> seekTo(Duration position) 
+async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:843:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:844:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:845:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:846:    if (position > value.duration) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:847:      position = value.duration;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:848:    } else if (position < Duration.zero) 
+{
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:849:      position = Duration.zero;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:980:  void _updatePosition(Duration 
+position) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:981:    // A pending platform seek or 
+position request can complete after disposal.
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:982:    if (_isDisposed) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:983:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:984:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:985:    // The underlying native 
+implementation on some platforms sometimes reports
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:986:    // a position slightly past the 
+reported max duration. Clamp to the duration
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:987:    // to insulate clients from this 
+behavior.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:988:    if (position > value.duration) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1000:    // Prevent VideoPlayer from causing 
+an exception to be thrown when attempting to
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1001:    // remove its own listener after 
+the controller has already been disposed.
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1002:    if (!_isDisposed) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1003:      super.removeListener(listener);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1004:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1005:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1006:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1007:  /// Gets the available audio tracks 
+for the video.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1008:  ///
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1013:  /// Throws an error if the video 
+player is disposed.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1014:  Future<List<VideoAudioTrack>> 
+getAudioTracks() async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1015:    if (_isDisposed) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1016:      throw 
+StateError('VideoPlayerController is disposed');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1017:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1018:    if (!value.isInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1019:      return <VideoAudioTrack>[];
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1020:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1021:    final 
+List<platform_interface.VideoAudioTrack> platformTracks = await _videoPlayerPlatform
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1032:  /// Throws an error if the video 
+player is disposed or not initialized.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1033:  Future<void> selectAudioTrack(String 
+trackId) async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1034:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1035:      throw 
+StateError('VideoPlayerController is disposed or not initialized');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1036:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1037:    // The platform implementation 
+(e.g., Android) will wait for the track
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1038:    // selection to complete by 
+listening to platform-specific events
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1039:    await 
+_videoPlayerPlatform.selectAudioTrack(_playerId, trackId);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1040:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1062:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1063:
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1064:  bool get _isDisposedOrNotInitialized 
+=> _isDisposed || !value.isInitialized;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1065:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1066:  /// Gets the available video tracks 
+for the video.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1067:  ///
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1068:  /// The returned list contains a 
+[VideoTrack] for each track available
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1069:  /// for selection.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1070:  ///
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1081:  /// the platform supports video track 
+selection.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1082:  Future<List<VideoTrack>> 
+getVideoTracks() async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1083:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1084:      return <VideoTrack>[];
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1085:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1086:    final 
+List<platform_interface.VideoTrack> platformTracks = await _videoPlayerPlatform
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1087:        .getVideoTracks(_playerId);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1088:    return platformTracks
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1089:        
+.map((platform_interface.VideoTrack track) => VideoTrack._fromPlatform(track))
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1103:  /// the platform supports video track 
+selection.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1104:  Future<void> 
+selectVideoTrack(VideoTrack? track) async {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1105:    if (_isDisposedOrNotInitialized) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1106:      return;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1107:    }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1108:    // Convert app-facing VideoTrack to 
+platform interface VideoTrack
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1109:    final 
+platform_interface.VideoTrack? platformTrack = track != null
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1110:        ? platform_interface.VideoTrack(
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.14.1\lib\video_player.dart:1111:            id: track.id,
+
+

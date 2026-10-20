@@ -1,0 +1,2 @@
+﻿134: platform_interface.VideoPlayerPlatform.instance;
+615: (await _videoPlayerPlatform.createWithOptions(creationOptions)) ?? kUninitializedPlayerId;

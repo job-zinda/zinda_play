@@ -1,0 +1,120 @@
+﻿        );
+      case platform_interface.DataSourceType.contentUri:
+        dataSourceDescription = platform_interface.DataSource(
+          sourceType: platform_interface.DataSourceType.contentUri,
+          uri: dataSource,
+        );
+    }
+
+    final creationOptions = platform_interface.VideoCreationOptions(
+      dataSource: dataSourceDescription,
+      viewType: viewType,
+      videoPlayerOptions: videoPlayerOptions,
+    );
+
+    if (videoPlayerOptions?.mixWithOthers != null) {
+      await _videoPlayerPlatform.setMixWithOthers(videoPlayerOptions!.mixWithOthers);
+    }
+
+    _playerId =
+        (await _videoPlayerPlatform.createWithOptions(creationOptions)) ?? kUninitializedPlayerId;
+    _creatingCompleter!.complete(null);
+    final initializingCompleter = Completer<void>();
+
+    await _videoPlayerPlatform.setPreventsDisplaySleepDuringVideoPlayback(
+      _playerId,
+      value.preventsDisplaySleepDuringVideoPlayback,
+    );
+
+    // Apply the web-specific options
+    if (kIsWeb && videoPlayerOptions?.webOptions != null) {
+      await _videoPlayerPlatform.setWebOptions(_playerId, videoPlayerOptions!.webOptions!);
+    }
+
+    void eventListener(platform_interface.VideoEvent event) {
+      if (_isDisposed) {
+        return;
+      }
+
+      switch (event.eventType) {
+        case platform_interface.VideoEventType.initialized:
+          value = value.copyWith(
+            duration: event.duration,
+            size: event.size,
+            rotationCorrection: event.rotationCorrection,
+            isInitialized: event.duration != null,
+            errorDescription: null,
+            isCompleted: false,
+          );
+          assert(
+            !initializingCompleter.isCompleted,
+            'VideoPlayerController already initialized. This is typically a '
+            'sign that an implementation of the VideoPlayerPlatform '
+            '(${_videoPlayerPlatform.runtimeType}) has a bug and is sending '
+            'more than one initialized event per instance.',
+          );
+          if (initializingCompleter.isCompleted) {
+            throw StateError('VideoPlayerController already initialized');
+          }
+          initializingCompleter.complete(null);
+          _applyLooping();
+          _applyVolume();
+          _applyPlayPause();
+        case platform_interface.VideoEventType.completed:
+          // In this case we need to stop _timer, set isPlaying=false, and
+          // position=value.duration. Instead of setting the values directly,
+          // we use pause() and seekTo() to ensure the platform stops playing
+          // and seeks to the last frame of the video.
+          pause().then((void pauseResult) => seekTo(value.duration));
+          value = value.copyWith(isCompleted: true);
+        case platform_interface.VideoEventType.bufferingUpdate:
+          value = value.copyWith(buffered: event.buffered);
+        case platform_interface.VideoEventType.bufferingStart:
+          value = value.copyWith(isBuffering: true);
+        case platform_interface.VideoEventType.bufferingEnd:
+          value = value.copyWith(isBuffering: false);
+        case platform_interface.VideoEventType.isPlayingStateUpdate:
+          if (event.isPlaying ?? false) {
+            value = value.copyWith(isPlaying: event.isPlaying, isCompleted: false);
+          } else {
+            value = value.copyWith(isPlaying: event.isPlaying);
+          }
+        case platform_interface.VideoEventType.unknown:
+          break;
+      }
+    }
+
+    if (_closedCaptionFileFuture != null) {
+      await _updateClosedCaptionWithFuture(_closedCaptionFileFuture);
+    }
+
+    void errorListener(Object obj) {
+      final e = obj as PlatformException;
+      value = VideoPlayerValue.erroneous(e.message!);
+      _timer?.cancel();
+      if (!initializingCompleter.isCompleted) {
+        initializingCompleter.completeError(obj);
+      }
+    }
+
+    _eventSubscription = _videoPlayerPlatform
+        .videoEventsFor(_playerId)
+        .listen(eventListener, onError: errorListener);
+    return initializingCompleter.future;
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (_isDisposed) {
+      return;
+    }
+
+    if (_creatingCompleter != null) {
+      await _creatingCompleter!.future;
+      if (!_isDisposed) {
+        _isDisposed = true;
+        _timer?.cancel();
+        await _eventSubscription?.cancel();
+        await _videoPlayerPlatform.dispose(_playerId);
+      }
+      _lifeCycleObserver?.dispose();

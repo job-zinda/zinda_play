@@ -1,0 +1,791 @@
+﻿   1| import 'dart:async';
+   2| import 'dart:convert';
+   3| import 'dart:math';
+   4| 
+   5| import 'package:flutter/material.dart';
+   6| import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+   7| import 'package:url_launcher/url_launcher.dart';
+   8| import 'package:video_player/video_player.dart';
+   9| import 'package:visibility_detector/visibility_detector.dart';
+  10| 
+  11| import 'api.dart';
+  12| import 'navigation.dart';
+  13| import 'theme.dart';
+  14| 
+  15| // Categories of recently watched videos, sent with ad requests for interest targeting.
+  16| class Interests {
+  17|   static const _storage = FlutterSecureStorage();
+  18|   static const _key = 'recent_categories';
+  19|   static List<String>? _cache;
+  20| 
+  21|   static Future<void>? _pending;
+  22| 
+  23|   static Future<List<String>> read() async {
+  24|     await _pending;
+  25|     if (_cache != null) return _cache!;
+  26|     try {
+  27|       final raw = await _storage.read(key: _key);
+  28|       _cache = raw == null
+  29|           ? []
+  30|           : (jsonDecode(raw) as List).map((e) => '$e').toList();
+  31|     } catch (_) {
+  32|       _cache = [];
+  33|     }
+  34|     return _cache!;
+  35|   }
+  36| 
+  37|   static Future<void> record(dynamic categoryId) =>
+  38|       _pending = _record(categoryId);
+  39| 
+  40|   static Future<void> _record(dynamic categoryId) async {
+  41|     final id = '${categoryId ?? ''}';
+  42|     if (id.isEmpty || id == 'null') return;
+  43|     final previous = _cache ?? await _load();
+  44|     final list = [id, ...previous.where((e) => e != id)].take(8).toList();
+  45|     _cache = list;
+  46|     try {
+  47|       await _storage.write(key: _key, value: jsonEncode(list));
+  48|     } catch (_) {}
+  49|   }
+  50| 
+  51|   static Future<List<String>> _load() async {
+  52|     try {
+  53|       final raw = await _storage.read(key: _key);
+  54|       return raw == null
+  55|           ? []
+  56|           : (jsonDecode(raw) as List).map((e) => '$e').toList();
+  57|     } catch (_) {
+  58|       return [];
+  59|     }
+  60|   }
+  61| }
+  62| 
+  63| class AdsApi {
+  64|   static final Map<String, int> _videoCounts = {};
+  65|   static void markDelivered(String id) => _videoCounts[id] = 0;
+  66| 
+  67|   static List<Map<String, dynamic>> dueVideos(List<Map<String, dynamic>> ads) {
+  68|     return ads.where((ad) {
+  69|       final id = '${ad['id']}';
+  70|       final count = (_videoCounts[id] ?? 0) + 1;
+  71|       _videoCounts[id] = count;
+  72|       return count >= ((ad['frequency'] as num?)?.toInt() ?? 1);
+  73|     }).toList();
+  74|   }
+  75| 
+  76|   static Future<bool> claim(Map<String, dynamic> ad, {String? ticket}) async {
+  77|     final result = await Api.instance.post(
+  78|       '/ads/${ad['id']}/impression',
+  79|       ticket == null ? null : {'ticket': ticket},
+  80|     );
+  81|     return (result as Map)['accepted'] == true;
+  82|   }
+  83| 
+  84|   static Future<List<Map<String, dynamic>>> fetch(String placement) async {
+  85|     try {
+  86|       final interests = Uri.encodeQueryComponent(
+  87|         (await Interests.read()).join(','),
+  88|       );
+  89|       final data = await Api.instance.get(
+  90|         '/ads?placement=$placement&interests=$interests',
+  91|       );
+  92|       return (data as List)
+  93|           .map((e) => Map<String, dynamic>.from(e as Map))
+  94|           .toList();
+  95|     } catch (error) {
+  96|       debugPrint('Ad loading failed: $error');
+  97|       return [];
+  98|     }
+  99|   }
+ 100| 
+ 101|   static Future<void> track(String id, String event) async {
+ 102|     try {
+ 103|       await Api.instance.post('/ads/$id/$event');
+ 104|     } catch (error) {
+ 105|       debugPrint('Ad tracking failed: $error');
+ 106|     }
+ 107|   }
+ 108| 
+ 109|   static Future<void> open(Map<String, dynamic> ad, {String? url}) async {
+ 110|     url ??= '${ad['targetUrl'] ?? ''}';
+ 111|     if (url.isEmpty) return;
+ 112|     track('${ad['id']}', 'click');
+ 113|     if (!await launchUrl(
+ 114|       Uri.parse(url),
+ 115|       mode: LaunchMode.externalApplication,
+ 116|     )) {
+ 117|       throw ApiException('The advertiser link could not be opened.');
+ 118|     }
+ 119|   }
+ 120| 
+ 121|   static Map<String, dynamic> pick(List<Map<String, dynamic>> ads) =>
+ 122|       ads[Random().nextInt(ads.length)];
+ 123| }
+ 124| 
+ 125| // Image banner for the top, middle or bottom of the home screen.
+ 126| class AdBanner extends StatefulWidget {
+ 127|   final String placement;
+ 128|   const AdBanner({super.key, required this.placement});
+ 129|   @override
+ 130|   State<AdBanner> createState() => _AdBannerState();
+ 131| }
+ 132| 
+ 133| class _AdBannerState extends State<AdBanner> {
+ 134|   Map<String, dynamic>? _ad;
+ 135| 
+ 136|   @override
+ 137|   void initState() {
+ 138|     super.initState();
+ 139|     AdsApi.fetch(widget.placement)
+ 140|         .then((ads) async {
+ 141|           if (!mounted || ads.isEmpty) return;
+ 142|           final ad = AdsApi.pick(ads);
+ 143|           if (!await AdsApi.claim(ad) || !mounted) return;
+ 144|           setState(() => _ad = ad);
+ 145|         })
+ 146|         .catchError((Object error) {
+ 147|           debugPrint('Banner delivery failed: $error');
+ 148|         });
+ 149|   }
+ 150| 
+ 151|   @override
+ 152|   Widget build(BuildContext context) {
+ 153|     final ad = _ad;
+ 154|     if (ad == null) return const SizedBox.shrink();
+ 155|     return Padding(
+ 156|       padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+ 157|       child: GestureDetector(
+ 158|         onTap: () => AdsApi.open(ad),
+ 159|         child: ClipRRect(
+ 160|           borderRadius: BorderRadius.circular(14),
+ 161|           child: Stack(
+ 162|             children: [
+ 163|               AspectRatio(
+ 164|                 aspectRatio: 3,
+ 165|                 child: Image.network(
+ 166|                   assetUrl('${ad['mediaUrl']}'),
+ 167|                   width: double.infinity,
+ 168|                   fit: BoxFit.contain,
+ 169|                   errorBuilder: (_, _, _) => const SizedBox.shrink(),
+ 170|                 ),
+ 171|               ),
+ 172|               const Positioned(left: 8, top: 8, child: _AdLabel()),
+ 173|             ],
+ 174|           ),
+ 175|         ),
+ 176|       ),
+ 177|     );
+ 178|   }
+ 179| }
+ 180| 
+ 181| class _AdLabel extends StatelessWidget {
+ 182|   const _AdLabel();
+ 183|   @override
+ 184|   Widget build(BuildContext context) => Container(
+ 185|     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+ 186|     decoration: BoxDecoration(
+ 187|       color: Colors.black87,
+ 188|       borderRadius: BorderRadius.circular(5),
+ 189|     ),
+ 190|     child: const Text(
+ 191|       'Ad',
+ 192|       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+ 193|     ),
+ 194|   );
+ 195| }
+ 196| 
+ 197| // Plays an admin video ad before the real player. Skippable ads unlock Skip after the admin's delay.
+ 198| class PlayerGate extends StatefulWidget {
+ 199|   final WidgetBuilder builder;
+ 200|   final String placement;
+ 201|   final bool active;
+ 202|   final VoidCallback? onDone;
+ 203|   const PlayerGate({
+ 204|     super.key,
+ 205|     required this.builder,
+ 206|     this.placement = 'video',
+ 207|     this.active = true,
+ 208|     this.onDone,
+ 209|   });
+ 210|   @override
+ 211|   State<PlayerGate> createState() => _PlayerGateState();
+ 212| }
+ 213| 
+ 214| class _PlayerGateState extends State<PlayerGate>
+ 215|     with WidgetsBindingObserver, RouteAware {
+ 216|   bool _loading = true;
+ 217|   bool _done = false;
+ 218|   Map<String, dynamic>? _ad;
+ 219|   VideoPlayerController? _video;
+ 220|   VideoPlayerController? _preparing;
+ 221|   Timer? _loadWatchdog;
+ 222|   int _idleSeconds = 0;
+ 223|   Map<String, dynamic>? _ticket;
+ 224|   int _watchedMs = 0;
+ 225|   int _lastPosition = 0;
+ 226|   bool _visible = true;
+ 227|   bool _completing = false;
+ 228|   bool _ended = false;
+ 229|   bool _started = false;
+ 230|   bool _routeVisible = true;
+ 231|   bool _onScreen = true;
+ 232|   ModalRoute<void>? _route;
+ 233|   String? _error;
+ 234|   bool get _canPlay => widget.active && _visible && _routeVisible && _onScreen;
+ 235| 
+ 236|   @override
+ 237|   void initState() {
+ 238|     super.initState();
+ 239|     WidgetsBinding.instance.addObserver(this);
+ 240|     if (widget.active) _start();
+ 241|   }
+ 242| 
+ 243|   @override
+ 244|   void didChangeDependencies() {
+ 245|     super.didChangeDependencies();
+ 246|     final route = ModalRoute.of<void>(context);
+ 247|     if (route != _route) {
+ 248|       appRouteObserver.unsubscribe(this);
+ 249|       _route = route;
+ 250|       if (route != null) appRouteObserver.subscribe(this, route);
+ 251|     }
+ 252|   }
+ 253| 
+ 254|   @override
+ 255|   void didUpdateWidget(PlayerGate oldWidget) {
+ 256|     super.didUpdateWidget(oldWidget);
+ 257|     if (widget.active && !_started) _start();
+ 258|     if (!_canPlay) _video?.pause();
+ 259|   }
+ 260| 
+ 261|   @override
+ 262|   void didPushNext() {
+ 263|     _routeVisible = false;
+ 264|     _video?.pause();
+ 265|   }
+ 266| 
+ 267|   @override
+ 268|   void didPopNext() {
+ 269|     _routeVisible = true;
+ 270|   }
+ 271| 
+ 272|   @override
+ 273|   void didChangeAppLifecycleState(AppLifecycleState state) {
+ 274|     _visible = state == AppLifecycleState.resumed;
+ 275|     if (!_visible) _video?.pause();
+ 276|   }
+ 277| 
+ 278|   Future<void> _start() async {
+ 279|     if (_started) return;
+ 280|     _started = true;
+ 281|     _idleSeconds = 0;
+ 282|     _loadWatchdog = Timer.periodic(const Duration(seconds: 1), (timer) {
+ 283|       final value = _video?.value;
+ 284|       if (!_canPlay ||
+ 285|           (!_loading &&
+ 286|               value?.isPlaying == false &&
+ 287|               value?.isBuffering == false)) {
+ 288|         _idleSeconds = 0;
+ 289|         return;
+ 290|       }
+ 291|       if (++_idleSeconds >= 15) {
+ 292|         timer.cancel();
+ 293|         _video?.pause();
+ 294|         if (mounted && !_done) {
+ 295|           setState(
+ 296|             () => _error = 'The ad is taking too long to load. Check your connection or continue to your video.',
+ 297|           );
+ 298|         }
+ 299|       }
+ 300|     });
+ 301|     final ads = AdsApi.dueVideos(await AdsApi.fetch(widget.placement));
+ 302|     if (!mounted || _done) return;
+ 303|     if (ads.isEmpty) return _finish();
+ 304|     final ad = AdsApi.pick(ads);
+ 305|     final controller = VideoPlayerController.networkUrl(
+ 306|       Uri.parse(assetUrl('${ad['mediaUrl']}')),
+ 307|     );
+ 308|     _preparing = controller;
+ 309|     try {
+ 310|       // Media preparation and the watch ticket do not depend on one another.
+ 311|       await Future.wait([
+ 312|         controller.initialize().timeout(const Duration(seconds: 15)),
+ 313|         if (ad['creatorVideoId'] != null)
+ 314|           Api.instance.post('/ads/${ad['id']}/view-start').then((data) {
+ 315|             _ticket = Map<String, dynamic>.from(data as Map);
+ 316|           }),
+ 317|       ]);
+ 318|     } catch (error) {
+ 319|       debugPrint('Video ad initialization failed: $error');
+ 320|       await _discardPreparing(controller);
+ 321|       if (mounted && !_done) {
+ 322|         setState(
+ 323|           () => _error = 'Could not load this ad. Check your connection or continue to your video.',
+ 324|         );
+ 325|       }
+ 326|       return;
+ 327|     }
+ 328|     if (!mounted || _done) {
+ 329|       await _discardPreparing(controller);
+ 330|       return;
+ 331|     }
+ 332|     try {
+ 333|       if (!await AdsApi.claim(ad, ticket: _ticket?['ticket'] as String?)) {
+ 334|         await _discardPreparing(controller);
+ 335|         if (mounted) _finish();
+ 336|         return;
+ 337|       }
+ 338|       AdsApi.markDelivered('${ad['id']}');
+ 339|     } catch (error) {
+ 340|       debugPrint('Video ad delivery failed: $error');
+ 341|       await _discardPreparing(controller);
+ 342|       if (mounted) _finish();
+ 343|       return;
+ 344|     }
+ 345|     if (!mounted || _done) {
+ 346|       await _discardPreparing(controller);
+ 347|       return;
+ 348|     }
+ 349|     _preparing = null;
+ 350|     controller.addListener(_tick);
+ 351|     setState(() {
+ 352|       _ad = ad;
+ 353|       _video = controller;
+ 354|       _loading = false;
+ 355|       _error = null;
+ 356|     });
+ 357|     _idleSeconds = 0;
+ 358|     try {
+ 359|       if (_canPlay) await controller.play();
+ 360|     } catch (error) {
+ 361|       if (mounted) setState(() => _error = 'Could not play this ad: $error');
+ 362|     }
+ 363|   }
+ 364| 
+ 365|   Future<void> _discardPreparing(VideoPlayerController controller) async {
+ 366|     if (_preparing != controller) return;
+ 367|     _preparing = null;
+ 368|     await controller.dispose();
+ 369|   }
+ 370| 
+ 371|   void _tick() {
+ 372|     final v = _video;
+ 373|     if (v == null || !mounted || _done) return;
+ 374|     final value = v.value;
+ 375|     final position = value.position.inMilliseconds;
+ 376|     final delta = position - _lastPosition;
+ 377|     if (delta > 0) _idleSeconds = 0;
+ 378|     _lastPosition = position;
+ 379|     final ended =
+ 380|         value.duration > Duration.zero && value.position >= value.duration;
+ 381|     if (_canPlay &&
+ 382|         !value.isBuffering &&
+ 383|         (value.isPlaying || ended) &&
+ 384|         delta > 0 &&
+ 385|         delta < 1500) {
+ 386|       _watchedMs += delta;
+ 387|     }
+ 388|     if (value.hasError) {
+ 389|       debugPrint('Video ad playback failed: ${value.errorDescription}');
+ 390|       _finish();
+ 391|       return;
+ 392|     }
+ 393|     if (ended) {
+ 394|       _complete();
+ 395|       return;
+ 396|     }
+ 397|     setState(() {});
+ 398|   }
+ 399| 
+ 400|   Future<void> _complete() async {
+ 401|     if (_completing) return;
+ 402|     _completing = true;
+ 403|     _loadWatchdog?.cancel();
+ 404|     final ticket = _ticket;
+ 405|     final minimum = (ticket?['minimumWatchMs'] as num?)?.toInt();
+ 406|     if (ticket != null && minimum != null && _watchedMs >= minimum - 250) {
+ 407|       try {
+ 408|         await Api.instance.post('/ads/${_ad!['id']}/view', {
+ 409|           'ticket': ticket['ticket'],
+ 410|         });
+ 411|       } catch (error) {
+ 412|         debugPrint('Creator ad earning tracking failed: $error');
+ 413|       }
+ 414|     }
+ 415|     if (mounted) {
+ 416|       if ('${_ad!['targetUrl'] ?? ''}'.isNotEmpty ||
+ 417|           '${_ad!['productUrl'] ?? ''}'.isNotEmpty) {
+ 418|         setState(() => _ended = true);
+ 419|       } else {
+ 420|         _finish();
+ 421|       }
+ 422|     }
+ 423|   }
+ 424| 
+ 425|   void _finish() {
+ 426|     if (_done) return;
+ 427|     _loadWatchdog?.cancel();
+ 428|     final preparing = _preparing;
+ 429|     if (preparing != null) unawaited(_discardPreparing(preparing));
+ 430|     _video?.removeListener(_tick);
+ 431|     _video?.dispose();
+ 432|     _video = null;
+ 433|     if (mounted) {
+ 434|       setState(() {
+ 435|         _done = true;
+ 436|         _loading = false;
+ 437|       });
+ 438|       widget.onDone?.call();
+ 439|     }
+ 440|   }
+ 441| 
+ 442|   @override
+ 443|   void dispose() {
+ 444|     _loadWatchdog?.cancel();
+ 445|     final preparing = _preparing;
+ 446|     if (preparing != null) unawaited(_discardPreparing(preparing));
+ 447|     WidgetsBinding.instance.removeObserver(this);
+ 448|     appRouteObserver.unsubscribe(this);
+ 449|     _video?.removeListener(_tick);
+ 450|     _video?.dispose();
+ 451|     super.dispose();
+ 452|   }
+ 453| 
+ 454|   @override
+ 455|   Widget build(BuildContext context) {
+ 456|     return VisibilityDetector(
+ 457|       key: ObjectKey(this),
+ 458|       onVisibilityChanged: (info) {
+ 459|         _onScreen = info.visibleFraction >= 0.5;
+ 460|         if (!_canPlay) _video?.pause();
+ 461|       },
+ 462|       child: _buildContent(context),
+ 463|     );
+ 464|   }
+ 465| 
+ 466|   Widget _buildContent(BuildContext context) {
+ 467|     if (_done || (!_started && !widget.active)) return widget.builder(context);
+ 468|     final ad = _ad;
+ 469|     final video = _video;
+ 470|     if (_loading || ad == null || video == null) {
+ 471|       return ColoredBox(
+ 472|         color: Colors.black,
+ 473|         child: Center(
+ 474|           child: _error == null
+ 475|               ? const CircularProgressIndicator()
+ 476|               : Padding(
+ 477|                   padding: const EdgeInsets.all(12),
+ 478|                   child: Column(
+ 479|                     mainAxisSize: MainAxisSize.min,
+ 480|                     children: [
+ 481|                       Text(_error!, textAlign: TextAlign.center),
+ 482|                       TextButton(
+ 483|                         onPressed: _finish,
+ 484|                         child: const Text('Continue to video'),
+ 485|                       ),
+ 486|                     ],
+ 487|                   ),
+ 488|                 ),
+ 489|         ),
+ 490|       );
+ 491|     }
+ 492|     final value = video.value;
+ 493|     final elapsed = value.position.inMilliseconds / 1000;
+ 494|     final total = value.duration.inMilliseconds / 1000;
+ 495|     final skippable = ad['skippable'] != false;
+ 496|     final skipAt = min(
+ 497|       ((ad['skipAfterSeconds'] as num?) ?? 20).toDouble(),
+ 498|       total,
+ 499|     );
+ 500|     final canSkip = skippable && elapsed >= skipAt;
+ 501|     final remaining = max(0, (total - elapsed).ceil());
+ 502|     if (_ended) {
+ 503|       return ColoredBox(
+ 504|         color: const Color(0xFF100B19),
+ 505|         child: Stack(
+ 506|           fit: StackFit.expand,
+ 507|           children: [
+ 508|             const Positioned(left: 8, top: 8, child: _AdLabel()),
+ 509|             Center(
+ 510|               child: SingleChildScrollView(
+ 511|                 padding: const EdgeInsets.all(20),
+ 512|                 child: ConstrainedBox(
+ 513|                   constraints: const BoxConstraints(maxWidth: 520),
+ 514|                   child: Card(
+ 515|                     color: const Color(0xFF211A31),
+ 516|                     shape: RoundedRectangleBorder(
+ 517|                       borderRadius: BorderRadius.circular(24),
+ 518|                       side: const BorderSide(color: Colors.white24),
+ 519|                     ),
+ 520|                     child: Padding(
+ 521|                       padding: const EdgeInsets.all(24),
+ 522|                       child: Column(
+ 523|                         mainAxisSize: MainAxisSize.min,
+ 524|                         children: [
+ 525|                           const Text(
+ 526|                             'AD FINISHED',
+ 527|                             style: TextStyle(
+ 528|                               color: Color(0xFFD8B4FE),
+ 529|                               fontWeight: FontWeight.w800,
+ 530|                               letterSpacing: 1.4,
+ 531|                             ),
+ 532|                           ),
+ 533|                           const SizedBox(height: 12),
+ 534|                           Text(
+ 535|                             '${ad['title'] ?? 'Advertisement'}',
+ 536|                             textAlign: TextAlign.center,
+ 537|                             style: Theme.of(context).textTheme.headlineSmall
+ 538|                                 ?.copyWith(fontWeight: FontWeight.w800),
+ 539|                           ),
+ 540|                           if ('${ad['description'] ?? ''}'.isNotEmpty) ...[
+ 541|                             const SizedBox(height: 8),
+ 542|                             Text(
+ 543|                               '${ad['description']}',
+ 544|                               textAlign: TextAlign.center,
+ 545|                             ),
+ 546|                           ],
+ 547|                           const SizedBox(height: 20),
+ 548|                           if ('${ad['targetUrl'] ?? ''}'.isNotEmpty)
+ 549|                             SizedBox(
+ 550|                               width: double.infinity,
+ 551|                               child: GradientButton(
+ 552|                                 padding: const EdgeInsets.symmetric(
+ 553|                                   horizontal: 22,
+ 554|                                   vertical: 16,
+ 555|                                 ),
+ 556|                                 onPressed: () => AdsApi.open(ad),
+ 557|                                 child: const Row(
+ 558|                                   mainAxisAlignment: MainAxisAlignment.center,
+ 559|                                   mainAxisSize: MainAxisSize.min,
+ 560|                                   children: [
+ 561|                                     Icon(Icons.storefront_outlined, size: 20),
+ 562|                                     SizedBox(width: 10),
+ 563|                                     Text(
+ 564|                                       'Visit advertiser',
+ 565|                                       style: TextStyle(
+ 566|                                         fontSize: 17,
+ 567|                                         fontWeight: FontWeight.w800,
+ 568|                                       ),
+ 569|                                     ),
+ 570|                                     SizedBox(width: 8),
+ 571|                                     Icon(Icons.open_in_new, size: 17),
+ 572|                                   ],
+ 573|                                 ),
+ 574|                               ),
+ 575|                             ),
+ 576|                           if ('${ad['productUrl'] ?? ''}'.isNotEmpty) ...[
+ 577|                             const SizedBox(height: 10),
+ 578|                             SizedBox(
+ 579|                               width: double.infinity,
+ 580|                               child: OutlinedButton.icon(
+ 581|                                 onPressed: () =>
+ 582|                                     AdsApi.open(ad, url: '${ad['productUrl']}'),
+ 583|                                 icon: const Icon(Icons.shopping_bag_outlined),
+ 584|                                 label: const Text(
+ 585|                                   'View product',
+ 586|                                   style: TextStyle(fontWeight: FontWeight.w700),
+ 587|                                 ),
+ 588|                                 style: OutlinedButton.styleFrom(
+ 589|                                   padding: const EdgeInsets.symmetric(
+ 590|                                     vertical: 14,
+ 591|                                   ),
+ 592|                                 ),
+ 593|                               ),
+ 594|                             ),
+ 595|                           ],
+ 596|                           const SizedBox(height: 10),
+ 597|                           TextButton.icon(
+ 598|                             onPressed: _finish,
+ 599|                             icon: const Icon(Icons.skip_next_rounded),
+ 600|                             label: const Text('Skip ad â€º'),
+ 601|                           ),
+ 602|                         ],
+ 603|                       ),
+ 604|                     ),
+ 605|                   ),
+ 606|                 ),
+ 607|               ),
+ 608|             ),
+ 609|           ],
+ 610|         ),
+ 611|       );
+ 612|     }
+ 613|     return ColoredBox(
+ 614|       color: Colors.black,
+ 615|       child: Stack(
+ 616|         fit: StackFit.expand,
+ 617|         children: [
+ 618|           Center(
+ 619|             child: AspectRatio(
+ 620|               aspectRatio: value.aspectRatio,
+ 621|               child: VideoPlayer(video),
+ 622|             ),
+ 623|           ),
+ 624|           const Positioned(left: 8, top: 8, child: _AdLabel()),
+ 625|           if (_error != null)
+ 626|             Center(
+ 627|               child: Card(
+ 628|                 child: Padding(
+ 629|                   padding: const EdgeInsets.all(16),
+ 630|                   child: Column(
+ 631|                     mainAxisSize: MainAxisSize.min,
+ 632|                     children: [
+ 633|                       Text(_error!),
+ 634|                       TextButton(
+ 635|                         onPressed: _finish,
+ 636|                         child: const Text('Continue to video'),
+ 637|                       ),
+ 638|                     ],
+ 639|                   ),
+ 640|                 ),
+ 641|               ),
+ 642|             ),
+ 643|           if (!value.isPlaying)
+ 644|             Positioned(
+ 645|               right: 10,
+ 646|               top: widget.placement == 'simply' ? 64 : 38,
+ 647|               child: IconButton.filled(
+ 648|                 tooltip: 'Play ad',
+ 649|                 iconSize: 24,
+ 650|                 onPressed: _canPlay ? video.play : null,
+ 651|                 icon: const Icon(Icons.play_arrow_rounded),
+ 652|               ),
+ 653|             ),
+ 654|           Positioned(
+ 655|             left: 10,
+ 656|             right: 10,
+ 657|             bottom: 10,
+ 658|             child: Row(
+ 659|               children: [
+ 660|                 Expanded(
+ 661|                   child: '${ad['targetUrl'] ?? ''}'.isEmpty
+ 662|                       ? const SizedBox.shrink()
+ 663|                       : Align(
+ 664|                           alignment: Alignment.centerLeft,
+ 665|                           child: FilledButton.icon(
+ 666|                             style: FilledButton.styleFrom(
+ 667|                               backgroundColor: const Color(0xFF7C3AED),
+ 668|                               foregroundColor: Colors.white,
+ 669|                               padding: const EdgeInsets.symmetric(
+ 670|                                 horizontal: 12,
+ 671|                                 vertical: 8,
+ 672|                               ),
+ 673|                               minimumSize: const Size(0, 34),
+ 674|                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+ 675|                               textStyle: const TextStyle(
+ 676|                                 fontSize: 12,
+ 677|                                 fontWeight: FontWeight.w700,
+ 678|                               ),
+ 679|                             ),
+ 680|                             onPressed: () async {
+ 681|                               await video.pause();
+ 682|                               try {
+ 683|                                 await AdsApi.open(ad);
+ 684|                               } catch (error) {
+ 685|                                 if (context.mounted) {
+ 686|                                   ScaffoldMessenger.of(context).showSnackBar(
+ 687|                                     SnackBar(
+ 688|                                       content: Text(
+ 689|                                         'Could not open advertiser: $error',
+ 690|                                       ),
+ 691|                                     ),
+ 692|                                   );
+ 693|                                 }
+ 694|                               }
+ 695|                             },
+ 696|                             icon: const Icon(Icons.open_in_new, size: 15),
+ 697|                             label: const Text(
+ 698|                               'Visit advertiser',
+ 699|                               maxLines: 1,
+ 700|                               overflow: TextOverflow.ellipsis,
+ 701|                             ),
+ 702|                           ),
+ 703|                         ),
+ 704|                 ),
+ 705|                 const SizedBox(width: 8),
+ 706|                 skippable
+ 707|                     ? FilledButton(
+ 708|                         style: FilledButton.styleFrom(
+ 709|                           backgroundColor: canSkip ? kPurple : Colors.black87,
+ 710|                           foregroundColor: Colors.white,
+ 711|                           padding: const EdgeInsets.symmetric(
+ 712|                             horizontal: 14,
+ 713|                             vertical: 8,
+ 714|                           ),
+ 715|                           minimumSize: const Size(0, 34),
+ 716|                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+ 717|                         ),
+ 718|                         onPressed: canSkip ? _finish : null,
+ 719|                         child: Text(
+ 720|                           canSkip
+ 721|                               ? 'Skip ad â€º'
+ 722|                               : 'Skip in ${max(1, (skipAt - elapsed).ceil())}s',
+ 723|                           style: const TextStyle(
+ 724|                             fontSize: 12,
+ 725|                             color: Colors.white,
+ 726|                           ),
+ 727|                         ),
+ 728|                       )
+ 729|                     : Container(
+ 730|                         padding: const EdgeInsets.symmetric(
+ 731|                           horizontal: 12,
+ 732|                           vertical: 8,
+ 733|                         ),
+ 734|                         decoration: BoxDecoration(
+ 735|                           color: Colors.black87,
+ 736|                           borderRadius: BorderRadius.circular(8),
+ 737|                         ),
+ 738|                         child: Text(
+ 739|                           'Video starts in ${remaining}s',
+ 740|                           style: const TextStyle(fontSize: 12),
+ 741|                         ),
+ 742|                       ),
+ 743|               ],
+ 744|             ),
+ 745|           ),
+ 746|         ],
+ 747|       ),
+ 748|     );
+ 749|   }
+ 750| }
+ 751| 
+ 752| class HomeVideoAd extends StatefulWidget {
+ 753|   const HomeVideoAd({super.key});
+ 754| 
+ 755|   @override
+ 756|   State<HomeVideoAd> createState() => _HomeVideoAdState();
+ 757| }
+ 758| 
+ 759| class _HomeVideoAdState extends State<HomeVideoAd> {
+ 760|   bool _active = false;
+ 761|   bool _done = false;
+ 762| 
+ 763|   @override
+ 764|   Widget build(BuildContext context) {
+ 765|     if (_done) return const SizedBox.shrink();
+ 766|     return VisibilityDetector(
+ 767|       key: ObjectKey(this),
+ 768|       onVisibilityChanged: (info) {
+ 769|         final active = info.visibleFraction >= 0.5;
+ 770|         if (mounted && active != _active) setState(() => _active = active);
+ 771|       },
+ 772|       child: Padding(
+ 773|         padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+ 774|         child: ClipRRect(
+ 775|           borderRadius: BorderRadius.circular(14),
+ 776|           child: AspectRatio(
+ 777|             aspectRatio: 16 / 9,
+ 778|             child: PlayerGate(
+ 779|               placement: 'home',
+ 780|               active: _active,
+ 781|               onDone: () {
+ 782|                 if (mounted) setState(() => _done = true);
+ 783|               },
+ 784|               builder: (_) => const SizedBox.shrink(),
+ 785|             ),
+ 786|           ),
+ 787|         ),
+ 788|       ),
+ 789|     );
+ 790|   }
+ 791| }

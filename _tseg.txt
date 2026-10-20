@@ -1,0 +1,83 @@
+﻿99:       await http.runWithClient(() async {
+100:         await tester.pumpWidget(
+101:           MaterialApp(
+102:             home: Scaffold(
+103:               body: SizedBox(
+104:                 width: 320,
+105:                 height: 180,
+106:                 child: PlayerGate(builder: (_) => const Text('Content')),
+107:               ),
+108:             ),
+109:           ),
+110:         );
+111:         await tester.pump();
+112:         await tester.pump();
+113:         expect(player.creations, 1);
+114:         expect(calls, contains('/api/ads/parallel-ad/view-start'));
+115:         expect(calls.any((path) => path.endsWith('/impression')), isFalse);
+116:         expect(player.playing, isFalse);
+117:         ticket.complete(
+118:           http.Response(
+119:             '{"ticket":"parallel-ticket","minimumWatchMs":3000}',
+120:             200,
+121:           ),
+122:         );
+123:         await tester.pump();
+124:         expect(calls.any((path) => path.endsWith('/impression')), isFalse);
+125:         player.initialize();
+126:         await tester.pump();
+127:         await tester.pump();
+128:         expect(calls, contains('/api/ads/parallel-ad/impression'));
+129:         expect(player.playing, isFalse);
+130:         claim.complete(http.Response('{"accepted":true}', 200));
+131:         await tester.pumpAndSettle();
+132:         expect(player.playing, isTrue);
+133:         await tester.pumpWidget(const SizedBox.shrink());
+134:         expect(player.disposals, 1);
+135:       }, () => client);
+136:     },
+137:   );
+138: 
+139:   testWidgets(
+140:     'slow ad lookup offers recovery at 15 seconds and late results cannot play',
+141:     (tester) async {
+142:       final player = _AdPlayer();
+143:       VideoPlayerPlatform.instance = player;
+144:       final response = Completer<http.Response>();
+145:       await http.runWithClient(() async {
+146:         await tester.pumpWidget(
+147:           MaterialApp(
+148:             home: Scaffold(
+149:               body: PlayerGate(builder: (_) => const Text('Content')),
+150:             ),
+151:           ),
+152:         );
+153:         await tester.pump(const Duration(seconds: 14));
+154:         expect(find.text('Continue to video'), findsNothing);
+155:         await tester.pump(const Duration(seconds: 1));
+156:         expect(find.text('Continue to video'), findsOneWidget);
+157:         await tester.tap(find.text('Continue to video'));
+158:         await tester.pump();
+159:         expect(find.text('Content'), findsOneWidget);
+160:         response.complete(
+161:           http.Response(
+162:             '[{"id":"late-ad","mediaUrl":"https://example.test/ad.mp4"}]',
+163:             200,
+164:           ),
+165:         );
+166:         await tester.pumpAndSettle();
+167:         expect(player.creations, 0);
+168:         expect(player.playing, isFalse);
+169:         await tester.pumpWidget(const SizedBox.shrink());
+170:       }, () => MockClient((_) => response.future));
+171:     },
+172:   );
+173: 
+174:   for (final placement in ['video', 'simply', 'home']) {
+175:     testWidgets('$placement ads load only when active and pause offscreen', (
+176:       tester,
+177:     ) async {
+178:       final player = _AdPlayer();
+179:       VideoPlayerPlatform.instance = player;
+180:       var active = false;
+181:       var requests = 0;

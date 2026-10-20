@@ -1,0 +1,26 @@
+﻿121:           ),
+122:         );
+123:         await tester.pump();
+124:         expect(calls.any((path) => path.endsWith('/impression')), isFalse);
+125:         player.initialize();
+126:         await tester.pump();
+127:         await tester.pump();
+128:         expect(calls, contains('/api/ads/parallel-ad/impression'));
+129:         expect(player.playing, isFalse);
+130:         claim.complete(http.Response('{"accepted":true}', 200));
+131:         await tester.pumpAndSettle();
+132:         expect(player.playing, isTrue);
+133:         await tester.pumpWidget(const SizedBox.shrink());
+134:         expect(player.disposals, 1);
+135:       }, () => client);
+136:     },
+137:   );
+138: 
+139:   testWidgets(
+140:     'slow ad lookup offers recovery at 15 seconds and late results cannot play',
+141:     (tester) async {
+142:       final player = _AdPlayer();
+143:       VideoPlayerPlatform.instance = player;
+144:       final response = Completer<http.Response>();
+145:       await http.runWithClient(() async {
+146:         await tester.pumpWidget(

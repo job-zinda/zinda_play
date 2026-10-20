@@ -1,0 +1,12 @@
+4d7c0e1 Refresh mobile and web authentication and Simply engagement
+0c6809a Start thumbnail-free homepage previews without waiting for preload
+8f00b68 Refresh WhatsApp video link previews
+0379b0d Match the website video page to the mobile app on phones
+d47dc20 Open shared and referral links in the installed app
+86b021d Fix shared links opening in browser: publish release certificate in assetlinks.json
+d271416 Align Visit advertiser with Skip ad on running ads and publish Android 1.0.11
+02304f7 Add configurable referral signup bonus and publish Android 1.0.10
+97294f5 Configure future reward rates and publish updated Android app
+42d53a6 Publish signed Android APK with website download and install page
+05fc9e8 latest ad corrections
+5e23d06 ad corrections

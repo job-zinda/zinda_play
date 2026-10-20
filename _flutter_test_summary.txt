@@ -1,0 +1,32 @@
+﻿00:00 +0: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart
+flutter : test/playback_test.dart:10:14: Error: Can't infer the type of 'events': circularity found during type inference.
++ ... :CI='true'; flutter test test/ads_test.dart test/playback_test.dart - ...
+    + FullyQualifiedErrorId : NativeCommandError
+test/playback_test.dart:134:28: Error: This expression has type 'void' and can't be used.
+test/playback_test.dart:139:28: Error: This expression has type 'void' and can't be used.
+00:00 +0 -1: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart [E]
+  Failed to load "D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart":
+  Compilation failed for testPath=D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart: test/playback_test.dart:10:14: Error: Can't infer the type of 'events': circularity found during type inference.
+  test/playback_test.dart:134:28: Error: This expression has type 'void' and can't be used.
+  test/playback_test.dart:139:28: Error: This expression has type 'void' and can't be used.
+00:00 +0 -2: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart [E]
+  Error: The Dart compiler exited unexpectedly.
+00:00 +0 -2: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: creator media prepares concurrently with ticket and waits for claim before playing
+Expected: <1>
+  Actual: <0>
+#4      main.<anonymous closure>.<anonymous closure> (file:///D:/zinda%20play/zinda_play_node_react%20(1)/mobile/test/ads_test.dart:134:9)
+#5      main.<anonymous closure> (file:///D:/zinda%20play/zinda_play_node_react%20(1)/mobile/test/ads_test.dart:99:7)
+  file:///D:/zinda%20play/zinda_play_node_react%20(1)/mobile/test/ads_test.dart line 134
+00:00 +0 -3: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: creator media prepares concurrently with ticket and waits for claim before playing [E]
+  Test failed. See exception logs above.
+00:00 +0 -3: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: slow ad lookup offers recovery at 15 seconds and late results cannot play
+00:00 +1 -3: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: video ads load only when active and pause offscreen
+00:00 +2 -3: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: simply ads load only when active and pause offscreen
+00:00 +3 -3: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: home ads load only when active and pause offscreen
+00:01 +4 -3: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: homepage slot disappears when no homepage video ads exist
+00:01 +5 -3: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: creator ad full watch posts one earning ticket
+00:01 +6 -3: D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: creator ad skip does not earn
+00:01 +7 -3: Some tests failed.
+  D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: creator media prepares concurrently with ticket and waits for claim before playing
+  D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/ads_test.dart
+  D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart: loading D:/zinda play/zinda_play_node_react (1)/mobile/test/playback_test.dart

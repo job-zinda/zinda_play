@@ -1,0 +1,162 @@
+﻿400:   Future<void> _complete() async {
+401:     if (_completing) return;
+402:     _completing = true;
+403:     _loadWatchdog?.cancel();
+404:     final ticket = _ticket;
+405:     final minimum = (ticket?['minimumWatchMs'] as num?)?.toInt();
+406:     if (ticket != null && minimum != null && _watchedMs >= minimum - 250) {
+407:       try {
+408:         await Api.instance.post('/ads/${_ad!['id']}/view', {
+409:           'ticket': ticket['ticket'],
+410:         });
+411:       } catch (error) {
+412:         debugPrint('Creator ad earning tracking failed: $error');
+413:       }
+414:     }
+415:     if (mounted) {
+416:       if ('${_ad!['targetUrl'] ?? ''}'.isNotEmpty ||
+417:           '${_ad!['productUrl'] ?? ''}'.isNotEmpty) {
+418:         setState(() => _ended = true);
+419:       } else {
+420:         _finish();
+421:       }
+422:     }
+423:   }
+424: 
+425:   void _finish() {
+426:     if (_done) return;
+427:     _loadWatchdog?.cancel();
+428:     final preparing = _preparing;
+429:     if (preparing != null) unawaited(_discardPreparing(preparing));
+430:     _video?.removeListener(_tick);
+431:     _video?.dispose();
+432:     _video = null;
+433:     if (mounted) {
+434:       setState(() {
+435:         _done = true;
+436:         _loading = false;
+437:       });
+438:       widget.onDone?.call();
+439:     }
+440:   }
+441: 
+442:   @override
+443:   void dispose() {
+444:     _loadWatchdog?.cancel();
+445:     final preparing = _preparing;
+446:     if (preparing != null) unawaited(_discardPreparing(preparing));
+447:     WidgetsBinding.instance.removeObserver(this);
+448:     appRouteObserver.unsubscribe(this);
+449:     _video?.removeListener(_tick);
+450:     _video?.dispose();
+451:     super.dispose();
+452:   }
+453: 
+454:   @override
+455:   Widget build(BuildContext context) {
+456:     return VisibilityDetector(
+457:       key: ObjectKey(this),
+458:       onVisibilityChanged: (info) {
+459:         _onScreen = info.visibleFraction >= 0.5;
+460:         if (!_canPlay) _video?.pause();
+461:       },
+462:       child: _buildContent(context),
+463:     );
+464:   }
+465: 
+466:   Widget _buildContent(BuildContext context) {
+467:     if (_done || (!_started && !widget.active)) return widget.builder(context);
+468:     final ad = _ad;
+469:     final video = _video;
+470:     if (_loading || ad == null || video == null) {
+471:       return ColoredBox(
+472:         color: Colors.black,
+473:         child: Center(
+474:           child: _error == null
+475:               ? const CircularProgressIndicator()
+476:               : Padding(
+477:                   padding: const EdgeInsets.all(12),
+478:                   child: Column(
+479:                     mainAxisSize: MainAxisSize.min,
+480:                     children: [
+481:                       Text(_error!, textAlign: TextAlign.center),
+482:                       TextButton(
+483:                         onPressed: _finish,
+484:                         child: const Text('Continue to video'),
+485:                       ),
+486:                     ],
+487:                   ),
+488:                 ),
+489:         ),
+490:       );
+491:     }
+492:     final value = video.value;
+493:     final elapsed = value.position.inMilliseconds / 1000;
+494:     final total = value.duration.inMilliseconds / 1000;
+495:     final skippable = ad['skippable'] != false;
+496:     final skipAt = min(
+497:       ((ad['skipAfterSeconds'] as num?) ?? 20).toDouble(),
+498:       total,
+499:     );
+500:     final canSkip = skippable && elapsed >= skipAt;
+501:     final remaining = max(0, (total - elapsed).ceil());
+502:     if (_ended) {
+503:       return ColoredBox(
+504:         color: const Color(0xFF100B19),
+505:         child: Stack(
+506:           fit: StackFit.expand,
+507:           children: [
+508:             const Positioned(left: 8, top: 8, child: _AdLabel()),
+509:             Center(
+510:               child: SingleChildScrollView(
+511:                 padding: const EdgeInsets.all(20),
+512:                 child: ConstrainedBox(
+513:                   constraints: const BoxConstraints(maxWidth: 520),
+514:                   child: Card(
+515:                     color: const Color(0xFF211A31),
+516:                     shape: RoundedRectangleBorder(
+517:                       borderRadius: BorderRadius.circular(24),
+518:                       side: const BorderSide(color: Colors.white24),
+519:                     ),
+520:                     child: Padding(
+521:                       padding: const EdgeInsets.all(24),
+522:                       child: Column(
+523:                         mainAxisSize: MainAxisSize.min,
+524:                         children: [
+525:                           const Text(
+526:                             'AD FINISHED',
+527:                             style: TextStyle(
+528:                               color: Color(0xFFD8B4FE),
+529:                               fontWeight: FontWeight.w800,
+530:                               letterSpacing: 1.4,
+531:                             ),
+532:                           ),
+533:                           const SizedBox(height: 12),
+534:                           Text(
+535:                             '${ad['title'] ?? 'Advertisement'}',
+536:                             textAlign: TextAlign.center,
+537:                             style: Theme.of(context).textTheme.headlineSmall
+538:                                 ?.copyWith(fontWeight: FontWeight.w800),
+539:                           ),
+540:                           if ('${ad['description'] ?? ''}'.isNotEmpty) ...[
+541:                             const SizedBox(height: 8),
+542:                             Text(
+543:                               '${ad['description']}',
+544:                               textAlign: TextAlign.center,
+545:                             ),
+546:                           ],
+547:                           const SizedBox(height: 20),
+548:                           if ('${ad['targetUrl'] ?? ''}'.isNotEmpty)
+549:                             SizedBox(
+550:                               width: double.infinity,
+551:                               child: GradientButton(
+552:                                 padding: const EdgeInsets.symmetric(
+553:                                   horizontal: 22,
+554:                                   vertical: 16,
+555:                                 ),
+556:                                 onPressed: () => AdsApi.open(ad),
+557:                                 child: const Row(
+558:                                   mainAxisAlignment: MainAxisAlignment.center,
+559:                                   mainAxisSize: MainAxisSize.min,
+560:                                   children: [
+561:                                     Icon(Icons.storefront_outlined, size: 20),

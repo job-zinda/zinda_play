@@ -92,7 +92,7 @@ void main() {
     final response = Completer<http.Response>();
     var posts = 0;
     final client = MockClient((request) async {
-      if (request.url.path.endsWith('/like')) {
+      if (request.url.path.endsWith('/reaction')) {
         posts++;
         return response.future;
       }
@@ -117,7 +117,9 @@ void main() {
       await tester.tap(action('Like'));
       await tester.pump();
       expect(posts, 1);
-      response.complete(http.Response('{"liked":true,"likeCount":12}', 200));
+      response.complete(
+        http.Response('{"liked":true,"reaction":"like","likeCount":12}', 200),
+      );
       await tester.pumpAndSettle();
       final bar = tester.widget<VideoEngagementBar>(
         find.byType(VideoEngagementBar),
@@ -311,7 +313,7 @@ void main() {
     tester,
   ) async {
     final client = MockClient((request) async {
-      if (request.url.path.endsWith('/like') ||
+      if (request.url.path.endsWith('/reaction') ||
           request.url.path.endsWith('/comments')) {
         return http.Response('{"error":"Please try again"}', 503);
       }
@@ -355,7 +357,7 @@ void main() {
   ) async {
     final response = Completer<http.Response>();
     final client = MockClient((request) async {
-      if (request.url.path.endsWith('/like')) return response.future;
+      if (request.url.path.endsWith('/reaction')) return response.future;
       return http.Response(
         '{"liked":false,"likeCount":0,"commentCount":0,"comments":[]}',
         200,

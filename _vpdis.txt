@@ -1,0 +1,26 @@
+﻿552: bool _isDisposed = false;
+553: Completer<void>? _creatingCompleter;
+574: _creatingCompleter = Completer<void>();
+616: _creatingCompleter!.complete(null);
+630: if (_isDisposed) {
+703: if (_isDisposed) {
+707: if (_creatingCompleter != null) {
+708: await _creatingCompleter!.future;
+709: if (!_isDisposed) {
+710: _isDisposed = true;
+717: _isDisposed = true;
+762: if (_isDisposedOrNotInitialized) {
+769: if (_isDisposedOrNotInitialized) {
+779: if (_isDisposedOrNotInitialized) {
+787: if (_isDisposed) {
+808: if (_isDisposedOrNotInitialized) {
+815: if (_isDisposedOrNotInitialized) {
+831: if (_isDisposed) {
+843: if (_isDisposedOrNotInitialized) {
+982: if (_isDisposed) {
+1002: if (!_isDisposed) {
+1015: if (_isDisposed) {
+1034: if (_isDisposedOrNotInitialized) {
+1064: bool get _isDisposedOrNotInitialized => _isDisposed || !value.isInitialized;
+1083: if (_isDisposedOrNotInitialized) {
+1105: if (_isDisposedOrNotInitialized) {

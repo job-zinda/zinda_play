@@ -1,0 +1,223 @@
+﻿
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:16:abstr
+act class VideoPlayerPlatform extends PlatformInterface {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:17:  
+/// Constructs a VideoPlayerPlatform.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:18:  
+VideoPlayerPlatform() : super(token: _token);
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:19:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:20:  
+static final Object _token = Object();
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:21:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:22:  
+static VideoPlayerPlatform _instance = _PlaceholderImplementation();
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:27:  
+/// throws `UnimplementedError` in most cases.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:28:  
+static VideoPlayerPlatform get instance => _instance;
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:29:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:30:  
+/// Platform-specific plugins should override this with their own
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:31:  
+/// platform-specific class that extends [VideoPlayerPlatform] when they
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:32:  
+/// register themselves.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:33:  
+static set instance(VideoPlayerPlatform instance) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:43:    
+throw UnimplementedError('init() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:44:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:45:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:46:  
+/// Clears one video.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:47:  
+Future<void> dispose(int playerId) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:48:    
+throw UnimplementedError('dispose() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:49:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:50:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:51:  
+/// Creates an instance of a video player and returns its playerId.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:52:  
+@Deprecated('Use createWithOptions() instead.')
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:53:  
+Future<int?> create(DataSource dataSource) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:54:    
+throw UnimplementedError('create() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:55:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:56:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:57:  
+/// Creates an instance of a video player based on creation options
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:58:  
+/// and returns its playerId.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:59:  
+Future<int?> createWithOptions(VideoCreationOptions options) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:60:    
+return create(options.dataSource);
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:65:    
+throw UnimplementedError('videoEventsFor() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:66:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:67:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:68:  
+/// Sets the looping attribute of the video.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:69:  
+Future<void> setLooping(int playerId, bool looping) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:70:    
+throw UnimplementedError('setLooping() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:71:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:72:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:73:  
+/// Starts the video playback.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:74:  
+Future<void> play(int playerId) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:75:    
+throw UnimplementedError('play() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:76:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:77:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:78:  
+/// Stops the video playback.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:79:  
+Future<void> pause(int playerId) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:80:    
+throw UnimplementedError('pause() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:81:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:82:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:83:  
+/// Sets the volume to a range between 0.0 and 1.0.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:84:  
+Future<void> setVolume(int playerId, double volume) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:85:    
+throw UnimplementedError('setVolume() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:86:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:87:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:88:  
+/// Sets the video position to a [Duration] from the start.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:89:  
+Future<void> seekTo(int playerId, Duration position) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:90:    
+throw UnimplementedError('seekTo() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:91:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:92:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:93:  
+/// Sets the playback speed to a [speed] value indicating the playback rate.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:94:  
+Future<void> setPlaybackSpeed(int playerId, double speed) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:95:    
+throw UnimplementedError('setPlaybackSpeed() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:96:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:97:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:98:  
+/// Gets the video position as [Duration] from the start.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:99:  
+Future<Duration> getPosition(int playerId) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:100:    
+throw UnimplementedError('getPosition() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:101:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:102:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:103:  
+/// Returns a widget displaying the video with a given playerId.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:104:  
+@Deprecated('Use buildViewWithOptions() instead.')
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:105:  
+Widget buildView(int playerId) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:106:    
+throw UnimplementedError('buildView() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:107:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:108:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:109:  
+/// Returns a widget displaying the video based on given options.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:110:  
+Widget buildViewWithOptions(VideoViewOptions options) {
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:111:    
+// Default implementation for backwards compatibility.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:112:    
+return buildView(options.playerId);
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:116:  
+Future<void> setMixWithOthers(bool mixWithOthers) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:117:    
+throw UnimplementedError('setMixWithOthers() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:118:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:119:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:120:  
+/// Sets whether the video should continue to play in the background.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:121:  
+Future<void> setAllowBackgroundPlayback(bool allowBackgroundPlayback) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:122:    
+throw UnimplementedError('setAllowBackgroundPlayback() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:123:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:124:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:125:  
+/// Sets whether the screen is prevented from sleeping during video playback.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:126:  
+///
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:127:  
+/// The default implementation is a no-op, so platforms that do not support
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:128:  
+/// controlling display sleep will silently use their default behavior.
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:129:  
+Future<void> setPreventsDisplaySleepDuringVideoPlayback(
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:130:    
+int playerId,
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:131:    
+bool preventsDisplaySleepDuringVideoPlayback,
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:132:  ) 
+async {}
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:133:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:134:  
+/// Sets additional options on web.
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:135:  
+Future<void> setWebOptions(int playerId, VideoPlayerWebOptions options) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:136:    
+throw UnimplementedError('setWebOptions() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:137:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:138:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:139:  
+/// Gets the available audio tracks for the video.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:140:  
+Future<List<VideoAudioTrack>> getAudioTracks(int playerId) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:141:    
+throw UnimplementedError('getAudioTracks() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:142:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:143:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:144:  
+/// Selects which audio track is chosen for playback from its [trackId]
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:145:  
+Future<void> selectAudioTrack(int playerId, String trackId) {
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:146:    
+throw UnimplementedError('selectAudioTrack() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:147:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:148:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:149:  
+/// Returns whether audio track selection is supported on this platform.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:150:  
+///
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:151:  
+/// This method allows developers to query at runtime whether the current
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:152:  
+/// platform supports audio track selection functionality. This is useful
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:172:    
+throw UnimplementedError('getVideoTracks() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:173:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:174:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:175:  
+/// Selects which video track (quality variant) is chosen for playback.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:176:  
+///
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:177:  
+/// Pass a [VideoTrack] to select a specific quality.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:178:  
+/// Pass `null` to enable automatic quality selection (adaptive streaming).
+> C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:180:    
+throw UnimplementedError('selectVideoTrack() has not been implemented.');
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:181:  }
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:182:
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:183:  
+/// Returns whether video track selection is supported on this platform.
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:184:  
+///
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:185:  
+/// This method allows developers to query at runtime whether the current
+  C:\Users\ASUS\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_platform_interface-6.9.0\lib\video_player_platform_interface.dart:186:  
+/// platform supports video track (quality) selection functionality. This is
+
+

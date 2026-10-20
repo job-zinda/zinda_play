@@ -185,10 +185,13 @@ class _Request extends Fake implements HttpClientRequest {
   Future<HttpClientResponse> close() async {
     network.calls.add('$method ${uri.path}');
     if (uri.path == '/api/ads') return _Response([]);
-    if (uri.path.endsWith('/like')) {
+    if (uri.path.endsWith('/reaction')) {
       network.liked = !network.liked;
       return _Response({
         'liked': network.liked,
+        'reaction': network.liked
+            ? jsonDecode(utf8.decode(bytes))['reaction']
+            : null,
         'likeCount': network.liked ? 1 : 0,
       });
     }
@@ -209,7 +212,7 @@ class _Request extends Fake implements HttpClientRequest {
       network.comments.add({
         'username': 'tester',
         'text': data['text'],
-        'id': 'new-comment',
+        'id': 'new-comment-${network.comments.length}',
       });
       return _Response(network.comments.last);
     }

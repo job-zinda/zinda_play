@@ -10,6 +10,8 @@ import '../shorts.dart';
 import '../widgets/short_comments.dart';
 import '../widgets/share_sheet.dart';
 import '../widgets/video_engagement.dart';
+import '../widgets/reaction_button.dart';
+import '../engagement.dart';
 import 'auth_screen.dart';
 import 'creator_screen.dart';
 
@@ -310,6 +312,9 @@ class _ShortPlayerState extends State<_ShortPlayer> {
   bool _busy = false;
   bool _loading = false;
   bool _liked = false;
+  String? _reaction;
+  Map<String, dynamic>? _reactions;
+  String? _commentsNextCursor;
   bool _saved = false;
   bool _following = false;
   bool _self = false;
@@ -464,6 +469,11 @@ class _ShortPlayerState extends State<_ShortPlayer> {
       if (!mounted) return;
       setState(() {
         _liked = data['liked'] == true;
+        _reaction = data['reaction'] as String?;
+        _reactions = data['reactions'] == null
+            ? null
+            : Map<String, dynamic>.from(data['reactions'] as Map);
+        _commentsNextCursor = data['commentsNextCursor'] as String?;
         _likes = (data['likeCount'] as num).toInt();
         _comments = (data['comments'] as List)
             .map((item) => Map<String, dynamic>.from(item as Map))
@@ -528,13 +538,20 @@ class _ShortPlayerState extends State<_ShortPlayer> {
     }, signIn: false);
   }
 
-  Future<void> _like() => _action(() async {
-    final result = await Api.instance.post('/videos/$_id/like') as Map;
+  Future<void> _like(String reaction) => _action(() async {
+    final result = await Api.instance.post('/videos/$_id/reaction', {
+      'reaction': reaction,
+    }) as Map;
     if (mounted) {
       setState(() {
         _liked = result['liked'] == true;
+        _reaction = result['reaction'] as String?;
+        _reactions = result['reactions'] == null
+            ? null
+            : Map<String, dynamic>.from(result['reactions'] as Map);
         _likes = (result['likeCount'] as num).toInt();
       });
+      if (_reaction != null) unawaited(playEngagementSound());
     }
   });
 
@@ -567,6 +584,7 @@ class _ShortPlayerState extends State<_ShortPlayer> {
         id: _id,
         comments: _comments,
         commentCount: _commentCount,
+        nextCursor: _commentsNextCursor,
       ),
     );
     if (mounted) await _interactions();
@@ -746,15 +764,12 @@ class _ShortPlayerState extends State<_ShortPlayer> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _button(
-                  '$_likes likes',
-                  _liked ? Icons.favorite : Icons.favorite_border,
-                  _like,
-                  caption: 'Like',
+                ReactionButton(
+                  reaction: _reaction ?? (_liked ? 'like' : null),
+                  counts: _reactions,
                   count: _likes,
-                  colors: const [Color(0xFFFF4B9B), Color(0xFFFFA568)],
-                  selected: _liked,
-                  animate: true,
+                  busy: _busy,
+                  onReact: _like,
                 ),
                 const Divider(
                   height: 1,

@@ -1,0 +1,148 @@
+﻿1	import 'dart:async';
+2	
+3	import 'package:flutter/material.dart';
+4	import 'package:flutter_test/flutter_test.dart';
+5	import 'package:video_player_platform_interface/video_player_platform_interface.dart';
+6	import 'package:zinda_play/playback.dart';
+7	import 'package:zinda_play/widgets/normal_video_player.dart';
+8	
+9	class _Player extends VideoPlayerPlatform {
+10	  late final events = StreamController<VideoEvent>(
+11	    onListen: () => events.add(
+12	      VideoEvent(
+13	        eventType: VideoEventType.initialized,
+14	        duration: const Duration(seconds: 60),
+15	        size: const Size(1280, 720),
+16	      ),
+17	    ),
+18	  );
+19	  final speeds = <double>[];
+20	  bool playing = false;
+21	  int disposed = 0;
+22	  @override
+23	  Future<void> init() async {}
+24	  @override
+25	  Future<int?> createWithOptions(VideoCreationOptions options) async => 1;
+26	  @override
+27	  Stream<VideoEvent> videoEventsFor(int playerId) => events.stream;
+28	  @override
+29	  Future<void> dispose(int playerId) async {
+30	    disposed++;
+31	    await events.close();
+32	  }
+33	
+34	  @override
+35	  Future<void> play(int playerId) async {
+36	    playing = true;
+37	  }
+38	
+39	  @override
+40	  Future<void> pause(int playerId) async {
+41	    playing = false;
+42	  }
+43	
+44	  @override
+45	  Future<void> setVolume(int playerId, double volume) async {}
+46	  @override
+47	  Future<void> setLooping(int playerId, bool looping) async {}
+48	  @override
+49	  Future<void> setPlaybackSpeed(int playerId, double speed) async {
+50	    speeds.add(speed);
+51	  }
+52	
+53	  @override
+54	  Future<void> seekTo(int playerId, Duration position) async {}
+55	  @override
+56	  Future<Duration> getPosition(int playerId) async => Duration.zero;
+57	  @override
+58	  Widget buildViewWithOptions(VideoViewOptions options) =>
+59	      const ColoredBox(color: Colors.black);
+60	}
+61	
+62	void main() {
+63	  test(
+64	    'Bunny speed, preload and quality cap preserve tokens and non-Bunny URLs',
+65	    () {
+66	      final url = Uri.parse(
+67	        normalPlaybackUrl(
+68	          'https://iframe.mediadelivery.net/embed/1/video?token=secret-test&expires=123&showSpeed=false&levelCap=false',
+69	        ),
+70	      );
+71	      expect(url.queryParameters, {
+72	        'token': 'secret-test',
+73	        'expires': '123',
+74	        'showSpeed': 'true',
+75	        'levelCap': 'true',
+76	        'preload': 'true',
+77	      });
+78	      for (final url in [
+79	        'https://example.test/video.mp4?token=test',
+80	        'https://example.test/embed/1',
+81	      ]) {
+82	        expect(normalPlaybackUrl(url), url);
+83	      }
+84	      expect(
+85	        isDirectPlayback('https://example.test/video.M3U8?token=x'),
+86	        isTrue,
+87	      );
+88	      expect(
+89	        isDirectPlayback('https://iframe.mediadelivery.net/embed/1/video'),
+90	        isFalse,
+91	      );
+92	      expect(playbackSpeeds, [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]);
+93	    },
+94	  );
+95	
+96	  testWidgets(
+97	    'direct video changes actual speed, keeps fullscreen and pauses in background',
+98	    (tester) async {
+99	      tester.view.physicalSize = const Size(320, 640);
+100	      tester.view.devicePixelRatio = 1;
+101	      addTearDown(tester.view.resetPhysicalSize);
+102	      addTearDown(tester.view.resetDevicePixelRatio);
+103	      final player = _Player();
+104	      VideoPlayerPlatform.instance = player;
+105	      await tester.pumpWidget(
+106	        const MaterialApp(
+107	          home: Scaffold(
+108	            body: SizedBox(
+109	              width: 320,
+110	              height: 180,
+111	              child: NormalVideoPlayer(
+112	                source: 'https://example.test/video.mp4',
+113	              ),
+114	            ),
+115	          ),
+116	        ),
+117	      );
+118	      await tester.pumpAndSettle();
+119	      await tester.tap(find.byTooltip('Playback speed'));
+120	      await tester.pumpAndSettle();
+121	      await tester.tap(find.text('2.0x'));
+122	      await tester.pumpAndSettle();
+123	      expect(player.speeds.last, 2);
+124	      await tester.tap(find.byTooltip('Play video'));
+125	      await tester.pump();
+126	      expect(player.playing, isTrue);
+127	      await tester.tap(find.byTooltip('Fullscreen'));
+128	      await tester.pumpAndSettle();
+129	      expect(find.byTooltip('Exit fullscreen'), findsOneWidget);
+130	      expect(player.playing, isTrue);
+131	      await tester.tap(find.byTooltip('Exit fullscreen'));
+132	      await tester.pumpAndSettle();
+133	      expect(find.text('2.0x'), findsOneWidget);
+134	      await tester.binding.handleAppLifecycleStateChanged(
+135	        AppLifecycleState.paused,
+136	      );
+137	      await tester.pump();
+138	      expect(player.playing, isFalse);
+139	      await tester.binding.handleAppLifecycleStateChanged(
+140	        AppLifecycleState.resumed,
+141	      );
+142	      await tester.pumpWidget(const SizedBox.shrink());
+143	      await tester.pump();
+144	      expect(player.disposed, 1);
+145	      expect(tester.takeException(), isNull);
+146	    },
+147	  );
+148	}
