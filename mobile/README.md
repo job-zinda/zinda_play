@@ -9,6 +9,34 @@ The mobile app defaults to the deployed HTTPS backend at
 `flutter build apk --release`; the output is
 `build/app/outputs/flutter-apk/app-release.apk`.
 
+### Website APK downloads
+
+The website header and menu link to `/download-app.html`, with Android install
+instructions and a direct download at `/downloads/zinda-play.apk`. Installation
+requires the user's approval in Android; a website cannot silently install it.
+The APK is Android-only, not an iOS installation.
+
+For each release, increase `version` above the last distributed version in
+`pubspec.yaml` and build with the same release signing key:
+
+1. From `mobile`, run `flutter build apk --release` (a universal APK).
+2. From `client`, run `npm run package:apk`. This checks the Gradle release
+   metadata against `pubspec.yaml`, copies the built APK to
+   `public/downloads/zinda-play.apk` and generates its SHA-256 checksum. It fails
+   for stale/split APKs or files exceeding the repository's 100 MiB file limit.
+3. Run `npm run test:download` and `npm run build` from `client`.
+4. Include both generated download files in the website deployment (and in the
+   repository for Git-based hosting). Vite copies `public` files to `dist`.
+   Deploy the `client` project to publish the button, install page and APK
+   together. Merely building locally does not update the live website.
+
+`client/vercel.json` sends the Android APK MIME type and attachment filename,
+and requires cache revalidation so replacing the stable download URL serves the
+new release. If using a different host, configure equivalent headers. Never put
+keystores, signing passwords or `android/key.properties` in the web public folder.
+Play Store-installed apps may use a different signing key from this direct APK;
+do not tell users to uninstall just to bypass a signature conflict.
+
 To use another backend, pass `--dart-define=API_URL=https://your-api-domain`
 when running or building Flutter. Supply the origin without `/api` or a trailing
 slash. For Android emulator development only, use

@@ -59,3 +59,10 @@
 .joined-users-table table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .joined-users-table th, .joined-users-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
 .joined-users-table small { opacity: 0.6; }
+.app-download-link{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:7px;min-width:40px;min-height:40px;padding:10px 14px;border:1px solid #b99aff55;border-radius:10px;background:linear-gradient(120deg,#7c3aed,#a128c3);color:#fff;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap}
+.app-download-link:hover{filter:brightness(1.15)}
+.app-download-link:focus-visible,.drawer-download-link:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
+.profile-drawer-links .drawer-download-link{display:flex;align-items:center;gap:12px;width:100%;padding:13px;border-radius:10px;background:#8b5cf620;color:#d6c8ff;font-size:13px;font-weight:600;text-decoration:none}
+.profile-drawer-links .drawer-download-link:hover{background:#8b5cf638}
+@media(max-width:1100px){.app-download-link{padding:8px}.app-download-link span{display:none}}
+@media(max-width:360px){.topbar .shorts-nav-button{min-width:40px;min-height:40px;justify-content:center}.shorts-nav-button span{display:none}}
