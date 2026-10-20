@@ -18,6 +18,7 @@ import CreatorWithdraw from "./CreatorWithdraw.jsx";
 import HomeBanners from "./HomeBanners.jsx";
 import CreatorSearch from "./CreatorSearch.jsx";
 import { AdminRewards, RewardSummary } from "./Rewards.jsx";
+import { CommentsPanel, EngagementBar, useCommentsFocus, useSavedVideo } from "./WatchEngagement.jsx";
 
 const API = import.meta.env.DEV
   ? "/api"
@@ -95,6 +96,12 @@ function App() {
   const [commentText, setCommentText] = useState("");
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [likeSubmitting, setLikeSubmitting] = useState(false);
+  const [interactionsRefreshing, setInteractionsRefreshing] = useState(false);
+  const canInteract = Boolean(adminToken) && ["member", "creator", "promoter", "business"].includes(authRole);
+  const [videoSaved, toggleSavedVideo] = useSavedVideo(canInteract ? sessionStorage.getItem("signedInUsername") : "", selected?.id);
+  const { panelRef: commentsPanelRef, inputRef: commentInputRef, openComments } = useCommentsFocus();
+  const selectedVideoId = useRef(null);
+  selectedVideoId.current = selected?.id || null;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
@@ -999,6 +1006,32 @@ function App() {
     const data = await response.json();
     if (response.ok) setCreatorReferrals(data);
   }
+  async function refreshVideoInteractions() {
+    const videoId = selected?.id;
+    if (!videoId) return;
+    setInteractionsRefreshing(true);
+    try {
+      const response = await fetch(`${API}/videos/${videoId}/interactions`, adminToken ? { headers: { Authorization: "Bearer " + adminToken } } : {});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to load video likes and comments.");
+      if (selectedVideoId.current === videoId) setVideoInteractions(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setInteractionsRefreshing(false);
+    }
+  }
+  function toggleVideoSave() {
+    if (!canInteract) {
+      setError("Sign in to save this video.");
+      return;
+    }
+    try {
+      if (!toggleSavedVideo()) setError("Please sign in again to save this video.");
+    } catch (err) {
+      setError(err.message);
+    }
+  }
   async function toggleVideoLike() {
     if (!adminToken || !["member", "creator", "promoter", "business"].includes(authRole)) {
       setError("Sign in to like this video.");
@@ -1707,18 +1740,12 @@ function App() {
         {selected.isBusinessPreview && <div className="membership-status"><Clock3 size={20}/><div><strong>Private business preview</strong><span>This preview is only available to your business account. It is not publicly visible until approved and promoted.</span></div></div>}
         {selected.creatorProfile && <div className="creator-profile"><button type="button" className="creator-avatar-link" onClick={()=>openCreatorFromCard(selected.creatorProfile)} aria-label={`View ${selected.creatorProfile.displayName || selected.creatorProfile.username}'s profile`}>{selected.creatorProfile.profilePhotoUrl ? <img className="creator-avatar" src={apiAssetSrc(selected.creatorProfile.profilePhotoUrl)} alt=""/> : <span className="creator-avatar"><UserRound size={18}/></span>}</button><span className="creator-profile-details"><small>CREATOR</small><button type="button" className="creator-name-link" onClick={()=>openCreatorFromCard(selected.creatorProfile)}>{selected.creatorProfile.displayName || selected.creatorProfile.username}</button>{selected.creatorProfile.bio && <span className="creator-bio">{selected.creatorProfile.bio}</span>}<span className="creator-follower-count">{(creatorFollowData.creatorId === selected.creatorProfile.id ? creatorFollowData.followerCount : 0).toLocaleString()} followers</span><IntroVideo api={API} url={selected.creatorProfile.introVideoUrl}/></span><button className="secondary-btn creator-share-btn" onClick={()=>shareCreator(selected.creatorProfile)} aria-label={`Share ${selected.creatorProfile.displayName || selected.creatorProfile.username}'s profile`}><Share2 size={15}/></button>{!(creatorFollowData.creatorId === selected.creatorProfile.id && creatorFollowData.isSelf) && authRole !== "admin" && <button className={`creator-follow-btn ${creatorFollowData.following ? "following" : ""}`} disabled={creatorFollowLoading || creatorFollowSubmitting || creatorFollowData.creatorId !== selected.creatorProfile.id} onClick={toggleCreatorFollow}><UserPlus size={16}/>{creatorFollowData.following ? "Unfollow" : "Follow"}</button>}</div>}
         <div className="player-wrap" onContextMenu={event=>event.preventDefault()}><span className="player-view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span><PlayerGate key={selected.id} api={API} token={adminToken}>{selected.playbackUrl ? isDirectVideoUrl(selected.playbackUrl) ? <video src={selected.playbackUrl} title={selected.title} controls controlsList="nodownload noremoteplayback" disablePictureInPicture disableRemotePlayback playsInline/> : <iframe src={selected.playbackUrl} title={selected.title} allow="autoplay; encrypted-media" allowFullScreen/> : <div className="empty-player"><Play size={48}/><p>Add a Bunny Stream player URL in Admin to enable playback.</p></div>}</PlayerGate></div>
-        <div className="watch-meta"><div><span className="eyebrow">{selected.category?.name || (selected.isSponsored ? "PROMOTIONAL VIDEO" : "ZINDA PLAY ORIGINAL")}</span><h1>{selected.title}</h1><p>{selected.description}</p><span className="view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span></div><div className="watch-actions">{selected.promotionUrl && /^https:\/\/\S+$/i.test(selected.promotionUrl) && <a className="primary-btn" href={selected.promotionUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={17}/> Let's Plan</a>}<button className="secondary-btn share-btn" onClick={() => shareVideo(selected)}><Share2 size={17}/> Share video</button></div></div>
-        {selected.isBusinessPreview ? null : <section className="video-discussion">
-          <div className="discussion-actions">
-            <button className={`secondary-btn like-btn ${videoInteractions.liked ? "liked" : ""}`} disabled={likeSubmitting} onClick={toggleVideoLike}><Heart size={17} fill={videoInteractions.liked ? "currentColor" : "none"}/>{videoInteractions.liked ? "Liked" : "Like"} · {videoInteractions.likeCount}</button>
-            <span className="muted"><MessageCircle size={16}/> {videoInteractions.commentCount} comments</span>
-          </div>
-          <h2>Comments</h2>
-          {adminToken && ["member", "creator", "promoter", "business"].includes(authRole)
-            ? <form className="comment-form" onSubmit={submitVideoComment}><textarea required maxLength={1000} value={commentText} onChange={event=>setCommentText(event.target.value)} placeholder="Add a comment…"/><button className="primary-btn" type="submit" disabled={commentSubmitting || !commentText.trim()}>{commentSubmitting ? "Posting…" : "Post comment"}</button></form>
-            : <p className="discussion-signin">Sign in to like, comment or follow creators.</p>}
-          <div className="comment-list">{videoInteractions.comments.map(comment=><article className="comment-item" key={comment.id}><div className="comment-avatar">{comment.username.slice(0,1).toUpperCase()}</div><div><strong>{comment.username}</strong><time>{new Date(comment.createdAt).toLocaleString()}</time><p>{comment.text}</p></div></article>)}{!videoInteractions.comments.length&&<p className="muted">Be the first to comment.</p>}</div>
-        </section>}
+        <div className="watch-meta"><div><span className="eyebrow">{selected.category?.name || (selected.isSponsored ? "PROMOTIONAL VIDEO" : "ZINDA PLAY ORIGINAL")}</span><h1>{selected.title}</h1><span className="view-count"><Eye size={15}/> {Number(selected.views || 0).toLocaleString()} views</span></div></div>
+        <div className="watch-views-row"><Eye size={14}/> {Number(selected.views || 0).toLocaleString()} views</div>
+        {!selected.isBusinessPreview && <EngagementBar liked={videoInteractions.liked} likes={videoInteractions.likeCount} comments={videoInteractions.commentCount} saved={videoSaved} liking={likeSubmitting} onLike={toggleVideoLike} onComments={()=>{openComments(); if (!interactionsRefreshing) refreshVideoInteractions();}} onShare={() => shareVideo(selected)} onSave={toggleVideoSave}/>}
+        {(selected.isBusinessPreview || (selected.promotionUrl && /^https:\/\/\S+$/i.test(selected.promotionUrl))) && <div className="watch-actions">{selected.promotionUrl && /^https:\/\/\S+$/i.test(selected.promotionUrl) && <a className="primary-btn" href={selected.promotionUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={17}/> Let's Plan</a>}{selected.isBusinessPreview && <button className="secondary-btn share-btn" onClick={() => shareVideo(selected)}><Share2 size={17}/> Share video</button>}</div>}
+        {selected.description && <p className="watch-description">{selected.description}</p>}
+        {selected.isBusinessPreview ? null : <CommentsPanel panelRef={commentsPanelRef} inputRef={commentInputRef} count={videoInteractions.commentCount} comments={videoInteractions.comments} canComment={canInteract} signedIn={Boolean(adminToken)} commentText={commentText} onCommentText={setCommentText} onSubmit={submitVideoComment} submitting={commentSubmitting} onRefresh={refreshVideoInteractions} refreshing={interactionsRefreshing} onSignIn={openAdmin}/>}
       </section>
       : page === "discover" ? <section className="admin-panel discovery-panel">
         {!(discoverCreatorProfile || discoverBrandProfile || discoverProfileLoading) && <>
