@@ -44,6 +44,18 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     final w = _wallet;
+    final settings = w?['rewardSettings'] as Map?;
+    final paused = settings == null
+        ? <String>[]
+        : [
+            for (final entry in {
+              'creatorRegularViews': 'Regular-video view rewards',
+              'creatorSimplyViews': 'Simply view rewards',
+              'creatorRegularAds': 'Regular-video ad rewards',
+              'creatorSimplyAds': 'Simply ad rewards',
+            }.entries)
+              if (settings[entry.key]?['enabled'] == false) entry.value,
+          ];
     final videos = w == null
         ? <Map<String, dynamic>>[]
         : (w['videos'] as List)
@@ -78,6 +90,15 @@ class _WalletScreenState extends State<WalletScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          for (final label in paused)
+                            Text(
+                              '$label: paused (no new rewards).',
+                              style: const TextStyle(color: Colors.amber),
+                            ),
+                          const Text(
+                            'Rates below apply only to new qualifying activity while enabled. Changes and pauses preserve all previously credited earnings. Personal-watch and referral rewards are also available to creators under Earn.',
+                            style: TextStyle(color: Colors.white60),
+                          ),
                           Text(
                             'Regular videos: ${_rupees(w['rateRupees'])} per ${w['rateViews']} qualifying views.',
                           ),

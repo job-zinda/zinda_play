@@ -2,6 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { ObjectId } from "mongodb";
 import { shortsCdnOrigin } from "./shorts.js";
 import { adCapacityExpression } from "./ad-delivery.js";
+import { eventMilliRupees, rewardSettings } from "./rewards.js";
 
 export const creatorAdVideoQuery = {
   ownerId: { $exists: true, $ne: null }, ownerBusinessId: { $exists: false },
@@ -56,13 +57,15 @@ export async function prepareCreatorAd(db, body, { loadMetadata, cdnOrigin = sho
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || targetUrl.length > 2048) throw new Error();
   } catch { return { error: "Enter an HTTP or HTTPS destination URL without embedded credentials." }; }
   const mediaUrl = creatorAdMedia(video, cdnOrigin());
+  const rates = await rewardSettings(db);
+  const rate = video.videoType === "short" ? rates.creatorSimplyAds : rates.creatorRegularAds;
   const fields = {
     creatorVideoId: video._id, creatorId: video.ownerId, creatorVideoTitle: video.title,
     creatorVideoType: video.videoType === "short" ? "short" : "regular",
     sourceVideoType: video.videoType === "short" ? "short" : "regular",
     bunnyVideoId: video.bunnyVideoId, durationSeconds,
-    creditRateRupees: video.videoType === "short" ? 100 : 200, creditRateViews: 1000,
-    earningMilliRupees: video.videoType === "short" ? 100 : 200
+    creditRateRupees: rate.rateRupees, creditRateViews: 1000,
+    earningMilliRupees: eventMilliRupees(rate)
   };
   return { body: { ...body, mediaUrl, targetUrl }, fields };
 }
@@ -76,15 +79,21 @@ export async function creatorAdSourceAvailable(db, ad, req, availableInCity) {
 }
 
 export async function creatorAdAdminReports(db, ads) {
+  const rates = await rewardSettings(db);
   const totals = await db.collection("adCompletedViews").aggregate([
-    { $match: { adId: { $in: ads.map(ad => ad._id.toString()) }, earningMilliRupees: { $gt: 0 } } },
+    { $match: { adId: { $in: ads.map(ad => ad._id.toString()) }, earningMilliRupees: { $gte: 0 } } },
     { $group: { _id: "$adId", views: { $sum: 1 }, milliRupees: { $sum: "$earningMilliRupees" } } }
   ]).toArray();
   const byId = new Map(totals.map(row => [row._id, row]));
   return Promise.all(ads.map(async ad => {
     const total = byId.get(ad._id.toString());
     return {
-      ...ad, adEligibleViews: total?.views || 0,
+      ...ad,
+      ...(ad.creatorVideoId ? {
+        currentCreditRateRupees: (ad.sourceVideoType === "short" ? rates.creatorSimplyAds : rates.creatorRegularAds).rateRupees,
+        rewardEnabled: (ad.sourceVideoType === "short" ? rates.creatorSimplyAds : rates.creatorRegularAds).enabled
+      } : {}),
+      adEligibleViews: total?.views || 0,
       adEstimatedEarningsRupees: Math.round((total?.milliRupees || 0) / 10) / 100,
       ...(ad.creatorVideoId ? {
         completedViews: total?.views || 0, sourceAvailable: await creatorAdSourceAvailable(db, ad)
@@ -122,7 +131,7 @@ export async function deliverCreatorAdNotifications(db, creatorId) {
         recipientId: creatorId, type: "creator_video_ad",
         adId: ad._id.toString(), videoId: ad.creatorVideoId,
         title: "Your video was selected for an ad",
-        message: `"${ad.creatorVideoTitle || ad.title}" is now linked to the ad "${ad.title}". ${ad.active ? "The ad is active." : "The ad is currently paused."} Earn INR ${ad.creditRateRupees} per ${ad.creditRateViews} qualifying full ad watches, once per viewer per ad. Your original video keeps its normal earning rate.`,
+        message: `"${ad.creatorVideoTitle || ad.title}" is now linked to the ad "${ad.title}". ${ad.active ? "The ad is active." : "The ad is currently paused."} The configured rate when selected is INR ${ad.creditRateRupees} per ${ad.creditRateViews} qualifying full ad watches, once per viewer per ad. Future completions use the current enabled reward settings shown in your wallet. Your original video keeps its normal earning rate.`,
         readAt: null, createdAt: ad.createdAt
       }
     }, { upsert: true });
@@ -239,13 +248,16 @@ export function registerCreatorAdRoutes(app, {
     res.json({ accepted, duplicate: accepted && !claimed });
   }
   app.get(["/api/admin/creator-ad-videos", "/api/admin/ads/creator-videos"], requireAdmin, asyncRoute(async (_req, res) => {
+    const rates = await rewardSettings(db());
     const videos = await db().collection("videos").find(creatorAdVideoQuery).sort({ createdAt: -1 }).limit(500).toArray();
     const profiles = await withCreatorProfiles(videos);
     res.json(profiles.map((video, index) => ({
       ...video, creatorId: videos[index].ownerId, videoType: video.videoType === "short" ? "short" : "regular",
       creatorUsername: video.creatorProfile?.username || "",
       streamUrl: creatorAdMedia(videos[index], cdnOrigin()),
-      creditRateRupees: video.videoType === "short" ? 100 : 200, creditRateViews: 1000
+      creditRateRupees: (video.videoType === "short" ? rates.creatorSimplyAds : rates.creatorRegularAds).rateRupees,
+      rewardEnabled: (video.videoType === "short" ? rates.creatorSimplyAds : rates.creatorRegularAds).enabled,
+      creditRateViews: 1000
     })));
   }));
   app.delete("/api/creator/videos/:id", requireCreator, asyncRoute(async (req, res) => {
@@ -283,19 +295,21 @@ export function registerCreatorAdRoutes(app, {
     if (!delivery) return res.status(409).json({ error: "Claim this ticket's ad impression before completing its watch." });
     if (now() - delivery.at < claim.duration) return res.status(400).json({ error: "The full ad duration must elapse after delivery." });
     if (sessionFor(req)?.userId === ad.creatorId) return res.json({ counted: false, earningRupees: 0 });
+    const rates = await rewardSettings(db());
+    const earningMilliRupees = eventMilliRupees(ad.sourceVideoType === "short" ? rates.creatorSimplyAds : rates.creatorRegularAds);
     let counted = false;
     try {
       await db().collection("adCompletedViews").insertOne({
         _id: `${ad._id}:${claim.viewer}`, adId: ad._id.toString(), videoId: ad.creatorVideoId,
         creatorId: ad.creatorId, sourceVideoType: ad.sourceVideoType, viewerHash: claim.viewer,
-        earningMilliRupees: ad.earningMilliRupees, createdAt: new Date(now()).toISOString()
+        earningMilliRupees, createdAt: new Date(now()).toISOString()
       });
       counted = true;
     } catch (error) { if (error.code !== 11000) throw error; }
     // Ledger-derived analytics repair themselves if a previous counter write failed.
     const completedViews = await db().collection("adCompletedViews").countDocuments({ adId: ad._id.toString() });
     await db().collection("ads").updateOne({ _id: ad._id }, { $max: { completedViews } });
-    res.json({ counted, completedViews, earningRupees: counted ? ad.earningMilliRupees / 1000 : 0 });
+    res.json({ counted, completedViews, earningRupees: counted ? earningMilliRupees / 1000 : 0 });
   }));
   return { claimImpression };
 }

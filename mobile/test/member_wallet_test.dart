@@ -38,6 +38,10 @@ void main() {
             'referralViewsUntilReward': 1000,
             'distinctVideosWatched': 100,
             'videosUntilWatchReward': 100,
+            'rewardSettings': {
+              'memberWatch': {'enabled': true, 'rateRupees': 30},
+              'referralViews': {'enabled': false, 'rateRupees': 20},
+            },
             'withdrawals': [
               {
                 'amountRupees': 50,
@@ -67,6 +71,12 @@ void main() {
           expect(find.text('Wallet & referrals'), findsOneWidget);
           expect(find.text('123456'), findsOneWidget);
           expect(find.text('₹150.00'), findsOneWidget);
+          expect(
+            find.textContaining('Personal watches: ₹30.00 per 1,000'),
+            findsOneWidget,
+          );
+          expect(find.text('Referral rewards: paused.'), findsOneWidget);
+          expect(find.textContaining('more to the next reward'), findsNothing);
           expect(requests, contains('/api/promoter/wallet'));
           expect(
             tester
@@ -86,4 +96,45 @@ void main() {
       }, () => client);
     });
   }
+
+  testWidgets('member rewards fit a small Android screen with live rates', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final client = MockClient(
+      (request) async => http.Response(
+        jsonEncode({
+          'referralCode': '123456',
+          'availableRupees': 10.08,
+          'earnedRupees': 10.08,
+          'paidRupees': 0,
+          'pendingRupees': 0,
+          'referredViews': 4,
+          'distinctVideosWatched': 3,
+          'withdrawals': [],
+          'rewardSettings': {
+            'memberWatch': {'enabled': false, 'rateRupees': 90},
+            'referralViews': {'enabled': true, 'rateRupees': 40},
+          },
+        }),
+        200,
+      ),
+    );
+    await http.runWithClient(() async {
+      await tester.pumpWidget(const MaterialApp(home: PromoterScreen()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Personal-watch rewards: paused.'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.textContaining('Referral views: ₹40.00 per 1,000'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }, () => client);
+  });
 }

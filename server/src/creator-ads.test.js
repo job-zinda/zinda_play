@@ -5,6 +5,7 @@ import express from "express";
 import { ObjectId } from "mongodb";
 import { memoryDatabase } from "../test-support/memory-database.js";
 import { creatorWallet } from "./creator-wallet.js";
+import { defaultRewardSettings } from "./rewards.js";
 import {
   createAdminAdHandler, creatorAdAdminReports, creatorAdEditError, creatorAdSourceAvailable,
   deliverCreatorAdNotifications, initializeCreatorAds, prepareCreatorAd, registerCreatorAdRoutes
@@ -129,6 +130,51 @@ test("admin candidate and create handlers authorize, derive native HLS and immut
   const uploaded = await f.request("/admin/ads", "POST", { title: "Uploaded ad", type: "video", creatorVideoId: "", mediaUrl: "/ads/media/111111111111111111111111", targetUrl: "" }, "admin");
   assert.equal(uploaded.status, 201);
   assert.equal(uploaded.body.creatorVideoId, undefined);
+});
+
+test("global ad rates apply to future full completions, including existing ads; pause/re-enable never reprices or backfills", async t => {
+  const f = await fixture(t);
+  for (const [videoId, videoType, key, initial, changed] of [
+    ["regular-rate", "regular", "creatorRegularAds", 200, 350],
+    ["simply-rate", "short", "creatorSimplyAds", 100, 150]
+  ]) {
+    await f.video(videoId, { videoType });
+    const ad = await f.ad(videoId);
+    const ticket = (await f.start(ad, "viewer", "198.51.100.10")).body.ticket;
+    await f.db.collection("siteContent").updateOne({ _id: "reward-settings" }, {
+      $set: { [key]: { enabled: true, rateRupees: changed } }
+    }, { upsert: true });
+    f.advance(10000);
+    assert.equal((await f.complete(ad, ticket, "viewer", "198.51.100.10")).body.earningRupees, changed / 1000);
+    await f.db.collection("siteContent").updateOne({ _id: "reward-settings" }, {
+      $set: { [key]: { enabled: false, rateRupees: 999 } }
+    });
+    const pausedTicket = (await f.start(ad, "viewer", "198.51.100.11")).body.ticket;
+    f.advance(10000);
+    assert.equal((await f.complete(ad, pausedTicket, "viewer", "198.51.100.11")).body.earningRupees, 0);
+    await f.db.collection("siteContent").updateOne({ _id: "reward-settings" }, {
+      $set: { [key]: { enabled: true, rateRupees: initial } }
+    });
+    assert.equal((await f.complete(ad, pausedTicket, "viewer", "198.51.100.11")).body.counted, false);
+    assert.equal((await f.complete(ad, ticket, "viewer", "198.51.100.10")).body.counted, false);
+    const finalTicket = (await f.start(ad, "viewer", "198.51.100.12")).body.ticket;
+    f.advance(10000);
+    assert.equal((await f.complete(ad, finalTicket, "viewer", "198.51.100.12")).body.earningRupees, initial / 1000);
+    const ledger = await f.db.collection("adCompletedViews").find({ adId: ad._id.toString() }).toArray();
+    assert.deepEqual(ledger.map(row => row.earningMilliRupees), [changed, 0, initial]);
+    const report = (await creatorAdAdminReports(f.db, [ad]))[0];
+    assert.equal(report.currentCreditRateRupees, initial);
+    assert.equal(report.creditRateRupees, initial);
+    assert.equal(report.adEligibleViews, 3);
+  }
+  const wallet = await creatorWallet(f.db, "creator");
+  assert.equal(wallet.adEstimatedEarningsRupees, 0.8);
+  assert.equal(wallet.adEligibleViews, 6);
+  await f.db.collection("siteContent").updateOne({ _id: "reward-settings" }, {
+    $set: { ...defaultRewardSettings, creatorRegularAds: { enabled: true, rateRupees: 765 } }
+  });
+  const candidates = await f.request("/admin/creator-ad-videos", "GET", undefined, "admin");
+  assert.equal(candidates.body.find(video => video.id === "regular-rate").creditRateRupees, 765);
 });
 
 test("creator ad creation durably queues one owner notification with the correct source and rate", async t => {

@@ -418,7 +418,7 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
               {form.creatorVideoId && !creatorVideos.some(video => video.id === form.creatorVideoId) && <option value={form.creatorVideoId}>{form.title} (source unavailable)</option>}
             </select>
           </label>}
-          {form.creatorVideoId && <p className="muted">Creator ad earnings: ₹{(creatorVideos.find(video => video.id === form.creatorVideoId)?.videoType || form.creatorVideoType) === "short" ? 100 : 200} per 1,000 full ad watches, once per viewer per ad. The original video keeps its normal rate. Deleting the source stops this ad but preserves earned credit.</p>}
+          {form.creatorVideoId && <p className="muted">Creator ad earnings: {(creatorVideos.find(video => video.id === form.creatorVideoId)?.rewardEnabled ?? form.rewardEnabled) === false ? "Paused (no new rewards)" : `₹${creatorVideos.find(video => video.id === form.creatorVideoId)?.creditRateRupees ?? form.currentCreditRateRupees ?? form.creditRateRupees} per 1,000 full ad watches`}, once per viewer per ad. Future qualifying watches use the current global Reward settings. The original video keeps its separate view earnings. Deleting the source stops this ad but preserves earned credit.</p>}
           {!form.creatorVideoId && <label>{form.type === "video" ? "Ad video (MP4 or WebM, up to 150 MB)" : "Banner image (JPG, PNG, WebP or GIF, up to 8 MB)"}
             <input type="file" accept={form.type === "video" ? "video/mp4,video/webm" : "image/jpeg,image/png,image/webp,image/gif"} onChange={e => upload(e.target.files?.[0])} disabled={uploading}/>
           </label>}

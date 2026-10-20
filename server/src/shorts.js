@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { ObjectId } from "mongodb";
-import { SIMPLY_EARNING_MILLI_RUPEES } from "./creator-wallet.js";
+import { eventMilliRupees, rewardSettings } from "./rewards.js";
 
 export const maxShortBytes = 150 * 1024 * 1024;
 export function shortMetadata(source) {
@@ -224,11 +224,12 @@ export function registerShortRoutes(app, {
       return res.status(400).json({ error: "View ticket is expired, premature or belongs to another viewer." });
     }
     if (sessionFor(req)?.userId === video.ownerId) return res.json({ counted: false, views: video.views || 0 });
+    const rates = await rewardSettings(db());
     let counted = false;
     try {
       await db().collection("shortViews").insertOne({
         videoId: video._id, viewerHash: hash, createdAt: new Date(now()).toISOString(),
-        ...(video.ownerId ? { creatorId: video.ownerId, earningMilliRupees: SIMPLY_EARNING_MILLI_RUPEES } : {})
+        ...(video.ownerId ? { creatorId: video.ownerId, earningMilliRupees: eventMilliRupees(rates.creatorSimplyViews) } : {})
       });
       counted = true;
     } catch (error) {

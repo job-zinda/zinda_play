@@ -44,6 +44,39 @@ slash. For Android emulator development only, use
 The emulator address cannot reach a development server from a physical phone.
 Changing `API_URL` requires a new run/build; reinstall a rebuilt APK on the phone.
 
+## Reward controls and accounting
+
+Web admin -> **Reward settings** independently enables/pauses and sets all six
+rates (whole rupees per 1,000 qualifying events):
+
+| Reward | Default |
+| --- | --- |
+| Personal watches, members and creators | INR 30 |
+| Qualifying referred views, members and creators | INR 20 |
+| Creator regular-video views | INR 50 |
+| Creator Simply views | INR 25 |
+| Creator-linked regular-video ad completions | INR 200 |
+| Creator-linked Simply ad completions | INR 100 |
+
+All new rewards accrue proportionally per event, including personal/referral
+rewards (not the former INR 10/100-watch milestone scheme). Personal and referral
+eligibility does not depend on creator approval. The existing visible,
+signed-in regular-video watch qualification and once-per-viewer/video rule stay
+in place. Simply retains its existing view-ticket qualification. Ads must finish
+after an accepted impression; skipped ads never earn and a viewer earns once
+per ad. Paused activity still consumes its distinct-view eligibility and cannot
+earn retroactively when re-enabled.
+
+`GET /api/rewards/settings` returns current public rates. Admin-only
+`GET`/`PUT /api/admin/rewards/settings` reads/writes all six settings atomically
+in `siteContent`. New event amounts are frozen in milli-rupees at qualification,
+including in-flight ads. Retried member credits use the original unique watch's
+snapshot. Existing member milestone credits and all historical creator/ad
+credits remain unchanged. Regular-view ledger rows predating snapshots retain
+their original 50 milli-rupee value; old unpaid Simply/member watches are not
+backfilled. Wallets sum immutable event amounts before rounding for display.
+Deploy the API with the website before distributing the rebuilt APK.
+
 ## Privacy policy
 
 The mobile app's guest header and signed-in Profile menu open

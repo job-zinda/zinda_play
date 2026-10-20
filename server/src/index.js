@@ -17,6 +17,7 @@ import { ensureReferralCode, initializeReferrals, referralOwner } from "./referr
 import { initializeBusinessAds, notifyBusinessAdPublication, registerBusinessAdRoutes } from "./business-ads.js";
 import { deleteShortRecords, initializeShorts, registerShortRoutes, shortProcessingFields, shortUpload, shortsCdnOrigin } from "./shorts.js";
 import { creatorWallet } from "./creator-wallet.js";
+import { memberRewardTotals, recordMemberWatch, recordRegularView, registerRewardRoutes, rewardSettings } from "./rewards.js";
 import { initializeCreatorWithdrawals, registerCreatorWithdrawalRoutes } from "./creator-withdrawals.js";
 import { creatorPreviewHtml, publicWebOrigin, videoPreviewHtml } from "./public-links.js";
 import { accountAccessGuard, accountDeletionHandler } from "./account-deletion.js";
@@ -332,33 +333,6 @@ function campaignTargetsLocation(campaign, location) {
     campaign.countryCode === location.countryCode &&
     (!campaign.regionCode || campaign.regionCode === location.regionCode)
   );
-}
-async function grantPromoterMilestones(promoterId, eventType, eventCount) {
-  const milestoneSize = eventType === "referral_view" ? 1000 : 100;
-  const rewardRupees = eventType === "referral_view" ? 20 : 10;
-  const completedMilestones = Math.floor(eventCount / milestoneSize);
-  let awarded = 0;
-  for (let milestone = 1; milestone <= completedMilestones; milestone += 1) {
-    const sourceKey = `${promoterId}:${eventType}:${milestone}`;
-    try {
-      const result = await promoterRewardsCollection().updateOne(
-        { sourceKey },
-        { $setOnInsert: {
-          sourceKey,
-          promoterId,
-          type: eventType,
-          milestone,
-          amountRupees: rewardRupees,
-          createdAt: new Date().toISOString()
-        } },
-        { upsert: true }
-      );
-      if (result.upsertedCount) awarded += rewardRupees;
-    } catch (error) {
-      if (error.code !== 11000) throw error;
-    }
-  }
-  return awarded;
 }
 async function campaignVideoIsAvailable(video, req) {
   if (!video.ownerBusinessId && !video.businessCampaignId) return true;
@@ -815,6 +789,7 @@ app.get("/api/creators/:id/profile-photo", asyncRoute(async (req, res) => {
   await pipeline(creatorProfilePhotoBucket().openDownloadStream(fileId), res);
 }));
 app.get("/api/categories", (_req, res) => res.json(categories));
+registerRewardRoutes(app, { getDb: () => database, requireAdmin, asyncRoute });
 const shortEngagementLimit = registerShortRoutes(app, {
   getDb: () => database, asyncRoute, requireAccount: requireShortsAccount, requireAdmin,
   publicVideoQuery, availableInCity: videoAvailableInViewerCity, withCreatorProfiles,
@@ -949,12 +924,6 @@ app.post("/api/videos/:id/watch-complete", requireMember, asyncRoute(async (req,
     return res.status(410).json({ error: "This watch session expired. Reopen the video to start again." });
   }
   const completedAt = new Date(now);
-  const completion = await promoterWatchSessionsCollection().updateOne(
-    { _id: watchId, viewerId: req.session.userId, completedAt: { $exists: false } },
-    { $set: { completedAt } }
-  );
-  if (!completion.matchedCount) return res.json({ counted: false, alreadyCounted: true, rewardRupees: 0 });
-
   const video = await videosCollection().findOne({ _id: req.params.id, ...publicVideoQuery });
   if (!video || !await videoAvailableInViewerCity(video, req) || !await campaignVideoIsAvailable(video, req)) {
     return res.status(404).json({ error: "Video is no longer available." });
@@ -966,30 +935,18 @@ app.post("/api/videos/:id/watch-complete", requireMember, asyncRoute(async (req,
   if (!viewer) return res.status(401).json({ error: "Viewer account not found." });
   const referredByPromoterId = ObjectId.isValid(viewer.referrerPromoterId) ? viewer.referrerPromoterId : null;
   const watchingPromoterId = memberRewardsEligible(viewer) ? req.session.userId : null;
-  let newWatch = false;
-  try {
-    await promoterVideoWatchesCollection().insertOne({
-      videoId: video._id,
-      viewerId: req.session.userId,
-      referredByPromoterId,
-      watchingPromoterId,
-      title: video.title,
-      watchedAt: completedAt.toISOString()
-    });
-    newWatch = true;
-  } catch (error) {
-    if (error.code !== 11000) throw error;
-  }
-
-  let rewardRupees = 0;
-  if (referredByPromoterId) {
-    const referralViews = await promoterVideoWatchesCollection().countDocuments({ referredByPromoterId });
-    rewardRupees += await grantPromoterMilestones(referredByPromoterId, "referral_view", referralViews);
-  }
-  if (watchingPromoterId) {
-    const distinctVideosWatched = await promoterVideoWatchesCollection().countDocuments({ watchingPromoterId });
-    rewardRupees += await grantPromoterMilestones(watchingPromoterId, "promoter_watch", distinctVideosWatched);
-  }
+  const { counted: newWatch, rewardRupees } = await recordMemberWatch(database, {
+    videoId: video._id,
+    viewerId: req.session.userId,
+    referredByPromoterId,
+    watchingPromoterId,
+    title: video.title,
+    watchedAt: completedAt.toISOString()
+  });
+  await promoterWatchSessionsCollection().updateOne(
+    { _id: watchId, viewerId: req.session.userId },
+    { $set: { completedAt } }
+  );
   res.json({
     counted: newWatch,
     alreadyCounted: !newWatch,
@@ -1008,17 +965,7 @@ app.post("/api/videos/:id/view", asyncRoute(async (req, res) => {
   const viewerIp = req.ip;
   if (!viewerIp) return res.status(400).json({ error: "Unable to determine the viewer IP address." });
   const ipHash = createHmac("sha256", ipHashSecret).update(viewerIp).digest("hex");
-  let earningViewCounted = false;
-  try {
-    await uniqueViewsCollection().insertOne({
-      videoId: video._id,
-      ipHash,
-      createdAt: new Date().toISOString()
-    });
-    earningViewCounted = true;
-  } catch (error) {
-    if (error.code !== 11000) throw error;
-  }
+  const earningViewCounted = await recordRegularView(database, video._id, ipHash);
   const result = await videosCollection().updateOne(
     { _id: req.params.id, ...publicVideoQuery },
     { $inc: { views: 1 } },
@@ -2524,32 +2471,31 @@ registerCreatorWithdrawalRoutes(app, {
 });
 app.get("/api/promoter/wallet", requirePromoter, asyncRoute(async (req, res) => {
   const promoterId = req.promoterId;
-  const [referredViews, watchedVideos, rewardTotals, withdrawals] = await Promise.all([
+  const [referredViews, watchedVideos, rewards, withdrawals, rates] = await Promise.all([
     promoterVideoWatchesCollection().countDocuments({ referredByPromoterId: promoterId }),
     promoterVideoWatchesCollection().countDocuments({ watchingPromoterId: promoterId }),
-    promoterRewardsCollection().aggregate([
-      { $match: { promoterId } },
-      { $group: { _id: "$type", amountRupees: { $sum: "$amountRupees" }, milestones: { $sum: 1 } } }
-    ]).toArray(),
-    promoterWithdrawalsCollection().find({ promoterId }).sort({ createdAt: -1 }).limit(50).toArray()
+    memberRewardTotals(database, promoterId),
+    promoterWithdrawalsCollection().find({ promoterId }).sort({ createdAt: -1 }).toArray(),
+    rewardSettings(database)
   ]);
-  const totals = new Map(rewardTotals.map(item => [item._id, item]));
-  const earnedRupees = rewardTotals.reduce((total, item) => total + item.amountRupees, 0);
+  const earnedRupees = rewards.earnedRupees;
   const paidRupees = withdrawals.filter(item => item.status === "paid").reduce((total, item) => total + item.amountRupees, 0);
   const reservedRupees = withdrawals.filter(item => item.status === "pending").reduce((total, item) => total + item.amountRupees, 0);
   res.json({
     referralCode: await ensureReferralCode(usersCollection(), new ObjectId(promoterId)),
     referredViews,
+    rewardSettings: rates,
+    proportionalRewards: true,
+    referralRewardMilestones: rewards.referralRewardMilestones,
+    watchRewardMilestones: rewards.watchRewardMilestones,
     referralViewsUntilReward: 1000 - referredViews % 1000,
-    referralRewardMilestones: totals.get("referral_view")?.milestones || 0,
     distinctVideosWatched: watchedVideos,
-    videosUntilWatchReward: 100 - watchedVideos % 100,
-    watchRewardMilestones: totals.get("promoter_watch")?.milestones || 0,
+    videosUntilWatchReward: 1000 - watchedVideos % 1000,
     earnedRupees,
     paidRupees,
     pendingRupees: reservedRupees,
-    availableRupees: Math.max(0, earnedRupees - paidRupees - reservedRupees),
-    withdrawals: withdrawals.map(({ _id, promoterId: _promoterId, ...withdrawal }) => ({ id: _id.toString(), ...withdrawal }))
+    availableRupees: Math.max(0, Math.round((earnedRupees - paidRupees - reservedRupees) * 100) / 100),
+    withdrawals: withdrawals.slice(0, 50).map(({ _id, promoterId: _promoterId, ...withdrawal }) => ({ id: _id.toString(), ...withdrawal }))
   });
 }));
 app.post("/api/promoter/withdrawals", requirePromoter, asyncRoute(async (req, res) => {
@@ -2560,17 +2506,14 @@ app.post("/api/promoter/withdrawals", requirePromoter, asyncRoute(async (req, re
     return res.status(400).json({ error: "Enter a valid UPI ID or its 10-digit UPI-linked mobile number." });
   }
   const [rewards, withdrawals, existingRequest] = await Promise.all([
-    promoterRewardsCollection().aggregate([
-      { $match: { promoterId: req.promoterId } },
-      { $group: { _id: null, total: { $sum: "$amountRupees" } } }
-    ]).toArray(),
+    memberRewardTotals(database, req.promoterId),
     promoterWithdrawalsCollection().find({ promoterId: req.promoterId, status: { $in: ["pending", "paid"] } }).toArray(),
     promoterWithdrawalsCollection().findOne({ promoterId: req.promoterId, status: "pending" })
   ]);
   if (existingRequest) return res.status(409).json({ error: "You already have a withdrawal request awaiting admin review." });
-  const earnedRupees = rewards[0]?.total || 0;
+  const earnedRupees = rewards.earnedRupees;
   const committedRupees = withdrawals.reduce((total, withdrawal) => total + withdrawal.amountRupees, 0);
-  const availableRupees = earnedRupees - committedRupees;
+  const availableRupees = Math.round((earnedRupees - committedRupees) * 100) / 100;
   if (availableRupees < 100) return res.status(400).json({ error: "At least ₹100 must be available before you can request a withdrawal." });
   const createdAt = new Date().toISOString();
   const withdrawal = {

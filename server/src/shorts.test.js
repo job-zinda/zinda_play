@@ -67,6 +67,33 @@ test("Shorts verify duration and portrait dimensions from authoritative Bunny me
   assert.deepEqual(shortProcessingFields({ videoType: "short" }, {}, "processing"), {});
 });
 
+test("Simply snapshots the current proportional rate and zero while paused without rewriting or replaying earnings", async t => {
+  const f = await fixture(t);
+  for (const [id, enabled, rateRupees] of [["default", true, 25], ["changed", true, 40], ["paused", false, 900]]) {
+    await f.video(id);
+    const start = (await f.request(`/shorts/${id}/view-start`, "POST")).body;
+    await f.db.collection("siteContent").updateOne({ _id: "reward-settings" }, {
+      $set: { creatorSimplyViews: { enabled, rateRupees } }
+    }, { upsert: true });
+    f.advance(3000);
+    assert.equal((await f.request(`/shorts/${id}/view`, "POST", { ticket: start.ticket })).body.counted, true);
+  }
+  await f.db.collection("siteContent").updateOne({ _id: "reward-settings" }, {
+    $set: { creatorSimplyViews: { enabled: true, rateRupees: 100 } }
+  });
+  for (const id of ["default", "changed", "paused"]) {
+    const start = (await f.request(`/shorts/${id}/view-start`, "POST")).body;
+    f.advance(3000);
+    assert.equal((await f.request(`/shorts/${id}/view`, "POST", { ticket: start.ticket })).body.counted, false);
+  }
+  const ledger = await f.db.collection("shortViews").find().toArray();
+  assert.deepEqual(ledger.map(row => row.earningMilliRupees), [25, 40, 0]);
+  const wallet = await creatorWallet(f.db, "creator");
+  assert.equal(wallet.estimatedEarningsRupees, 0.07);
+  assert.equal(wallet.eligibleViews, 3);
+  assert.equal(wallet.simplyRateRupees, 100);
+});
+
 test("Shorts uploads validate headers without trusting client validation for publication", () => {
   const headers = {
     "X-Video-Type": "short", "Content-Type": "video/mp4", "X-Upload-Size": "10000",

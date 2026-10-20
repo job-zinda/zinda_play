@@ -10,6 +10,13 @@ const clone = value => {
   return value;
 };
 const equal = (a, b) => a instanceof ObjectId || b instanceof ObjectId ? a?.toString() === b?.toString() : a === b;
+function evaluateValue(document, expression) {
+  if (typeof expression === "string" && expression.startsWith("$")) return get(document, expression.slice(1));
+  if (!expression || typeof expression !== "object") return expression;
+  if (expression.$ifNull) return evaluateValue(document, expression.$ifNull[0]) ?? evaluateValue(document, expression.$ifNull[1]);
+  if (expression.$multiply) return expression.$multiply.reduce((product, item) => product * evaluateValue(document, item), 1);
+  throw new Error("Unsupported test aggregation expression");
+}
 function matches(document, filter) {
   return Object.entries(filter).every(([key, value]) => {
     if (key === "$or") return value.some(item => matches(document, item));
@@ -34,6 +41,7 @@ function matches(document, filter) {
       if ("$nin" in value) return !value.$nin.some(item => equal(actual, item));
       if ("$lt" in value) return String(actual) < String(value.$lt);
       if ("$gt" in value) return actual !== undefined && actual !== null && (typeof value.$gt === "number" ? typeof actual === "number" && actual > value.$gt : String(actual) > String(value.$gt));
+      if ("$gte" in value) return typeof actual === "number" && actual >= value.$gte;
       if ("$exists" in value) return (actual !== undefined) === value.$exists;
       if ("$ne" in value) return !equal(actual, value.$ne);
       throw new Error(`Unsupported test query: ${JSON.stringify(value)}`);
@@ -87,7 +95,7 @@ export function memoryDatabase() {
                 for (const [key, expression] of Object.entries(stage.$group)) {
                   if (key === "_id") continue;
                   const amount = expression.$sum;
-                  group[key] = (group[key] || 0) + (typeof amount === "number" ? amount : get(row, amount.slice(1)) || 0);
+                  group[key] = (group[key] || 0) + (evaluateValue(row, amount) || 0);
                 }
                 groups.set(id, group);
               }
@@ -129,20 +137,26 @@ export function memoryDatabase() {
           if (name === "shortViews" && this.documents.some(item => item.videoId === document.videoId && item.viewerHash === document.viewerHash)) {
             throw Object.assign(new Error("Duplicate short view"), { code: 11000 });
           }
+          if ((name === "promoterVideoWatches" && this.documents.some(item => item.videoId === document.videoId && item.viewerId === document.viewerId)) ||
+              (name === "uniqueVideoViews" && this.documents.some(item => item.videoId === document.videoId && item.ipHash === document.ipHash))) {
+            throw Object.assign(new Error("Duplicate video view"), { code: 11000 });
+          }
           document._id ??= new ObjectId();
           this.documents.push(document);
           return { insertedId: document._id };
         },
         async updateOne(filter, update, options = {}) {
           let document = this.documents.find(item => matches(item, filter));
+          let upsertedCount = 0;
           if (!document && options.upsert) {
             document = { ...filter };
             await this.insertOne(document);
             setFields(document, update.$setOnInsert);
+            upsertedCount = 1;
           }
           if (!document) return { matchedCount: 0 };
           applyUpdate(document, update);
-          return { matchedCount: 1 };
+          return { matchedCount: upsertedCount ? 0 : 1, upsertedCount };
         },
         async updateMany(filter, update) {
           const documents = this.documents.filter(item => matches(item, filter));

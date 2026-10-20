@@ -107,6 +107,12 @@ void main() {
         'adRateViews': 1000,
         'adEstimatedEarningsRupees': 30,
         'adEligibleViews': 200,
+        'rewardSettings': {
+          'creatorRegularViews': {'enabled': true, 'rateRupees': 50},
+          'creatorSimplyViews': {'enabled': false, 'rateRupees': 25},
+          'creatorRegularAds': {'enabled': false, 'rateRupees': 200},
+          'creatorSimplyAds': {'enabled': true, 'rateRupees': 100},
+        },
         'videos': [
           {
             'title': 'Portrait clip',
@@ -134,6 +140,14 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: WalletScreen()));
       await tester.pumpAndSettle();
       expect(find.text('₹92.50'), findsOneWidget);
+      expect(
+        find.text('Simply view rewards: paused (no new rewards).'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Regular-video ad rewards: paused (no new rewards).'),
+        findsOneWidget,
+      );
       expect(find.text('₹22.50'), findsOneWidget);
       expect(find.text('₹70.00'), findsOneWidget);
       expect(find.text('Deleted · Landscape video'), findsOneWidget);
@@ -172,6 +186,11 @@ void main() {
       });
       await tester.pumpWidget(const MaterialApp(home: WalletScreen()));
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('No videos yet.'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('No videos yet.'), findsOneWidget);
       expect(find.textContaining('Simply:'), findsNothing);
       expect(tester.takeException(), isNull);

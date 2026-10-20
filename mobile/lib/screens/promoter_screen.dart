@@ -114,6 +114,9 @@ class _PromoterScreenState extends State<PromoterScreen> {
   @override
   Widget build(BuildContext context) {
     final w = _w;
+    final settings = w?['rewardSettings'] as Map?;
+    final watchRate = settings?['memberWatch'] as Map?;
+    final referralRate = settings?['referralViews'] as Map?;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Wallet & referrals'),
@@ -257,12 +260,32 @@ class _PromoterScreenState extends State<PromoterScreen> {
                             label: const Text('Copy code'),
                           ),
                           const Divider(),
-                          Text(
-                            'Referred views: ${w['referredViews']} (${w['referralViewsUntilReward']} more to the next reward)',
-                          ),
+                          if (watchRate != null && referralRate != null) ...[
+                            Text(
+                              watchRate['enabled'] == false
+                                  ? 'Personal-watch rewards: paused.'
+                                  : 'Personal watches: ${_rupees(watchRate['rateRupees'])} per 1,000 distinct eligible videos.',
+                            ),
+                            Text(
+                              referralRate['enabled'] == false
+                                  ? 'Referral rewards: paused.'
+                                  : 'Referral views: ${_rupees(referralRate['rateRupees'])} per 1,000 qualifying views from people who joined through your referral.',
+                            ),
+                            const Text(
+                              'Credited proportionally for each new qualifying watch. Members and creators both qualify without creator approval. Rate changes and pauses never change previously credited earnings.',
+                            ),
+                            const SizedBox(height: 8),
+                          ] else
+                            const Text(
+                              'Current reward rates are unavailable. Update the backend and refresh.',
+                            ),
+                          Text('Referred views: ${w['referredViews']}'),
                           const SizedBox(height: 4),
                           Text(
-                            'Videos watched: ${w['distinctVideosWatched']} (${w['videosUntilWatchReward']} more to the next reward)',
+                            'Distinct eligible videos watched: ${w['distinctVideosWatched']}',
+                          ),
+                          const Text(
+                            'Personal and referral watches require signed-in, visible playback for 30 seconds (or the full video if shorter). Each viewer counts once per eligible regular video.',
                           ),
                         ],
                       ),
