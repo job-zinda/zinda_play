@@ -239,16 +239,18 @@ export function PlayerGate({ api, token, children, placement = "video", active =
         onError={() => setPlayError("The ad could not be played. Continue to your video.")}
       />
       <span className="ad-label">Ad</span>
-      {ad.targetUrl && <a className="ad-visit ad-live-visit" href={ad.targetUrl}
-        target="_blank" rel="noopener noreferrer sponsored"
-        onClick={() => { videoRef.current?.pause(); track(api, ad.id, "click"); }}>
-        Visit advertiser <ExternalLink size={15}/>
-      </a>}
       {playError && <div className="ad-error" role="alert"><p>{playError}</p><button className="secondary-btn" onClick={finish}>Continue to video</button></div>}
       {paused && <button type="button" className="ad-play" aria-label="Play ad" onClick={() => videoRef.current?.play()}><Play size={30} fill="currentColor"/></button>}
-      {ad.skippable
-        ? <button type="button" className="ad-skip" disabled={!canSkip} onClick={finish}>{canSkip ? "Skip ad ›" : `Skip in ${Math.max(1, Math.ceil(skipAt - elapsed))}s`}</button>
-        : <span className="ad-skip ad-must">You can watch your video in {remaining || ""}{remaining ? "s" : "…"}</span>}
+      <div className="ad-bottom-bar">
+        {ad.targetUrl && <a className="ad-visit ad-live-visit" href={ad.targetUrl}
+          target="_blank" rel="noopener noreferrer sponsored"
+          onClick={() => { videoRef.current?.pause(); track(api, ad.id, "click"); }}>
+          <span>Visit advertiser</span> <ExternalLink size={15}/>
+        </a>}
+        {ad.skippable
+          ? <button type="button" className="ad-skip" disabled={!canSkip} onClick={finish}>{canSkip ? "Skip ad ›" : `Skip in ${Math.max(1, Math.ceil(skipAt - elapsed))}s`}</button>
+          : <span className="ad-skip ad-must">You can watch your video in {remaining || ""}{remaining ? "s" : "…"}</span>}
+      </div>
     </div>
   );
 }

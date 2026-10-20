@@ -248,6 +248,15 @@ void main() {
             expect(find.text('Visit advertiser'), findsOneWidget);
           }
           if (skip) {
+            await tester.binding.setSurfaceSize(const Size(320, 640));
+            await tester.pump();
+            final visit = tester.getRect(find.text('Visit advertiser'));
+            final skipButton = tester.getRect(find.text('Skip ad ›'));
+            expect((visit.center.dy - skipButton.center.dy).abs(), lessThan(1));
+            expect(visit.right, lessThan(skipButton.left));
+            expect(skipButton.bottom, greaterThan(560));
+            await tester.binding.setSurfaceSize(null);
+            await tester.pump();
             await tester.tap(find.text('Skip ad ›'));
           } else {
             player.events.add(VideoEvent(eventType: VideoEventType.completed));

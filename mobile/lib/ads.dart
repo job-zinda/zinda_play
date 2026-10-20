@@ -557,46 +557,6 @@ class _PlayerGateState extends State<PlayerGate>
             ),
           ),
           const Positioned(left: 8, top: 8, child: _AdLabel()),
-          if ('${ad['targetUrl'] ?? ''}'.isNotEmpty)
-            Positioned(
-              left: 10,
-              top: widget.placement == 'simply' ? 64 : 38,
-              right: 64,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF7C3AED),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    minimumSize: const Size(0, 36),
-                    textStyle: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  onPressed: () async {
-                    await video.pause();
-                    try {
-                      await AdsApi.open(ad);
-                    } catch (error) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Could not open advertiser: $error'),
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.open_in_new, size: 15),
-                  label: const Text('Visit advertiser'),
-                ),
-              ),
-            ),
           if (_error != null)
             Center(
               child: Card(
@@ -627,41 +587,96 @@ class _PlayerGateState extends State<PlayerGate>
               ),
             ),
           Positioned(
+            left: 10,
             right: 10,
             bottom: 10,
-            child: skippable
-                ? FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: canSkip ? kPurple : Colors.black87,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+            child: Row(
+              children: [
+                Expanded(
+                  child: '${ad['targetUrl'] ?? ''}'.isEmpty
+                      ? const SizedBox.shrink()
+                      : Align(
+                          alignment: Alignment.centerLeft,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF7C3AED),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              minimumSize: const Size(0, 34),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              textStyle: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            onPressed: () async {
+                              await video.pause();
+                              try {
+                                await AdsApi.open(ad);
+                              } catch (error) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Could not open advertiser: $error',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.open_in_new, size: 15),
+                            label: const Text(
+                              'Visit advertiser',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 8),
+                skippable
+                    ? FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: canSkip ? kPurple : Colors.black87,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          minimumSize: const Size(0, 34),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: canSkip ? _finish : null,
+                        child: Text(
+                          canSkip
+                              ? 'Skip ad ›'
+                              : 'Skip in ${max(1, (skipAt - elapsed).ceil())}s',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      )
+                    : Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Video starts in ${remaining}s',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                       ),
-                      minimumSize: Size.zero,
-                    ),
-                    onPressed: canSkip ? _finish : null,
-                    child: Text(
-                      canSkip
-                          ? 'Skip ad ›'
-                          : 'Skip in ${max(1, (skipAt - elapsed).ceil())}s',
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
-                    ),
-                  )
-                : Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'Video starts in ${remaining}s',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
+              ],
+            ),
           ),
         ],
       ),

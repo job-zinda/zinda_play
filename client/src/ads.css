@@ -4,7 +4,12 @@
 .ad-label{position:absolute;top:8px;left:8px;z-index:2;padding:2px 7px;border-radius:5px;background:#000000b3;color:#e7e4f2;font-size:10px;font-weight:700;letter-spacing:.6px}
 .ad-preroll{position:relative;width:100%;height:100%;background:#000}
 .ad-preroll video{width:100%;height:100%;object-fit:contain;background:#000}
-.ad-visit.ad-live-visit{position:absolute;left:10px;top:40px;z-index:3;max-width:calc(100% - 66px);padding:9px 12px;font-size:12px;border-radius:9px}
+.ad-bottom-bar{position:absolute;left:10px;right:12px;bottom:14px;z-index:3;display:flex;align-items:center;justify-content:flex-end;gap:8px;pointer-events:none}
+.ad-bottom-bar>*{pointer-events:auto}
+.ad-bottom-bar .ad-skip{position:static;flex:0 0 auto;white-space:nowrap}
+.ad-visit.ad-live-visit{margin-right:auto;min-width:0;padding:9px 12px;font-size:12px;border-radius:9px;white-space:nowrap}
+.ad-live-visit span{overflow:hidden;text-overflow:ellipsis}
+.ad-live-visit svg{flex:0 0 auto}
 .home-video-ad{aspect-ratio:16 / 9;width:min(680px,calc(100% - 24px));margin:16px auto;overflow:hidden;border:1px solid #ffffff20;border-radius:16px}
 .home-video-ad.ad-hidden{display:none}
 .ad-placement-options{display:flex;flex-wrap:wrap;gap:12px}
