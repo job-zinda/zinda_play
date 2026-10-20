@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -56,6 +57,130 @@ class _AdPlayer extends VideoPlayerPlatform {
 
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+  for (final placement in ['video', 'simply', 'home']) {
+    testWidgets('$placement ads load only when active and pause offscreen', (
+      tester,
+    ) async {
+      final player = _AdPlayer();
+      VideoPlayerPlatform.instance = player;
+      var active = false;
+      var requests = 0;
+      var claims = 0;
+      var clicks = 0;
+      String? openedUrl;
+      const launcher = MethodChannel('plugins.flutter.io/url_launcher');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(launcher, (
+        call,
+      ) async {
+        openedUrl = (call.arguments as Map)['url'] as String;
+        return true;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          launcher,
+          null,
+        ),
+      );
+      late StateSetter update;
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/ads') {
+          requests++;
+          expect(request.url.queryParameters['placement'], placement);
+          return http.Response(
+            jsonEncode([
+              {
+                'id': 'placement-$placement',
+                'type': 'video',
+                'title': 'Placement ad',
+                'mediaUrl': 'https://example.test/ad.mp4',
+                'targetUrl': 'https://example.test/advertiser',
+                'frequency': 1,
+                'skippable': true,
+                'skipAfterSeconds': 1,
+              },
+            ]),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/click')) {
+          clicks++;
+          return http.Response('', 204);
+        }
+        expect(request.url.path, '/api/ads/placement-$placement/impression');
+        claims++;
+        return http.Response('{"accepted":true}', 200);
+      });
+      await http.runWithClient(() async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (_, setState) {
+                  update = setState;
+                  return SizedBox(
+                    width: 320,
+                    height: 180,
+                    child: PlayerGate(
+                      placement: placement,
+                      active: active,
+                      builder: (_) => const Text('Content'),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(requests, 0);
+        expect(claims, 0);
+        update(() => active = true);
+        await tester.pumpAndSettle();
+        expect(requests, 1);
+        expect(claims, 1);
+        expect(player.playing, isTrue);
+        expect(find.text('Visit advertiser'), findsOneWidget);
+        final cta = tester.getRect(find.text('Visit advertiser'));
+        expect(cta.right, lessThanOrEqualTo(320));
+        expect(cta.bottom, lessThanOrEqualTo(180));
+        update(() => active = false);
+        await tester.pumpAndSettle();
+        expect(player.playing, isFalse);
+        update(() => active = true);
+        await tester.pumpAndSettle();
+        expect(requests, 1);
+        expect(claims, 1);
+        expect(find.text('Visit advertiser'), findsOneWidget);
+        await tester.tap(find.text('Visit advertiser'));
+        await tester.pumpAndSettle();
+        expect(openedUrl, 'https://example.test/advertiser');
+        expect(clicks, 1);
+        expect(player.playing, isFalse);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      }, () => client);
+    });
+  }
+
+  testWidgets('homepage slot disappears when no homepage video ads exist', (
+    tester,
+  ) async {
+    final client = MockClient((request) async {
+      expect(request.url.queryParameters['placement'], 'home');
+      return http.Response('[]', 200);
+    });
+    await http.runWithClient(() async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: HomeVideoAd())),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(PlayerGate), findsNothing);
+      expect(find.byType(AspectRatio), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }, () => client);
+  });
+
   for (final skip in [false, true]) {
     testWidgets(
       'creator ad ${skip ? "skip does not earn" : "full watch posts one earning ticket"}',
@@ -114,12 +239,13 @@ void main() {
           await tester.pumpAndSettle();
           expect(player.playing, isTrue);
           expect(calls, contains('POST /api/ads/$adId/view-start'));
-          expect(find.text('Visit advertiser'), findsNothing);
+          expect(find.text('Visit advertiser'), findsOneWidget);
           final steps = skip ? 4 : 12;
           for (int step = 1; step <= steps; step++) {
             player.position = Duration(milliseconds: step * 250);
             await tester.pump(const Duration(milliseconds: 250));
             await tester.pump();
+            expect(find.text('Visit advertiser'), findsOneWidget);
           }
           if (skip) {
             await tester.tap(find.text('Skip ad ›'));

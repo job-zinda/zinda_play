@@ -34,9 +34,37 @@ still. The floating WhatsApp **Ask me** button opens
 Search is opened from the header; searches also list matching creators above the
 video results. A **Search content creators** field above Popular Creators opens a
 dedicated creator search. Creator profiles, video playback, sharing and ad
-placements remain available. Admins can add, edit, hide and delete multiple
-homepage banners (web admin → **Banners**); enabled banners rotate every five
-seconds in a carousel placed after the first three feed videos.
+placements remain available. The mobile homepage no longer fetches or displays
+the promotional banner carousel. The separate web admin **Banners** section has
+been removed; existing website homepage banners and their stored data remain.
+
+## Ad placements
+
+Web admin -> **Ads** -> **Ad placements** lets admins select multiple locations:
+**Normal videos**, **Simply**, and **Homepage**. Video ads play before normal
+videos or Simply clips, or inline on the homepage (after the first three mobile
+feed videos, or after the feed when fewer are available). Image ads remain
+homepage-only, with top/middle/bottom positions managed under Ads.
+Approved paid business ads also support placement selection; their creative,
+destination, targeting and paid impression limits remain locked.
+
+**Visit advertiser** remains visible throughout video-ad playback and on the
+end card when a destination is configured. Skip delays, frequency, impression
+caps, click tracking and full-watch creator credit use the existing flows.
+Only active Simply clips request ads; homepage video ads load when visible and
+pause offscreen. Video frequency is shared across selected surfaces within the
+browser/app session. Ads without the new `placements` field keep their previous
+behavior: video ads on normal videos, image ads on the homepage.
+
+Deploy the API and website together, then rebuild/reinstall the mobile app.
+The API now accepts `placements: ["video", "simply", "home"]` on admin ads and
+filters `/api/ads?placement=video|simply|home` for video ads; the existing
+`top|middle|bottom` image-ad queries remain supported. At least one placement
+is required when explicitly supplied. No banner records or media are deleted.
+Test with `node --test server/src/ad-delivery.test.js server/src/creator-ads.test.js server/src/business-ads.test.js`
+from the repository root and
+`flutter test test/ads_test.dart test/shorts_test.dart test/home_featured_spacing_test.dart test/ad_frequency_test.dart`
+from `mobile`.
 
 Sharing a video or creator profile opens a sheet with the creator's photo and
 name plus Share, WhatsApp and Copy link actions. Creators can share their own
@@ -44,6 +72,23 @@ profile from Creator studio. Profile links use
 `https://zindaplay.com/share/creator/<id>`. Every signed-in account (viewer,
 creator, promoter and business) can follow creators and like or comment on
 videos. The bottom navigation keeps Home, Simply, Create, Earn and Profile actions.
+
+## Regular-video engagement
+
+The mobile regular-video player has a compact dark engagement card with Like,
+Comments, Share and Save. Likes and comment totals come from the existing video
+APIs. Tapping Comments opens and refreshes the panel; its refresh button also
+fetches current totals. Signed-in users retain the 500-character comment composer,
+and guests see a Sign In prompt. Sharing uses the existing share sheet.
+
+Regular-video bookmarks are stored locally in a separate secure-storage namespace,
+per signed-in username and video. They survive reopening the screen and signing
+out on Android/iOS, but do not sync between devices or appear in Saved Simply.
+Changing a username starts a separate local bookmark set. No regular-video Save
+API is called, and Simply's existing server-side saves are unchanged.
+
+Validate the layout, counts, authentication return, bookmarks and sharing with
+`flutter test test/watch_engagement_test.dart`.
 
 The creator wallet has a **Withdraw** button once at least ₹100 is available.
 Creators withdraw the full balance or a custom amount (minimum ₹100) to a Google

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Bookmark, ChevronDown, ChevronUp, Flag, Heart, MessageCircle, Pause, Play, RefreshCw, Share2, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import "./shorts.css";
 import { shareLink, videoShareUrl } from "./public-links.js";
+import { PlayerGate } from "./Ads.jsx";
 
 async function request(api, token, path, options = {}) {
   const response = await fetch(`${api}${path}`, {
@@ -154,8 +155,12 @@ function ShortFeed({ api, token, role, onSignIn, onShare, onCreator, saved, init
           const element = event.currentTarget;
           if (element.clientHeight) setIndex(Math.round(element.scrollTop / element.clientHeight));
         }}>
-        {items.map((video, i) => <ShortVideo key={video.id} video={video} api={api} token={token} role={role}
-          active={visible && !suspended && i === index} muted={muted} onMute={() => setMuted(value => !value)} onSignIn={onSignIn} onShare={onShare} onCreator={onCreator}/>)}
+        {items.map((video, i) => <div key={video.id} className="short-ad-gate">
+          <PlayerGate api={api} token={token} placement="simply" active={visible && !suspended && i === index}>
+            <ShortVideo video={video} api={api} token={token} role={role}
+              active={visible && !suspended && i === index} muted={muted} onMute={() => setMuted(value => !value)} onSignIn={onSignIn} onShare={onShare} onCreator={onCreator}/>
+          </PlayerGate>
+        </div>)}
         <div key={`status-${items.length}`} className="shorts-status" role="status">
           {loading ? <><div className="shorts-skeleton"/><p>Loading Simply...</p></> : error ? <><p role="alert">{error}</p><button className="primary-btn" onClick={() => load()}>Retry</button></> :
             <><p>{more ? "More Simply videos are available." : items.length ? "You're all caught up." : saved ? "No saved Simply videos yet." : "No Simply videos yet. Upload one from the mobile app to get started."}</p>

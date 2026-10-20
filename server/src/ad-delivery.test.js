@@ -1,7 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency } from "./ad-delivery.js";
+import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency, effectiveAdPlacements, normalizeAdPlacements, adPlacementQuery } from "./ad-delivery.js";
 import { dueVideoAds, markAdDelivered } from "../../client/src/ad-frequency.js";
+
+test("ad surfaces preserve legacy defaults and validate multi-select placements", () => {
+  assert.deepEqual(effectiveAdPlacements({ type: "video" }), ["video"]);
+  assert.deepEqual(effectiveAdPlacements({ type: "banner" }), ["home"]);
+  assert.deepEqual(normalizeAdPlacements({ type: "video", placements: ["home", "simply", "video", "home"] }),
+    { placements: ["home", "simply", "video"] });
+  assert.deepEqual(normalizeAdPlacements({ type: "banner", placements: ["home"] }), { placements: ["home"] });
+  for (const placements of [[], null, "video", ["unknown"], [null], ["__proto__"]]) {
+    assert.match(normalizeAdPlacements({ type: "video", placements }).error, /valid ad placement/);
+  }
+  assert.match(normalizeAdPlacements({ type: "banner", placements: ["video"] }).error, /Image ads/);
+  assert.match(normalizeAdPlacements({ type: "banner", placements: ["simply", "home"] }).error, /Image ads/);
+});
+
+test("delivery queries isolate surfaces before applying limits and retain legacy ads", () => {
+  assert.deepEqual(adPlacementQuery("simply"), { type: "video", placements: "simply" });
+  assert.deepEqual(adPlacementQuery("home"), { type: "video", placements: "home" });
+  assert.deepEqual(adPlacementQuery("video"), {
+    type: "video", $or: [{ placements: "video" }, { placements: { $exists: false } }]
+  });
+  for (const placement of ["top", "middle", "bottom"]) {
+    assert.deepEqual(adPlacementQuery(placement), {
+      type: "banner", placement, $or: [{ placements: "home" }, { placements: { $exists: false } }]
+    });
+  }
+  assert.equal(adPlacementQuery("invalid"), null);
+});
 
 test("ad frequency accepts only every 1, 5, or 10 videos", () => {
   for (const value of [1, 5, 10, "5"]) assert.equal(normalizeAdFrequency(value), Number(value));

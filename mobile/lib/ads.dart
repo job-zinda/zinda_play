@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import 'api.dart';
+import 'navigation.dart';
 import 'theme.dart';
 
 // Categories of recently watched videos, sent with ad requests for interest targeting.
@@ -107,7 +109,12 @@ class AdsApi {
     url ??= '${ad['targetUrl'] ?? ''}';
     if (url.isEmpty) return;
     track('${ad['id']}', 'click');
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    )) {
+      throw ApiException('The advertiser link could not be opened.');
+    }
   }
 
   static Map<String, dynamic> pick(List<Map<String, dynamic>> ads) =>
@@ -189,12 +196,22 @@ class _AdLabel extends StatelessWidget {
 // Plays an admin video ad before the real player. Skippable ads unlock Skip after the admin's delay.
 class PlayerGate extends StatefulWidget {
   final WidgetBuilder builder;
-  const PlayerGate({super.key, required this.builder});
+  final String placement;
+  final bool active;
+  final VoidCallback? onDone;
+  const PlayerGate({
+    super.key,
+    required this.builder,
+    this.placement = 'video',
+    this.active = true,
+    this.onDone,
+  });
   @override
   State<PlayerGate> createState() => _PlayerGateState();
 }
 
-class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
+class _PlayerGateState extends State<PlayerGate>
+    with WidgetsBindingObserver, RouteAware {
   bool _loading = true;
   bool _done = false;
   Map<String, dynamic>? _ad;
@@ -205,13 +222,47 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
   bool _visible = true;
   bool _completing = false;
   bool _ended = false;
+  bool _started = false;
+  bool _routeVisible = true;
+  bool _onScreen = true;
+  ModalRoute<void>? _route;
   String? _error;
+  bool get _canPlay => widget.active && _visible && _routeVisible && _onScreen;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _start();
+    if (widget.active) _start();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of<void>(context);
+    if (route != _route) {
+      appRouteObserver.unsubscribe(this);
+      _route = route;
+      if (route != null) appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didUpdateWidget(PlayerGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !_started) _start();
+    if (!_canPlay) _video?.pause();
+  }
+
+  @override
+  void didPushNext() {
+    _routeVisible = false;
+    _video?.pause();
+  }
+
+  @override
+  void didPopNext() {
+    _routeVisible = true;
   }
 
   @override
@@ -221,7 +272,9 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
   }
 
   Future<void> _start() async {
-    final ads = AdsApi.dueVideos(await AdsApi.fetch('video'));
+    if (_started) return;
+    _started = true;
+    final ads = AdsApi.dueVideos(await AdsApi.fetch(widget.placement));
     if (!mounted) return;
     if (ads.isEmpty) return _finish();
     final ad = AdsApi.pick(ads);
@@ -269,7 +322,7 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
       _loading = false;
     });
     try {
-      await controller.play();
+      if (_canPlay) await controller.play();
     } catch (error) {
       if (mounted) setState(() => _error = 'Could not play this ad: $error');
     }
@@ -284,7 +337,7 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
     _lastPosition = position;
     final ended =
         value.duration > Duration.zero && value.position >= value.duration;
-    if (_visible &&
+    if (_canPlay &&
         !value.isBuffering &&
         (value.isPlaying || ended) &&
         delta > 0 &&
@@ -336,12 +389,14 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
         _done = true;
         _loading = false;
       });
+      widget.onDone?.call();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    appRouteObserver.unsubscribe(this);
     _video?.removeListener(_tick);
     _video?.dispose();
     super.dispose();
@@ -349,7 +404,18 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    if (_done) return widget.builder(context);
+    return VisibilityDetector(
+      key: ObjectKey(this),
+      onVisibilityChanged: (info) {
+        _onScreen = info.visibleFraction >= 0.5;
+        if (!_canPlay) _video?.pause();
+      },
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
+    if (_done || (!_started && !widget.active)) return widget.builder(context);
     final ad = _ad;
     final video = _video;
     if (_loading || ad == null || video == null) {
@@ -491,6 +557,46 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
             ),
           ),
           const Positioned(left: 8, top: 8, child: _AdLabel()),
+          if ('${ad['targetUrl'] ?? ''}'.isNotEmpty)
+            Positioned(
+              left: 10,
+              top: widget.placement == 'simply' ? 64 : 38,
+              right: 64,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF7C3AED),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: const Size(0, 36),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  onPressed: () async {
+                    await video.pause();
+                    try {
+                      await AdsApi.open(ad);
+                    } catch (error) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Could not open advertiser: $error'),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.open_in_new, size: 15),
+                  label: const Text('Visit advertiser'),
+                ),
+              ),
+            ),
           if (_error != null)
             Center(
               child: Card(
@@ -510,10 +616,13 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
               ),
             ),
           if (!value.isPlaying)
-            Center(
+            Positioned(
+              right: 10,
+              top: widget.placement == 'simply' ? 64 : 38,
               child: IconButton.filled(
-                iconSize: 36,
-                onPressed: video.play,
+                tooltip: 'Play ad',
+                iconSize: 24,
+                onPressed: _canPlay ? video.play : null,
                 icon: const Icon(Icons.play_arrow_rounded),
               ),
             ),
@@ -555,6 +664,47 @@ class _PlayerGateState extends State<PlayerGate> with WidgetsBindingObserver {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class HomeVideoAd extends StatefulWidget {
+  const HomeVideoAd({super.key});
+
+  @override
+  State<HomeVideoAd> createState() => _HomeVideoAdState();
+}
+
+class _HomeVideoAdState extends State<HomeVideoAd> {
+  bool _active = false;
+  bool _done = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_done) return const SizedBox.shrink();
+    return VisibilityDetector(
+      key: ObjectKey(this),
+      onVisibilityChanged: (info) {
+        final active = info.visibleFraction >= 0.5;
+        if (mounted && active != _active) setState(() => _active = active);
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: PlayerGate(
+              placement: 'home',
+              active: _active,
+              onDone: () {
+                if (mounted) setState(() => _done = true);
+              },
+              builder: (_) => const SizedBox.shrink(),
+            ),
+          ),
+        ),
       ),
     );
   }

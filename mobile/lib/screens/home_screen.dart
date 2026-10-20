@@ -5,7 +5,6 @@ import '../ads.dart';
 import '../api.dart';
 import '../theme.dart';
 import '../widgets/video_card.dart';
-import '../widgets/homepage_promotion_banner.dart';
 import '../widgets/share_sheet.dart';
 import '../widgets/muted_video_preview.dart';
 import '../widgets/whatsapp_help_button.dart';
@@ -37,7 +36,6 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _videos = [];
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _popular = [];
-  List<Map<String, dynamic>> _banners = [];
   List<Map<String, dynamic>> _creatorMatches = [];
   String _category = '';
   String _sort = 'Trending';
@@ -89,7 +87,6 @@ class _HomeScreenState extends State<HomeScreen> {
         Api.instance.get('/videos${query.isEmpty ? '' : '?$query'}'),
         Api.instance.get('/categories'),
         Api.instance.get('/discover/popular-creators'),
-        Api.instance.get('/banners').catchError((_) => <dynamic>[]),
         term.length < 2
             ? Future<dynamic>.value(<dynamic>[])
             : Api.instance
@@ -103,8 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _videos = _list(results[0]);
         _categories = _list(results[1]);
         _popular = _list(results[2]);
-        _banners = results[3] is List ? _list(results[3]) : [];
-        _creatorMatches = results[4] is List ? _list(results[4]) : [];
+        _creatorMatches = results[3] is List ? _list(results[3]) : [];
         _loading = false;
       });
     } catch (e) {
@@ -511,17 +507,13 @@ class _HomeScreenState extends State<HomeScreen> {
       feed.add(_videoFeedRow(video));
       if (i == 2) {
         feed.add(const AdBanner(placement: 'top'));
-        if (_banners.isNotEmpty) {
-          feed.add(HomepagePromotionCarousel(banners: _banners));
-        }
+        feed.add(const HomeVideoAd(key: ValueKey('home-video-ad')));
       }
       if (i == 5) feed.add(const AdBanner(placement: 'middle'));
     }
     if (videos.length < 3) {
       feed.add(const AdBanner(placement: 'top'));
-      if (_banners.isNotEmpty) {
-        feed.add(HomepagePromotionCarousel(banners: _banners));
-      }
+      feed.add(const HomeVideoAd(key: ValueKey('home-video-ad')));
     }
     return RefreshIndicator(
       onRefresh: _load,

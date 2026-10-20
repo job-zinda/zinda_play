@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:zinda_play/api.dart';
 import 'package:zinda_play/navigation.dart';
@@ -183,6 +184,7 @@ class _Request extends Fake implements HttpClientRequest {
   @override
   Future<HttpClientResponse> close() async {
     network.calls.add('$method ${uri.path}');
+    if (uri.path == '/api/ads') return _Response([]);
     if (uri.path.endsWith('/like')) {
       network.liked = !network.liked;
       return _Response({
@@ -271,6 +273,7 @@ void main() {
   late _Players players;
   late _Network network;
   setUp(() {
+    FlutterSecureStorage.setMockInitialValues({});
     players = _Players();
     VideoPlayerPlatform.instance = players;
     network = _Network();
@@ -297,6 +300,7 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
   }
 
   final items = List.generate(
@@ -460,7 +464,11 @@ void main() {
       'Pause',
       'Unmute',
     ]) {
-      expect(find.byTooltip(tooltip).hitTestable(), findsOneWidget);
+      expect(
+        find.byTooltip(tooltip).hitTestable(),
+        findsOneWidget,
+        reason: tooltip,
+      );
     }
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());

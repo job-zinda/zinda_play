@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { GridFSBucket, MongoClient, ObjectId } from "mongodb";
 import { open as openGeoReader } from "maxmind";
 import { initializeMemberships, membershipSettings, registerMembershipRoutes } from "./memberships.js";
-import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency } from "./ad-delivery.js";
+import { adCapacityExpression, adReport, claimAdImpression, normalizeAdFrequency, bannerPositions, effectiveAdPlacements, normalizeAdPlacements, adPlacementQuery } from "./ad-delivery.js";
 import { accountRole, approvedCreatorQuery, initializeCreatorApplications, memberRewardsEligible, memberRewardsGuard, registerAccountModeRoutes } from "./account-modes.js";
 import { initializeBanners, registerBannerRoutes } from "./banners.js";
 import { initializeAccountSecurity, registerAccountSecurityRoutes } from "./account-security.js";
@@ -412,13 +412,13 @@ function processingState(status) {
 }
 app.get("/api/health", (_req, res) => res.json({ status: "ok", app: "Zinda Play API" }));
 
-const adPlacements = ["top", "middle", "bottom"];
 const publicAd = ad => ({
   id: ad._id.toString(),
   title: ad.title,
   description: ad.description || "",
   type: ad.type,
   placement: ad.placement || "",
+  placements: effectiveAdPlacements(ad),
   mediaUrl: ad.mediaUrl,
   targetUrl: ad.targetUrl || "",
   productUrl: ad.productUrl || "",
@@ -474,6 +474,9 @@ function normalizeAd(body) {
   }
   if (targetUrl && !isHttpUrl(targetUrl)) return { error: "The click-through URL must be a valid HTTP or HTTPS URL." };
   const fields = { title, type, mediaUrl, targetUrl, active: body?.active !== false };
+  const surfaces = normalizeAdPlacements({ ...body, type });
+  if (surfaces.error) return surfaces;
+  fields.placements = surfaces.placements;
   const frequency = normalizeAdFrequency(body?.frequency);
   if (frequency === null) return { error: "Ad frequency must be every 1, 5, or 10 videos." };
   fields.frequency = frequency;
@@ -489,7 +492,7 @@ function normalizeAd(body) {
   }
   Object.assign(fields, { targetViews, targetCity, targetCategories });
   if (type === "banner") {
-    if (!adPlacements.includes(body?.placement)) return { error: "Choose a banner position: top, middle or bottom." };
+    if (!bannerPositions.includes(body?.placement)) return { error: "Choose a banner position: top, middle or bottom." };
     fields.placement = body.placement;
     fields.skippable = true;
     fields.skipAfterSeconds = 20;
@@ -511,9 +514,9 @@ app.get("/api/ads", asyncRoute(async (req, res) => {
     active: { $ne: false },
     $expr: adCapacityExpression
   };
-  if (placement === "video") query.type = "video";
-  else if (adPlacements.includes(placement)) Object.assign(query, { type: "banner", placement });
-  else return res.status(400).json({ error: "Choose a valid ad placement." });
+  const surfaceQuery = adPlacementQuery(placement);
+  if (!surfaceQuery) return res.status(400).json({ error: "Choose a valid ad placement." });
+  Object.assign(query, surfaceQuery);
   let ads = await adsCollection().find(query).sort({ createdAt: -1 }).limit(100).toArray();
   if (ads.some(ad => ad.targetCity)) {
     const location = await viewerLocation(req).catch(() => null);
@@ -724,7 +727,7 @@ app.patch("/api/admin/ads/:id", requireAdmin, asyncRoute(async (req, res) => {
   if (existing.businessSubmissionId) {
     const protectedFields = ["title", "type", "mediaUrl", "targetUrl", "targetCity", "targetCategories", "targetViews"];
     if (protectedFields.some(key => req.body[key] !== undefined && JSON.stringify(req.body[key]) !== JSON.stringify(existing[key]))) {
-      return res.status(400).json({ error: "Business creative, destination, targeting and paid impression target are locked. Change only publication, frequency or skip settings." });
+      return res.status(400).json({ error: "Business creative, destination, targeting and paid impression target are locked. Change only publication, placements, frequency or skip settings." });
     }
   } else if (String(req.body?.mediaUrl || "").startsWith("/business-ad-media/")) {
     return res.status(400).json({ error: "Business ad media can only be added through approval." });

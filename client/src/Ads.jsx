@@ -61,7 +61,7 @@ export function AdSlot({ api, placement }) {
 }
 
 // Plays a video ad before the real player. Skippable ads unlock "Skip" after the admin's chosen delay.
-export function PlayerGate({ api, token, children }) {
+export function PlayerGate({ api, token, children, placement = "video", active = true, onDone }) {
   const [phase, setPhase] = useState("loading");
   const [ad, setAd] = useState(null);
   const [elapsed, setElapsed] = useState(0);
@@ -76,8 +76,9 @@ export function PlayerGate({ api, token, children }) {
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
   useEffect(() => {
+    if (!active || phase !== "loading") return;
     let cancelled = false;
-    fetch(adsUrl(api, "video"))
+    fetch(adsUrl(api, placement))
       .then(response => (response.ok ? response.json() : []))
       .then(async list => {
         if (cancelled) return;
@@ -101,7 +102,15 @@ export function PlayerGate({ api, token, children }) {
       })
       .catch(error => { console.error("Video ad delivery failed:", error); if (!cancelled) setPhase("done"); });
     return () => { cancelled = true; };
-  }, [api, token]);
+  }, [api, token, placement, active]);
+
+  useEffect(() => {
+    if (!active) videoRef.current?.pause();
+  }, [active]);
+
+  useEffect(() => {
+    if (phase === "done") onDone?.();
+  }, [phase, onDone]);
 
   useEffect(() => {
     if (phase !== "ad" || !ad) return;
@@ -158,7 +167,7 @@ export function PlayerGate({ api, token, children }) {
     if (finishing) return;
     const media = videoRef.current;
     const remaining = media.currentTime - lastPosition.current;
-    if (!document.hidden && remaining > 0 && remaining < 1.5) watchedMs.current += remaining * 1000;
+    if (active && !document.hidden && remaining > 0 && remaining < 1.5) watchedMs.current += remaining * 1000;
     setFinishing(true);
     if (ticket.current && watchedMs.current >= ticket.current.minimumWatchMs - 250) {
       try {
@@ -202,7 +211,7 @@ export function PlayerGate({ api, token, children }) {
     <div className="ad-preroll">
       <video
         ref={videoRef}
-        autoPlay
+        autoPlay={active}
         playsInline
         preload="auto"
         disablePictureInPicture
@@ -212,12 +221,12 @@ export function PlayerGate({ api, token, children }) {
           const media = event.currentTarget;
           const delta = media.currentTime - lastPosition.current;
           lastPosition.current = media.currentTime;
-          if (!document.hidden && !media.paused && !media.seeking && delta > 0 && delta < 1.5) watchedMs.current += delta * 1000;
+          if (active && !document.hidden && !media.paused && !media.seeking && delta > 0 && delta < 1.5) watchedMs.current += delta * 1000;
           setElapsed(media.currentTime);
         }}
         onSeeking={event => { lastPosition.current = event.currentTarget.currentTime; }}
         onCanPlay={event => {
-          if (!document.hidden) event.currentTarget.play().catch(error => {
+          if (active && !document.hidden) event.currentTarget.play().catch(error => {
             if (error.name === "NotAllowedError") setPaused(true);
             else if (error.name !== "AbortError") setPlayError(error.message);
           });
@@ -230,6 +239,11 @@ export function PlayerGate({ api, token, children }) {
         onError={() => setPlayError("The ad could not be played. Continue to your video.")}
       />
       <span className="ad-label">Ad</span>
+      {ad.targetUrl && <a className="ad-visit ad-live-visit" href={ad.targetUrl}
+        target="_blank" rel="noopener noreferrer sponsored"
+        onClick={() => { videoRef.current?.pause(); track(api, ad.id, "click"); }}>
+        Visit advertiser <ExternalLink size={15}/>
+      </a>}
       {playError && <div className="ad-error" role="alert"><p>{playError}</p><button className="secondary-btn" onClick={finish}>Continue to video</button></div>}
       {paused && <button type="button" className="ad-play" aria-label="Play ad" onClick={() => videoRef.current?.play()}><Play size={30} fill="currentColor"/></button>}
       {ad.skippable
@@ -239,7 +253,23 @@ export function PlayerGate({ api, token, children }) {
   );
 }
 
-const blankAd = { title: "", type: "banner", placement: "top", mediaUrl: "", targetUrl: "", skippable: true, skipAfterSeconds: 20, frequency: 1, active: true, targetViews: 0, targetCity: "", targetCategories: [] };
+export function HomeVideoAd({ api, token }) {
+  const container = useRef(null);
+  const [active, setActive] = useState(false);
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) =>
+      setActive(entry.isIntersecting && entry.intersectionRatio >= 0.5), { threshold: [0, 0.5] });
+    observer.observe(container.current);
+    return () => observer.disconnect();
+  }, []);
+  return <aside ref={container} className={`home-video-ad${done ? " ad-hidden" : ""}`} aria-label="Video advertisement">
+    {!done && <PlayerGate api={api} token={token} placement="home" active={active} onDone={() => setDone(true)}/>}
+  </aside>;
+}
+
+const surfaceOptions = [["video", "Normal videos"], ["simply", "Simply"], ["home", "Homepage"]];
+const blankAd = { title: "", type: "banner", placement: "top", placements: ["home"], mediaUrl: "", targetUrl: "", skippable: true, skipAfterSeconds: 20, frequency: 1, active: true, targetViews: 0, targetCity: "", targetCategories: [] };
 
 export function AdminAds({ api, token, onBack, onUnauthorized }) {
   const [ads, setAds] = useState([]);
@@ -278,13 +308,14 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
   ];
 
   const startNew = () => { setForm(blankAd); setEditingId(null); setError(""); setShowForm(true); };
-  const startEdit = ad => { setForm({ ...blankAd, ...ad }); setEditingId(ad.id); setError(""); setShowForm(true); };
+  const startEdit = ad => { setForm({ ...blankAd, ...ad, placements: ad.placements ?? (ad.type === "video" ? ["video"] : ["home"]) }); setEditingId(ad.id); setError(""); setShowForm(true); };
 
   const save = async event => {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
+      if (!form.placements.length) throw new Error("Select at least one ad placement.");
       await request(editingId ? `/admin/ads/${editingId}` : "/admin/ads", { method: editingId ? "PATCH" : "POST", body: JSON.stringify(form) });
       setShowForm(false);
       await load();
@@ -315,13 +346,16 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
       let data = {};
       try { data = JSON.parse(xhr.responseText); } catch { /* keep empty */ }
       if (xhr.status === 401) { onUnauthorized?.(); return; }
-      if (xhr.status >= 200 && xhr.status < 300) setForm(current => ({ ...current, mediaUrl: data.mediaUrl, type: data.type }));
+      if (xhr.status >= 200 && xhr.status < 300) setForm(current => ({ ...current, mediaUrl: data.mediaUrl, type: data.type,
+        placements: data.type === current.type ? current.placements : data.type === "video" ? ["video"] : ["home"] }));
       else setError(data.error || "Upload failed");
     };
     xhr.onerror = () => { setUploading(false); setError("Upload failed. Check your connection."); };
     xhr.send(file);
   };
-  const where = ad => ad.type === "video" ? "Video before playback" : `Banner · ${ad.placement}`;
+  const where = ad => (ad.placements ?? (ad.type === "video" ? ["video"] : ["home"]))
+    .map(value => surfaceOptions.find(([key]) => key === value)?.[1] || value).join(", ") +
+    (ad.type === "banner" ? ` · ${ad.placement}` : "");
   const mode = ad => ad.type !== "video" ? "—" : ad.skippable ? `Skip after ${ad.skipAfterSeconds}s` : "Must watch";
   const downloadReport = () => {
     const columns = ["Ad", "Type", "Status", "Frequency", "Target impressions", "Impressions", "Remaining", "Clicks", "CTR (%)", "Completion (%)", "Completed at", "Credited full ad watches", "Creator ad earnings (INR)"];
@@ -342,7 +376,7 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
     <section className="admin-panel">
       <button className="back-link" onClick={onBack}>← Back to Admin</button>
       <div className="section-heading">
-        <div><span className="eyebrow"><Megaphone size={14}/> ADVERTISING</span><h1>Ads</h1><p className="muted">Show banner ads on the home page and video ads before playback, on the web app and the mobile app.</p></div>
+        <div><span className="eyebrow"><Megaphone size={14}/> ADVERTISING</span><h1>Ads</h1>        <p className="muted">Choose where each ad appears: Normal videos, Simply or Homepage, on the web app and the mobile app.</p></div>
         {!showForm && <button className="primary-btn" onClick={startNew}><Plus size={16}/> New ad</button>}
       </div>
       {error && <p className="error" role="alert">{error}</p>}
@@ -360,9 +394,9 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
           </> : <>
           <label>Ad name<input required maxLength={120} value={form.title} onChange={e => set({ title: e.target.value })} placeholder="e.g. Diwali sale"/></label>
           <label>Ad type
-            <select disabled={Boolean(form.creatorVideoId)} value={form.type} onChange={e => set({ type: e.target.value, mediaUrl: "" })}>
+            <select disabled={Boolean(form.creatorVideoId)} value={form.type} onChange={e => set({ type: e.target.value, mediaUrl: "", placements: e.target.value === "video" ? ["video"] : ["home"] })}>
               <option value="banner">Banner (image)</option>
-              <option value="video">Video (plays before a video)</option>
+              <option value="video">Video ad</option>
             </select>
           </label>
           {form.type === "banner" && (
@@ -438,6 +472,21 @@ export function AdminAds({ api, token, onBack, onUnauthorized }) {
             </div>
           </fieldset>
           </>}
+          <fieldset className="ads-targeting">
+            <legend>Ad placements</legend>
+            <div className="ad-placement-options">
+              {surfaceOptions.map(([value, label]) => <label key={value}>
+                <input type="checkbox" checked={form.placements.includes(value)}
+                  disabled={form.type !== "video" && value !== "home"}
+                  onChange={() => set({ placements: form.placements.includes(value)
+                    ? form.placements.filter(item => item !== value) : [...form.placements, value] })}/>
+                {label}
+              </label>)}
+            </div>
+            <small className="muted">{form.type === "video"
+              ? "Choose one or more locations. Ads play before normal videos or Simply clips, and inline on the homepage. Frequency applies across selected locations."
+              : "Image ads appear on the homepage at the selected banner position. Use a video ad for Normal videos or Simply."}</small>
+          </fieldset>
           <div className="checks"><label><input type="checkbox" checked={form.active} onChange={e => set({ active: e.target.checked })}/> Active (visible to viewers)</label></div>
           <div className="admin-actions">
             <button className="primary-btn" disabled={busy || uploading || (!form.mediaUrl && !form.creatorVideoId)}>{busy ? "Saving…" : editingId ? "Save changes" : "Create ad"}</button>

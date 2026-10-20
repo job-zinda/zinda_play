@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../api.dart';
+import '../ads.dart';
 import '../navigation.dart';
 import '../shorts.dart';
 import '../widgets/short_comments.dart';
@@ -142,18 +143,23 @@ class _ShortsScreenState extends State<ShortsScreen>
                 if (index == _items.length) return _status();
                 return ValueListenableBuilder<int>(
                   valueListenable: _playbackChanges,
-                  builder: (_, _, _) => _ShortPlayer(
+                  builder: (_, _, _) => PlayerGate(
                     key: ValueKey(_items[index]['id']),
-                    video: _items[index],
+                    placement: 'simply',
                     active: _visible && _routeVisible && index == _index,
-                    preload:
-                        _visible &&
-                        _routeVisible &&
-                        !_dataSaver &&
-                        !reduceMotion &&
-                        index == _index + 1,
-                    muted: _muted,
-                    onMute: () => _updatePlayback(() => _muted = !_muted),
+                    builder: (_) => _ShortPlayer(
+                      key: ValueKey(_items[index]['id']),
+                      video: _items[index],
+                      active: _visible && _routeVisible && index == _index,
+                      preload:
+                          _visible &&
+                          _routeVisible &&
+                          !_dataSaver &&
+                          !reduceMotion &&
+                          index == _index + 1,
+                      muted: _muted,
+                      onMute: () => _updatePlayback(() => _muted = !_muted),
+                    ),
                   ),
                 );
               },

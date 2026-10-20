@@ -62,6 +62,7 @@ void main() {
           ];
           String? requestedProfile;
           final client = MockClient((request) async {
+            expect(request.url.path, isNot('/api/banners'));
             if (request.url.path.startsWith('/api/creators/')) {
               requestedProfile = request.url.path;
               return http.Response(
@@ -124,10 +125,15 @@ void main() {
             expect(find.byType(WhatsAppHelpButton), findsOneWidget);
             expect(find.text('Ask me'), findsOneWidget);
             expect(find.text('Search content creators'), findsOneWidget);
-            expect(find.byType(HomepagePromotionCarousel), findsOneWidget);
+            expect(find.byType(HomepagePromotionCarousel), findsNothing);
             expect(find.text('Trending now'), findsOneWidget);
-            final trending = tester.widgetList<VideoCard>(find.byType(VideoCard)).toList();
-            expect(trending.map((card) => card.video['id']), ['first', 'second']);
+            final trending = tester
+                .widgetList<VideoCard>(find.byType(VideoCard))
+                .toList();
+            expect(trending.map((card) => card.video['id']), [
+              'first',
+              'second',
+            ]);
             expect(
               tester.getTopLeft(find.text('Trending now')).dy,
               lessThan(tester.getTopLeft(find.text('All')).dy),
