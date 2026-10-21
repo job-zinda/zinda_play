@@ -3,14 +3,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:zinda_play/api.dart';
+import 'package:zinda_play/engagement.dart';
 import 'package:zinda_play/navigation.dart';
 import 'package:zinda_play/screens/auth_screen.dart';
 import 'package:zinda_play/screens/shorts_screen.dart';
 import 'package:zinda_play/shorts.dart';
+import 'package:zinda_play/widgets/reaction_button.dart';
 
 class _Feed extends ShortsApi {
   final List<Map<String, dynamic>> items;
@@ -186,12 +189,13 @@ class _Request extends Fake implements HttpClientRequest {
     network.calls.add('$method ${uri.path}');
     if (uri.path == '/api/ads') return _Response([]);
     if (uri.path.endsWith('/reaction')) {
-      network.liked = !network.liked;
+      final selected = jsonDecode(utf8.decode(bytes))['reaction'] as String;
+      network.reaction = selected == network.reaction ? null : selected;
+      network.liked = network.reaction != null;
       return _Response({
         'liked': network.liked,
-        'reaction': network.liked
-            ? jsonDecode(utf8.decode(bytes))['reaction']
-            : null,
+        'reaction': network.reaction,
+        'reactions': {if (network.reaction != null) network.reaction!: 1},
         'likeCount': network.liked ? 1 : 0,
       });
     }
@@ -222,6 +226,8 @@ class _Request extends Fake implements HttpClientRequest {
     if (uri.path.endsWith('/interactions')) {
       return _Response({
         'liked': network.liked,
+        'reaction': network.reaction,
+        'reactions': {if (network.reaction != null) network.reaction!: 1},
         'likeCount': network.liked ? 1 : 0,
         'comments': network.comments,
         'commentCount': network.comments.length + 101,
@@ -247,6 +253,7 @@ class _Network extends HttpOverrides {
   final calls = <String>[];
   final comments = <Map<String, dynamic>>[];
   bool liked = false;
+  String? reaction;
   bool saved = false;
   bool following = false;
   String? commentError;
@@ -437,6 +444,59 @@ void main() {
     await tester.pump();
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
   });
+
+  testWidgets(
+    'Simply picker replaces and removes all six reactions with sound',
+    (tester) async {
+      final sounds = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'SystemSound.play') sounds.add(call);
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      Api.instance.token = 'test-only-token';
+      Api.instance.role = 'member';
+      await mount(tester, _Feed(items));
+      for (final choice in reactionChoices) {
+        await tester.tap(find.byTooltip('Choose reaction'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(OutlinedButton, choice.label));
+        await tester.pumpAndSettle();
+        final button = tester.widget<ReactionButton>(
+          find.byType(ReactionButton),
+        );
+        expect(button.reaction, choice.type);
+        expect(button.count, 1);
+        expect(button.counts, {choice.type: 1});
+      }
+      expect(sounds, hasLength(6));
+      await tester.tap(find.byTooltip('Choose reaction'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Angry'));
+      await tester.pumpAndSettle();
+      final button = tester.widget<ReactionButton>(find.byType(ReactionButton));
+      expect(button.reaction, isNull);
+      expect(button.count, 0);
+      expect(sounds, hasLength(6));
+      expect(
+        network.calls.where(
+          (call) => call == 'POST /api/videos/short-0/reaction',
+        ),
+        hasLength(7),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    },
+  );
 
   testWidgets('guest save opens authentication without writing engagement', (
     tester,

@@ -5,8 +5,18 @@ export default function VideoPreview({ video }) {
   const media = useRef(null);
   const [visible, setVisible] = useState(false);
   const [error, setError] = useState("");
+  const [imageFailed, setImageFailed] = useState(false);
   const source = video.streamUrl || video.playbackUrl || "";
   const embed = /^https:\/\/iframe\.mediadelivery\.net\/embed\//i.test(source);
+  const animatedPreview = /^https:\/\/[^/]+\.b-cdn\.net\/[^/?#]+\/playlist\.m3u8(?:[?#].*)?$/i.test(source)
+    ? new URL("preview.webp", source).toString()
+    : "";
+  const showAnimatedPreview = Boolean(error && animatedPreview && !imageFailed);
+
+  useEffect(() => {
+    setError("");
+    setImageFailed(false);
+  }, [source]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => {
@@ -28,7 +38,7 @@ export default function VideoPreview({ video }) {
   }, []);
 
   useEffect(() => {
-    if (!visible || !source || embed) return undefined;
+    if (!visible || !source || embed || showAnimatedPreview || imageFailed) return undefined;
     const element = media.current;
     let hls;
     let cancelled = false;
@@ -75,7 +85,7 @@ export default function VideoPreview({ video }) {
       element.removeAttribute("src");
       element.load();
     };
-  }, [visible, source, embed]);
+  }, [visible, source, embed, showAnimatedPreview, imageFailed]);
 
   let embedUrl = source;
   if (embed) {
@@ -85,9 +95,11 @@ export default function VideoPreview({ video }) {
     embedUrl = url.toString();
   }
   return <span ref={host} className="thumbnail-preview-media" aria-hidden="true">
-    {visible && source && (embed
+    {visible && source && (showAnimatedPreview
+      ? <img src={animatedPreview} alt="" draggable="false" onError={() => setImageFailed(true)}/>
+      : embed
       ? <iframe src={embedUrl} title="Muted video preview" allow="autoplay" tabIndex={-1}/>
-      : <video ref={media} muted loop playsInline preload="none" onError={() => setError("Preview unavailable. Tap to watch.")}/>)}
-    {(error || !source) && <span className="preview-message">{error || "Preview unavailable. Tap to watch."}</span>}
+      : !imageFailed && <video ref={media} muted loop playsInline preload="none" onError={() => setError("Preview unavailable. Tap to watch.")}/>)}
+    {((error && !showAnimatedPreview) || !source) && <span className="preview-message">{error || "Preview unavailable. Tap to watch."}</span>}
   </span>;
 }

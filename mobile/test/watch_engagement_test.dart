@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:zinda_play/api.dart';
+import 'package:zinda_play/engagement.dart';
 import 'package:zinda_play/public_links.dart';
 import 'package:zinda_play/screens/auth_screen.dart';
 import 'package:zinda_play/screens/watch_screen.dart';
@@ -129,6 +131,79 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     }, () => client);
   });
+
+  testWidgets(
+    'video picker replaces and removes all six reactions with sound',
+    (tester) async {
+      final sounds = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'SystemSound.play') sounds.add(call);
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      String? reaction;
+      final writes = <String>[];
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/reaction')) {
+          final selected = jsonDecode(request.body)['reaction'] as String;
+          writes.add(selected);
+          reaction = selected == reaction ? null : selected;
+        }
+        return http.Response(
+          jsonEncode({
+            'liked': reaction != null,
+            'reaction': reaction,
+            'likeCount': reaction == null ? 7 : 8,
+            'reactions': {if (reaction != null) reaction!: 1},
+            'commentCount': 0,
+            'comments': [],
+          }),
+          200,
+        );
+      });
+      await http.runWithClient(() async {
+        await tester.pumpWidget(app());
+        await tester.pumpAndSettle();
+        for (final choice in reactionChoices) {
+          await tester.ensureVisible(find.byTooltip('Choose reaction'));
+          await tester.tap(find.byTooltip('Choose reaction'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.widgetWithText(OutlinedButton, choice.label));
+          await tester.pumpAndSettle();
+          final bar = tester.widget<VideoEngagementBar>(
+            find.byType(VideoEngagementBar),
+          );
+          expect(bar.reaction, choice.type);
+          expect(bar.likes, 8);
+          expect(bar.reactions, {choice.type: 1});
+        }
+        expect(sounds, hasLength(6));
+        await tester.tap(find.byTooltip('Choose reaction'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(OutlinedButton, 'Angry'));
+        await tester.pumpAndSettle();
+        final bar = tester.widget<VideoEngagementBar>(
+          find.byType(VideoEngagementBar),
+        );
+        expect(bar.reaction, isNull);
+        expect(bar.likes, 7);
+        expect(sounds, hasLength(6));
+        expect(writes, [
+          ...reactionChoices.map((choice) => choice.type),
+          'angry',
+        ]);
+        await tester.pumpWidget(const SizedBox.shrink());
+      }, () => client);
+    },
+  );
 
   testWidgets('comments open composer, post text and refresh accurate counts', (
     tester,

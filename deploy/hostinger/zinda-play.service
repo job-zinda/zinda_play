@@ -1,0 +1,25 @@
+[Unit]
+Description=Zinda Play API
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=zinda-play
+Group=zinda-play
+WorkingDirectory=/var/www/zinda-play/current/server
+Environment=NODE_ENV=production
+ExecStart=/usr/local/bin/node src/index.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

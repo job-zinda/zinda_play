@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 // Override API_URL for local development or a different deployment.
 const apiOrigin = String.fromEnvironment(
   'API_URL',
-  defaultValue: 'https://zinda-play.onrender.com',
+  defaultValue: 'https://api.zindaplay.com',
 );
 const apiBase = '$apiOrigin/api';
 

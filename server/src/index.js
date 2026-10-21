@@ -30,6 +30,7 @@ import { initializeEngagement, registerEngagementRoutes } from "./engagement.js"
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../.env") });
 const app = express();
 const port = process.env.PORT || 4000;
+const host = process.env.HOST || undefined;
 const publicWebsite = publicWebOrigin(process.env.PUBLIC_WEB_URL);
 const publicApiOrigin = publicWebOrigin(process.env.PUBLIC_API_URL || "https://zinda-play.onrender.com");
 const scrypt = promisify(scryptCallback);
@@ -2824,7 +2825,7 @@ async function start() {
     id: _id,
     ...category
   }));
-  app.listen(port, () => console.log(`Zinda Play API connected to MongoDB and listening on port ${port}`));
+  app.listen(port, host, () => console.log(`Zinda Play API connected to MongoDB and listening on ${host || "all interfaces"}:${port}`));
 }
 
 start().catch(error => {

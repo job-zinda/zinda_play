@@ -9,7 +9,7 @@ void main() {
       const override = String.fromEnvironment('API_URL');
       expect(
         apiOrigin,
-        override.isEmpty ? 'https://zinda-play.onrender.com' : override,
+        override.isEmpty ? 'https://api.zindaplay.com' : override,
       );
       expect(apiBase, '$apiOrigin/api');
       expect(

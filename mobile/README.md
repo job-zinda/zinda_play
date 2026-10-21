@@ -10,6 +10,12 @@ size. Quality remains adaptive; viewers can still use the Bunny player controls.
 Direct video files have a separate 0.5x-2x speed control (HLS uses adaptive
 playback on supported platforms). Speed changes never apply to ads.
 
+Thumbnail-free web cards start muted video previews while visible. If a
+browser cannot decode the Bunny stream, the card uses Bunny's animated
+`preview.webp` instead, also only while visible. If both sources fail, the
+card displays an explicit preview error and still opens normal playback.
+Preview playback does not submit view or reward tracking.
+
 Ad media prepares while authorization is in progress instead of waiting for
 each independent request sequentially. Playback still waits for an accepted
 impression, and creator-ad completion tickets and skip delays are unchanged.
@@ -78,7 +84,7 @@ validation, account-type values or successful-login navigation.
 ## Backend connection and APK builds
 
 The mobile app defaults to the deployed HTTPS backend at
-`https://zinda-play.onrender.com`. Build an installable release APK with
+`https://api.zindaplay.com` on the Hostinger VPS. Build an installable release APK with
 `flutter build apk --release`; the output is
 `build/app/outputs/flutter-apk/app-release.apk`.
 
@@ -105,7 +111,14 @@ For each release, increase `version` above the last distributed version in
 
 `client/vercel.json` sends the Android APK MIME type and attachment filename,
 and requires cache revalidation so replacing the stable download URL serves the
-new release. If using a different host, configure equivalent headers. Never put
+new release. Hostinger VPS uses the equivalent headers in
+[`zinda-play.nginx.conf`](../deploy/hostinger/zinda-play.nginx.conf).
+For an APK-only update on the VPS, back up the current download pair privately,
+stage and checksum-verify the new pair, then atomically replace each file in
+`/var/www/zinda-play/current/client/dist/downloads`. No API restart is needed.
+Download the public APK again and compare its checksum before announcing it.
+Older installed apps still use Render until users install the new release.
+Never put
 keystores, signing passwords or `android/key.properties` in the web public folder.
 Play Store-installed apps may use a different signing key from this direct APK;
 do not tell users to uninstall just to bypass a signature conflict.
